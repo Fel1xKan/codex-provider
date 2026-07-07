@@ -19,6 +19,14 @@ Lightweight CLI for switching Codex `model_provider` and matching `auth.json` pr
 ```bash
 ./codex-provider list
 ./codex-provider status
+./codex-provider auth detail
+./codex-provider auth detail anyrouter
+EDITOR=vim ./codex-provider auth edit
+EDITOR=vim ./codex-provider auth edit anyrouter
+./codex-provider config detail
+./codex-provider config detail anyrouter
+EDITOR=vim ./codex-provider config edit
+EDITOR=vim ./codex-provider config edit anyrouter
 ./codex-provider doctor
 ./codex-provider switch anyrouter
 ./codex-provider switch krill --dry-run
@@ -53,3 +61,7 @@ extra_headers = { x_team = "infra" }
 - `doctor --fix` archives legacy `~/.codex/auth.json.*` files to `*.bak.<timestamp>` instead of deleting them.
 - `add` also auto-initializes `~/.codex-provider` on a fresh machine.
 - If you manually add custom provider keys in `~/.codex-provider/config.toml`, `switch` will carry the whole provider block into `~/.codex/config.toml`.
+- `auth detail` defaults to the runtime `~/.codex/auth.json`; `auth detail <provider>` prints `~/.codex-provider/auth/<provider>.json`.
+- `auth edit` defaults to the runtime `~/.codex/auth.json`; `auth edit <provider>` opens `~/.codex-provider/auth/<provider>.json`.
+- `config detail` prints a provider block from `~/.codex-provider/config.toml`; without an argument it defaults to the current provider.
+- `config edit` opens `~/.codex-provider/config.toml`; with `<provider>` it first validates that provider exists.

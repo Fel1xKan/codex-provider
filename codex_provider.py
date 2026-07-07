@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
@@ -395,6 +397,97 @@ def print_list() -> int:
     return 0
 
 
+def resolve_provider(provider: str | None) -> tuple[str, dict[str, dict[str, Any]], str]:
+    current, providers = ensure_registry_ready()
+    target = provider or current
+    if target not in providers:
+        known = ", ".join(sorted(providers.keys()))
+        raise SwitchError(f"unknown provider '{target}', available: {known}")
+    return current, providers, target
+
+
+def auth_target_path(provider: str | None) -> tuple[str | None, Path]:
+    if provider is None:
+        current, _, _ = load_runtime_config()
+        return current, runtime_auth_path()
+    provider = validate_provider_name(provider)
+    return provider, auth_profile_path(provider)
+
+
+def show_auth(provider: str | None) -> int:
+    target, path = auth_target_path(provider)
+    if not path.exists():
+        raise SwitchError(f"auth file not found: {path}")
+
+    print(f"auth file: {path}")
+    if target is None:
+        print("scope: runtime")
+    else:
+        print(f"provider: {target}")
+    print("")
+
+    raw = path.read_text()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        print(raw.rstrip("\n"))
+        return 0
+
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def edit_auth(provider: str | None) -> int:
+    target, path = auth_target_path(provider)
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if not editor:
+        raise SwitchError("set VISUAL or EDITOR to use edit")
+    if not path.exists():
+        raise SwitchError(f"auth file not found: {path}")
+
+    print(f"opening {path}")
+    if target is None:
+        print("scope: runtime")
+    else:
+        print(f"provider: {target}")
+    try:
+        result = subprocess.run([editor, str(path)])
+    except FileNotFoundError as exc:
+        raise SwitchError(f"editor not found: {editor}") from exc
+    if result.returncode != 0:
+        raise SwitchError(f"editor exited with status {result.returncode}")
+    return 0
+
+
+def show_provider_config(provider: str | None) -> int:
+    current, providers, target = resolve_provider(provider)
+    print(f"tool config: {TOOL_CONFIG_PATH}")
+    print(f"runtime config: {runtime_config_path()}")
+    print(f"current provider: {current}")
+    print(f"show provider: {target}")
+    print(f"auth profile: {auth_profile_path(target)}")
+    print("")
+    print(build_provider_block(target, providers[target]).rstrip("\n"))
+    return 0
+
+
+def edit_provider_config(provider: str | None) -> int:
+    _, _, target = resolve_provider(provider)
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if not editor:
+        raise SwitchError("set VISUAL or EDITOR to use edit")
+
+    print(f"opening {TOOL_CONFIG_PATH}")
+    print(f"target provider: {target}")
+    try:
+        result = subprocess.run([editor, str(TOOL_CONFIG_PATH)])
+    except FileNotFoundError as exc:
+        raise SwitchError(f"editor not found: {editor}") from exc
+    if result.returncode != 0:
+        raise SwitchError(f"editor exited with status {result.returncode}")
+    return 0
+
+
 def archive_legacy_profiles() -> list[tuple[Path, Path]]:
     moved = []
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -523,6 +616,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("list", help="List providers from ~/.codex-provider/config.toml")
     subparsers.add_parser("status", help="Show current provider and auth profile availability")
+    auth_parser = subparsers.add_parser("auth", help="Inspect or edit runtime/provider auth.json files")
+    auth_subparsers = auth_parser.add_subparsers(dest="auth_command", required=True)
+    auth_detail_parser = auth_subparsers.add_parser("detail", help="Show runtime auth.json or a provider auth snapshot")
+    auth_detail_parser.add_argument("provider", nargs="?", help="Provider name; defaults to current runtime auth.json")
+    auth_edit_parser = auth_subparsers.add_parser("edit", help="Open runtime auth.json or a provider auth snapshot in $VISUAL or $EDITOR")
+    auth_edit_parser.add_argument("provider", nargs="?", help="Provider name; defaults to current runtime auth.json")
+    config_parser = subparsers.add_parser("config", help="Inspect or edit provider config blocks")
+    config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
+    config_detail_parser = config_subparsers.add_parser("detail", help="Show a provider config block from ~/.codex-provider/config.toml")
+    config_detail_parser.add_argument("provider", nargs="?", help="Provider name; defaults to current provider")
+    config_edit_parser = config_subparsers.add_parser("edit", help="Open ~/.codex-provider/config.toml in $VISUAL or $EDITOR")
+    config_edit_parser.add_argument("provider", nargs="?", help="Provider name to validate before opening; defaults to current provider")
     doctor_parser = subparsers.add_parser("doctor", help="Create ~/.codex-provider if needed and run basic checks")
     doctor_parser.add_argument("--fix", action="store_true", help="Archive legacy ~/.codex/auth.json.* files to .bak.<timestamp>")
 
@@ -557,6 +662,16 @@ def main(argv: list[str] | None = None) -> int:
             return print_list()
         if args.command == "status":
             return print_status()
+        if args.command == "auth":
+            if args.auth_command == "detail":
+                return show_auth(args.provider)
+            if args.auth_command == "edit":
+                return edit_auth(args.provider)
+        if args.command == "config":
+            if args.config_command == "detail":
+                return show_provider_config(args.provider)
+            if args.config_command == "edit":
+                return edit_provider_config(args.provider)
         if args.command == "doctor":
             return doctor(args.fix)
         if args.command == "switch":
