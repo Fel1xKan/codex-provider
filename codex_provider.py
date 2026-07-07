@@ -10,9 +10,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import tomllib
 
@@ -118,6 +121,30 @@ def validate_provider_name(provider: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", provider):
         raise SwitchError("provider name must match [A-Za-z0-9_-]+")
     return provider
+
+
+def derive_provider_name(base_url: str) -> str:
+    parsed = urlparse(base_url)
+    if not parsed.scheme or not parsed.hostname:
+        raise SwitchError("base_url must include scheme and host, for example: https://api.example.com")
+
+    labels = parsed.hostname.split(".")
+    while len(labels) > 1 and labels[0].lower() in {"api", "www"}:
+        labels = labels[1:]
+
+    name = re.sub(r"[^A-Za-z0-9_-]+", "-", labels[0]).strip("-_").lower()
+    if not name:
+        raise SwitchError(f"unable to derive provider name from base_url: {base_url}")
+    return validate_provider_name(name)
+
+
+def normalize_base_url(base_url: str) -> str:
+    parsed = urlparse(base_url)
+    if not parsed.scheme or not parsed.hostname:
+        raise SwitchError("base_url must include scheme and host, for example: https://api.example.com")
+    if parsed.path in {"", "/"}:
+        return urlunparse(parsed._replace(path="/v1")).rstrip("/")
+    return base_url.rstrip("/")
 
 
 def format_toml_value(value: Any) -> str:
@@ -292,16 +319,19 @@ def ensure_registry_ready() -> tuple[str, dict[str, dict[str, Any]]]:
 
 
 def add_provider(
-    provider: str,
+    provider: str | None,
     base_url: str,
+    api_key: str,
     display_name: str | None,
     wire_api: str,
-    requires_openai_auth: bool,
     supports_websockets: bool | None,
-    auth_file: str | None,
     dry_run: bool,
 ) -> int:
-    provider = validate_provider_name(provider)
+    base_url = normalize_base_url(base_url)
+    provider = validate_provider_name(provider) if provider else derive_provider_name(base_url)
+    if not api_key:
+        raise SwitchError("api_key must not be empty")
+
     current, providers = ensure_registry_ready()
     if provider in providers:
         raise SwitchError(f"provider already exists: {provider}")
@@ -310,24 +340,20 @@ def add_provider(
     providers[provider] = {
         "base_url": base_url,
         "name": display_name or provider,
+        "requires_openai_auth": True,
         "wire_api": wire_api,
     }
-    if requires_openai_auth:
-        providers[provider]["requires_openai_auth"] = True
     if supports_websockets is not None:
         providers[provider]["supports_websockets"] = supports_websockets
 
-    auth_source = Path(auth_file).expanduser() if auth_file else runtime_auth_path()
-    if not auth_source.exists():
-        raise SwitchError(f"auth source not found: {auth_source}")
-
     if not dry_run:
         write_provider_registry(get_codex_dir(), providers, dry_run=False)
-        atomic_write_bytes(auth_profile_path(provider), auth_source.read_bytes())
+        payload = json.dumps({"OPENAI_API_KEY": api_key}, indent=2).encode() + b"\n"
+        atomic_write_bytes(auth_profile_path(provider), payload)
 
     action = "would add" if dry_run else "added"
     print(f"{action} provider: {provider}")
-    print(f"{'would create' if dry_run else 'created'} auth profile: {auth_profile_path(provider)} from {auth_source}")
+    print(f"{'would create' if dry_run else 'created'} auth profile: {auth_profile_path(provider)}")
     print(f"current provider remains: {current}")
     return 0
 
@@ -335,8 +361,16 @@ def add_provider(
 def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
     provider = validate_provider_name(provider)
     current, providers = ensure_registry_ready()
+    profile = auth_profile_path(provider)
     if provider not in providers:
-        known = ", ".join(providers.keys())
+        if delete_auth and profile.exists():
+            if not dry_run:
+                profile.unlink()
+            detail = "would remove" if dry_run else "removed"
+            print(f"provider not found: {provider}")
+            print(f"{detail} auth profile: {profile}")
+            return 0
+        known = ", ".join(sorted(providers.keys()))
         raise SwitchError(f"unknown provider '{provider}', available: {known}")
     if provider == current:
         raise SwitchError("cannot delete the current active provider; switch away first")
@@ -346,16 +380,16 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
 
     if not dry_run:
         write_provider_registry(get_codex_dir(), providers, dry_run=False)
-        if delete_auth and auth_profile_path(provider).exists():
-            auth_profile_path(provider).unlink()
+        if delete_auth and profile.exists():
+            profile.unlink()
 
     action = "would delete" if dry_run else "deleted"
     print(f"{action} provider: {provider}")
     if delete_auth:
         detail = "would remove" if dry_run else "removed"
-        print(f"{detail} auth profile: {auth_profile_path(provider)}")
+        print(f"{detail} auth profile: {profile}")
     else:
-        print(f"kept auth profile: {auth_profile_path(provider)}")
+        print(f"kept auth profile: {profile}")
     return 0
 
 
@@ -486,6 +520,198 @@ def edit_provider_config(provider: str | None) -> int:
     if result.returncode != 0:
         raise SwitchError(f"editor exited with status {result.returncode}")
     return 0
+
+
+def load_provider_api_key(provider: str) -> str:
+    path = auth_profile_path(provider)
+    if not path.exists():
+        raise SwitchError(f"auth profile not found: {path}")
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise SwitchError(f"invalid auth JSON: {path}: {exc}") from exc
+    api_key = payload.get("OPENAI_API_KEY")
+    if not isinstance(api_key, str) or not api_key:
+        raise SwitchError(f"OPENAI_API_KEY is missing in auth profile: {path}")
+    return api_key
+
+
+def models_url(base_url: str) -> str:
+    return base_url.rstrip("/") + "/models"
+
+
+def summarize_response_error(payload: bytes) -> str:
+    text = payload.decode(errors="replace").strip()
+    if not text:
+        return ""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return text[:500]
+    if isinstance(data, dict):
+        error = data.get("error")
+        if isinstance(error, dict):
+            message = error.get("message")
+            if isinstance(message, str):
+                return message[:500]
+        message = data.get("message")
+        if isinstance(message, str):
+            return message[:500]
+    return json.dumps(data, ensure_ascii=False)[:500]
+
+
+def run_models_test(label: str, base_url: str, api_key: str, timeout: float, current_provider: str | None) -> int:
+    if timeout <= 0:
+        raise SwitchError("timeout must be greater than 0")
+
+    url = models_url(base_url)
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+        },
+    )
+
+    if current_provider is not None:
+        print(f"current provider: {current_provider}")
+    print(f"test provider: {label}")
+    print(f"base_url: {base_url}")
+    print(f"models url: {url}")
+
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read()
+            status = response.status
+    except urllib.error.HTTPError as exc:
+        detail = summarize_response_error(exc.read())
+        print(f"result: failed")
+        print(f"http status: {exc.code} {exc.reason}")
+        if detail:
+            print(f"error: {detail}")
+        return 1
+    except urllib.error.URLError as exc:
+        print("result: failed")
+        print(f"error: {exc.reason}")
+        return 1
+    except TimeoutError:
+        print("result: failed")
+        print(f"error: request timed out after {timeout:g}s")
+        return 1
+
+    try:
+        payload = json.loads(body.decode())
+    except json.JSONDecodeError as exc:
+        print("result: failed")
+        print(f"http status: {status}")
+        print(f"error: response is not valid JSON: {exc}")
+        return 1
+
+    models = []
+    if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+        for item in payload["data"]:
+            if isinstance(item, dict) and isinstance(item.get("id"), str):
+                models.append(item["id"])
+
+    print("result: ok")
+    print(f"http status: {status}")
+    print(f"models: {len(models)}")
+    for model in models[:20]:
+        print(f"- {model}")
+    if len(models) > 20:
+        print(f"... {len(models) - 20} more")
+    return 0
+
+
+def test_provider(provider: str | None, timeout: float) -> int:
+    current, providers, target = resolve_provider(provider)
+    config = providers[target]
+    base_url = config.get("base_url")
+    if not isinstance(base_url, str) or not base_url:
+        raise SwitchError(f"base_url is missing for provider: {target}")
+
+    api_key = load_provider_api_key(target)
+    return run_models_test(target, base_url, api_key, timeout, current)
+
+
+def test_direct_base_url(base_url: str, api_key: str, timeout: float) -> int:
+    base_url = normalize_base_url(base_url)
+    if not api_key:
+        raise SwitchError("api_key must not be empty")
+    return run_models_test("direct", base_url, api_key, timeout, None)
+
+
+def looks_like_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return bool(parsed.scheme and parsed.hostname)
+
+
+def dispatch_test(args: list[str], api_key_stdin: bool, timeout: float) -> int:
+    if not args:
+        if api_key_stdin:
+            raise SwitchError("--api-key-stdin requires a base_url")
+        return test_provider(None, timeout)
+
+    if len(args) == 1:
+        target = args[0]
+        if api_key_stdin:
+            api_key = sys.stdin.readline().strip()
+            if not api_key:
+                raise SwitchError("api_key is required on stdin")
+            return test_direct_base_url(target, api_key, timeout)
+        if looks_like_url(target):
+            raise SwitchError("api_key is required for direct base_url tests; pass it as an argument or use --api-key-stdin")
+        return test_provider(target, timeout)
+
+    if len(args) == 2:
+        if api_key_stdin:
+            raise SwitchError("api_key cannot be passed both as an argument and with --api-key-stdin")
+        return test_direct_base_url(args[0], args[1], timeout)
+
+    raise SwitchError("test accepts either [provider], <base-url> <api-key>, or <base-url> --api-key-stdin")
+
+
+def ping_provider(provider: str | None, timeout: float, model: str | None, prompt: str) -> int:
+    if timeout <= 0:
+        raise SwitchError("timeout must be greater than 0")
+    if provider is not None:
+        switch_provider(provider, dry_run=False)
+
+    current, _, _ = load_runtime_config()
+    codex_path = shutil.which("codex")
+    if not codex_path:
+        raise SwitchError("codex command not found on PATH")
+
+    command = [
+        codex_path,
+        "exec",
+        "--ephemeral",
+        "--ignore-rules",
+        "--skip-git-repo-check",
+        "-C",
+        "/tmp",
+    ]
+    if model:
+        command.extend(["-m", model])
+    command.append(prompt)
+
+    print(f"ping provider: {current}")
+    print(f"timeout: {timeout:g}s")
+    sys.stdout.flush()
+    try:
+        result = subprocess.run(command, stdin=subprocess.DEVNULL, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print("ping result: failed")
+        print(f"error: codex exec timed out after {timeout:g}s")
+        return 1
+
+    if result.returncode == 0:
+        print("ping result: ok")
+        return 0
+
+    print("ping result: failed")
+    print(f"codex exit code: {result.returncode}")
+    return result.returncode
 
 
 def archive_legacy_profiles() -> list[tuple[Path, Path]]:
@@ -635,14 +861,29 @@ def build_parser() -> argparse.ArgumentParser:
     switch_parser.add_argument("provider", help="Provider name from registry")
     switch_parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing files")
 
+    test_parser = subparsers.add_parser("test", help="Test provider or direct base_url/API key with /models")
+    test_parser.add_argument("args", nargs="*", metavar="provider|base_url", help="No args/current provider, provider name, or base_url api_key")
+    test_parser.add_argument("--api-key-stdin", action="store_true", help="Read API key from stdin for direct base_url tests")
+    test_parser.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout in seconds, default: 30")
+
+    ping_parser = subparsers.add_parser(
+        "ping",
+        aliases=["p"],
+        help="Test one provider with a minimal codex exec",
+    )
+    ping_parser.add_argument("provider", nargs="?", help="Provider name; defaults to current provider")
+    ping_parser.add_argument("--timeout", type=float, default=120.0, help="codex exec timeout in seconds, default: 120")
+    ping_parser.add_argument("-m", "--model", help="Override model for this ping")
+    ping_parser.add_argument("--prompt", default="say hi", help='Prompt for codex exec, default: "say hi"')
+
     add_parser = subparsers.add_parser("add", help="Add a provider config and auth profile")
-    add_parser.add_argument("provider", help="New provider name")
-    add_parser.add_argument("--base-url", required=True, help="Provider base_url")
+    add_parser.add_argument("base_url", help="Provider base_url")
+    add_parser.add_argument("api_key", nargs="?", help="OpenAI-compatible API key")
+    add_parser.add_argument("--api-key-stdin", action="store_true", help="Read API key from stdin")
+    add_parser.add_argument("--provider", help="Provider name; defaults to the base_url domain")
     add_parser.add_argument("--name", help="Display name stored in provider config")
     add_parser.add_argument("--wire-api", default="responses", help="wire_api value, default: responses")
-    add_parser.add_argument("--requires-openai-auth", action="store_true", help="Set requires_openai_auth = true")
     add_parser.add_argument("--supports-websockets", choices=["true", "false"], help="Set supports_websockets explicitly")
-    add_parser.add_argument("--auth-file", help="Path to auth json source; defaults to current ~/.codex/auth.json")
     add_parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing files")
 
     delete_parser = subparsers.add_parser("delete", help="Delete a provider config from registry")
@@ -676,18 +917,24 @@ def main(argv: list[str] | None = None) -> int:
             return doctor(args.fix)
         if args.command == "switch":
             return switch_provider(args.provider, args.dry_run)
+        if args.command == "test":
+            return dispatch_test(args.args, args.api_key_stdin, args.timeout)
+        if args.command in {"ping", "p"}:
+            return ping_provider(args.provider, args.timeout, args.model, args.prompt)
         if args.command == "add":
             supports_websockets = None
             if args.supports_websockets is not None:
                 supports_websockets = args.supports_websockets == "true"
+            api_key = sys.stdin.readline().strip() if args.api_key_stdin else args.api_key
+            if not api_key:
+                raise SwitchError("api_key is required; pass it as an argument or use --api-key-stdin")
             return add_provider(
                 provider=args.provider,
                 base_url=args.base_url,
+                api_key=api_key,
                 display_name=args.name,
                 wire_api=args.wire_api,
-                requires_openai_auth=args.requires_openai_auth,
                 supports_websockets=supports_websockets,
-                auth_file=args.auth_file,
                 dry_run=args.dry_run,
             )
         if args.command == "delete":
