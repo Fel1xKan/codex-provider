@@ -74,7 +74,7 @@ def ensure_tool_config() -> dict[str, Any]:
         return read_tool_config()
     payload = (
         '# codex-provider tool config\n'
-        f'codex_dir = "{DEFAULT_CODEX_DIR}"\n'
+        f'codex_dir = {format_toml_value(str(DEFAULT_CODEX_DIR))}\n'
     )
     atomic_write_text(TOOL_CONFIG_PATH, payload)
     return {
@@ -274,6 +274,8 @@ def write_provider_registry(codex_dir: Path, providers: dict[str, dict[str, Any]
 
 def load_runtime_config() -> tuple[str, dict[str, Any], str]:
     path = runtime_config_path()
+    if not path.exists():
+        raise SwitchError(f"missing runtime config: {path}")
     text = path.read_text()
     data = parse_toml(path)
     current = data.get("model_provider")
@@ -311,10 +313,16 @@ def ensure_registry_ready() -> tuple[str, dict[str, dict[str, Any]]]:
     ensure_tool_home()
     codex_dir, providers = load_provider_registry()
     if providers:
-        current, _, _ = load_runtime_config()
+        try:
+            current, _, _ = load_runtime_config()
+        except SwitchError:
+            return "", providers
         return current, providers
 
-    current, migrated = migrate_provider_registry(dry_run=False)
+    try:
+        current, migrated = migrate_provider_registry(dry_run=False)
+    except SwitchError:
+        return "", {}
     return current, migrated
 
 
@@ -354,7 +362,7 @@ def add_provider(
     action = "would add" if dry_run else "added"
     print(f"{action} provider: {provider}")
     print(f"{'would create' if dry_run else 'created'} auth profile: {auth_profile_path(provider)}")
-    print(f"current provider remains: {current}")
+    print(f"current provider remains: {current or '(none)'}")
     return 0
 
 
