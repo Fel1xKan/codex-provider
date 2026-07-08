@@ -285,10 +285,14 @@ def load_runtime_config() -> tuple[str, dict[str, Any], str]:
 
 
 def sync_runtime_provider(current_provider: str, provider_config: dict[str, Any], dry_run: bool) -> None:
-    _, _, text = load_runtime_config()
+    path = runtime_config_path()
+    if path.exists():
+        _, _, text = load_runtime_config()
+    else:
+        text = f'model_provider = "{current_provider}"\n'
     updated = render_runtime_config(text, current_provider, provider_config)
     if not dry_run:
-        atomic_write_text(runtime_config_path(), updated)
+        atomic_write_text(path, updated)
 
 
 def migrate_provider_registry(dry_run: bool = False) -> tuple[str, dict[str, dict[str, Any]]]:
