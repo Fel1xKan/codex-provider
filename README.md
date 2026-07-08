@@ -51,6 +51,22 @@ chmod +x ./codex-provider ./codex_provider.py
 ln -sf "$(pwd)/codex-provider" ~/.local/bin/codex-provider
 ```
 
+## Build
+
+```text
+python build.py
+py -3 build.py        # Windows, if using the Python launcher
+./build.sh            # Optional macOS/Linux wrapper
+.\build.cmd           # Optional Windows cmd.exe/PowerShell wrapper
+```
+
+The build script uses the `PYTHON` environment variable when set, then a local
+`.venv` (`.venv/bin/python` or `.venv/Scripts/python.exe`) when present, and
+falls back to the interpreter running `build.py`. It rebuilds the PyInstaller
+binary from `codex-provider-bin.spec` and verifies that the generated binary
+starts successfully. On Windows the output is `dist/codex-provider-bin.exe`;
+on macOS and Linux it is `dist/codex-provider-bin`.
+
 ## Tool Config
 
 ```toml
