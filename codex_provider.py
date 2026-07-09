@@ -6,10 +6,13 @@ import argparse
 import json
 import os
 import re
+import select
 import shutil
 import subprocess
 import sys
 import tempfile
+import termios
+import tty
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -73,8 +76,8 @@ def ensure_tool_config() -> dict[str, Any]:
     if TOOL_CONFIG_PATH.exists():
         return read_tool_config()
     payload = (
-        '# codex-provider tool config\n'
-        f'codex_dir = {format_toml_value(str(DEFAULT_CODEX_DIR))}\n'
+        "# codex-provider tool config\n"
+        f"codex_dir = {format_toml_value(str(DEFAULT_CODEX_DIR))}\n"
     )
     atomic_write_text(TOOL_CONFIG_PATH, payload)
     return {
@@ -126,7 +129,9 @@ def validate_provider_name(provider: str) -> str:
 def derive_provider_name(base_url: str) -> str:
     parsed = urlparse(base_url)
     if not parsed.scheme or not parsed.hostname:
-        raise SwitchError("base_url must include scheme and host, for example: https://api.example.com")
+        raise SwitchError(
+            "base_url must include scheme and host, for example: https://api.example.com"
+        )
 
     labels = parsed.hostname.split(".")
     while len(labels) > 1 and labels[0].lower() in {"api", "www"}:
@@ -141,7 +146,9 @@ def derive_provider_name(base_url: str) -> str:
 def normalize_base_url(base_url: str) -> str:
     parsed = urlparse(base_url)
     if not parsed.scheme or not parsed.hostname:
-        raise SwitchError("base_url must include scheme and host, for example: https://api.example.com")
+        raise SwitchError(
+            "base_url must include scheme and host, for example: https://api.example.com"
+        )
     if parsed.path in {"", "/"}:
         return urlunparse(parsed._replace(path="/v1")).rstrip("/")
     return base_url.rstrip("/")
@@ -160,7 +167,13 @@ def format_toml_value(value: Any) -> str:
     if isinstance(value, list):
         return "[" + ", ".join(format_toml_value(item) for item in value) + "]"
     if isinstance(value, dict):
-        return "{ " + ", ".join(f"{key} = {format_toml_value(item)}" for key, item in value.items()) + " }"
+        return (
+            "{ "
+            + ", ".join(
+                f"{key} = {format_toml_value(item)}" for key, item in value.items()
+            )
+            + " }"
+        )
     raise SwitchError(f"unsupported TOML value type: {type(value).__name__}")
 
 
@@ -218,11 +231,15 @@ def set_runtime_model_provider(text: str, provider: str) -> str:
     pattern = re.compile(r'(?m)^(model_provider\s*=\s*")([^"\n]+)(")\s*$')
     match = pattern.search(text)
     if not match:
-        raise SwitchError("unable to find active top-level model_provider line in runtime config")
+        raise SwitchError(
+            "unable to find active top-level model_provider line in runtime config"
+        )
     return text[: match.start(2)] + provider + text[match.end(2) :]
 
 
-def insert_current_provider_block(text: str, provider: str, config: dict[str, Any]) -> str:
+def insert_current_provider_block(
+    text: str, provider: str, config: dict[str, Any]
+) -> str:
     block = build_provider_block(provider, config).rstrip("\n")
     pattern = re.compile(r'(?m)^model_provider\s*=\s*"[^"\n]+"\s*$')
     match = pattern.search(text)
@@ -232,7 +249,9 @@ def insert_current_provider_block(text: str, provider: str, config: dict[str, An
     return text[:insert_at] + "\n\n" + block + "\n" + text[insert_at:]
 
 
-def render_runtime_config(base_text: str, current_provider: str, config: dict[str, Any]) -> str:
+def render_runtime_config(
+    base_text: str, current_provider: str, config: dict[str, Any]
+) -> str:
     text = set_runtime_model_provider(base_text, current_provider)
     text = remove_all_provider_sections(text)
     text = insert_current_provider_block(text, current_provider, config)
@@ -261,12 +280,16 @@ def load_provider_registry() -> tuple[Path, dict[str, dict[str, Any]]]:
     normalized: dict[str, dict[str, Any]] = {}
     for provider, config in providers.items():
         if not isinstance(config, dict):
-            raise SwitchError(f"invalid provider config for {provider} in {TOOL_CONFIG_PATH}")
+            raise SwitchError(
+                f"invalid provider config for {provider} in {TOOL_CONFIG_PATH}"
+            )
         normalized[provider] = dict(config)
     return codex_dir, normalized
 
 
-def write_provider_registry(codex_dir: Path, providers: dict[str, dict[str, Any]], dry_run: bool) -> None:
+def write_provider_registry(
+    codex_dir: Path, providers: dict[str, dict[str, Any]], dry_run: bool
+) -> None:
     if dry_run:
         return
     atomic_write_text(TOOL_CONFIG_PATH, render_tool_config(codex_dir, providers))
@@ -284,7 +307,9 @@ def load_runtime_config() -> tuple[str, dict[str, Any], str]:
     return current, data, text
 
 
-def sync_runtime_provider(current_provider: str, provider_config: dict[str, Any], dry_run: bool) -> None:
+def sync_runtime_provider(
+    current_provider: str, provider_config: dict[str, Any], dry_run: bool
+) -> None:
     path = runtime_config_path()
     if path.exists():
         _, _, text = load_runtime_config()
@@ -295,7 +320,9 @@ def sync_runtime_provider(current_provider: str, provider_config: dict[str, Any]
         atomic_write_text(path, updated)
 
 
-def migrate_provider_registry(dry_run: bool = False) -> tuple[str, dict[str, dict[str, Any]]]:
+def migrate_provider_registry(
+    dry_run: bool = False,
+) -> tuple[str, dict[str, dict[str, Any]]]:
     ensure_tool_home()
     current, data, text = load_runtime_config()
     providers = data.get("model_providers", {})
@@ -305,7 +332,9 @@ def migrate_provider_registry(dry_run: bool = False) -> tuple[str, dict[str, dic
     normalized: dict[str, dict[str, Any]] = {}
     for provider, config in providers.items():
         if not isinstance(config, dict):
-            raise SwitchError(f"invalid provider config for {provider} in runtime config")
+            raise SwitchError(
+                f"invalid provider config for {provider} in runtime config"
+            )
         normalized[provider] = dict(config)
 
     write_provider_registry(get_codex_dir(), normalized, dry_run)
@@ -340,7 +369,9 @@ def add_provider(
     dry_run: bool,
 ) -> int:
     base_url = normalize_base_url(base_url)
-    provider = validate_provider_name(provider) if provider else derive_provider_name(base_url)
+    provider = (
+        validate_provider_name(provider) if provider else derive_provider_name(base_url)
+    )
     if not api_key:
         raise SwitchError("api_key must not be empty")
 
@@ -365,7 +396,9 @@ def add_provider(
 
     action = "would add" if dry_run else "added"
     print(f"{action} provider: {provider}")
-    print(f"{'would create' if dry_run else 'created'} auth profile: {auth_profile_path(provider)}")
+    print(
+        f"{'would create' if dry_run else 'created'} auth profile: {auth_profile_path(provider)}"
+    )
     print(f"current provider remains: {current or '(none)'}")
     return 0
 
@@ -385,7 +418,9 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
         known = ", ".join(sorted(providers.keys()))
         raise SwitchError(f"unknown provider '{provider}', available: {known}")
     if provider == current:
-        raise SwitchError("cannot delete the current active provider; switch away first")
+        raise SwitchError(
+            "cannot delete the current active provider; switch away first"
+        )
 
     providers = dict(providers)
     providers.pop(provider)
@@ -443,7 +478,9 @@ def print_list() -> int:
     return 0
 
 
-def resolve_provider(provider: str | None) -> tuple[str, dict[str, dict[str, Any]], str]:
+def resolve_provider(
+    provider: str | None,
+) -> tuple[str, dict[str, dict[str, Any]], str]:
     current, providers = ensure_registry_ready()
     target = provider or current
     if target not in providers:
@@ -572,7 +609,13 @@ def summarize_response_error(payload: bytes) -> str:
     return json.dumps(data, ensure_ascii=False)[:500]
 
 
-def run_models_test(label: str, base_url: str, api_key: str, timeout: float, current_provider: str | None) -> int:
+def run_models_test(
+    label: str,
+    base_url: str,
+    api_key: str,
+    timeout: float,
+    current_provider: str | None,
+) -> int:
     if timeout <= 0:
         raise SwitchError("timeout must be greater than 0")
 
@@ -672,18 +715,26 @@ def dispatch_test(args: list[str], api_key_stdin: bool, timeout: float) -> int:
                 raise SwitchError("api_key is required on stdin")
             return test_direct_base_url(target, api_key, timeout)
         if looks_like_url(target):
-            raise SwitchError("api_key is required for direct base_url tests; pass it as an argument or use --api-key-stdin")
+            raise SwitchError(
+                "api_key is required for direct base_url tests; pass it as an argument or use --api-key-stdin"
+            )
         return test_provider(target, timeout)
 
     if len(args) == 2:
         if api_key_stdin:
-            raise SwitchError("api_key cannot be passed both as an argument and with --api-key-stdin")
+            raise SwitchError(
+                "api_key cannot be passed both as an argument and with --api-key-stdin"
+            )
         return test_direct_base_url(args[0], args[1], timeout)
 
-    raise SwitchError("test accepts either [provider], <base-url> <api-key>, or <base-url> --api-key-stdin")
+    raise SwitchError(
+        "test accepts either [provider], <base-url> <api-key>, or <base-url> --api-key-stdin"
+    )
 
 
-def ping_provider(provider: str | None, timeout: float, model: str | None, prompt: str) -> int:
+def ping_provider(
+    provider: str | None, timeout: float, model: str | None, prompt: str
+) -> int:
     if timeout <= 0:
         raise SwitchError("timeout must be greater than 0")
     if provider is not None:
@@ -716,6 +767,9 @@ def ping_provider(provider: str | None, timeout: float, model: str | None, promp
         print("ping result: failed")
         print(f"error: codex exec timed out after {timeout:g}s")
         return 1
+    except KeyboardInterrupt:
+        print("ping result: interrupted")
+        raise
 
     if result.returncode == 0:
         print("ping result: ok")
@@ -775,7 +829,9 @@ def doctor(fix: bool) -> int:
         if current not in providers:
             issues.append(f"current provider missing from registry: {current}")
         if not auth_profile_path(current).exists():
-            issues.append(f"missing auth snapshot for current provider: {auth_profile_path(current)}")
+            issues.append(
+                f"missing auth snapshot for current provider: {auth_profile_path(current)}"
+            )
 
     if providers:
         print("")
@@ -784,11 +840,19 @@ def doctor(fix: bool) -> int:
             marker = "*" if provider == current else " "
             profile = auth_profile_path(provider)
             exists = profile.exists()
-            print(f"{marker} {provider:<16} auth={'yes' if exists else 'no'} path={profile}")
+            print(
+                f"{marker} {provider:<16} auth={'yes' if exists else 'no'} path={profile}"
+            )
             if not exists:
-                issues.append(f"missing auth snapshot for provider '{provider}': {profile}")
+                issues.append(
+                    f"missing auth snapshot for provider '{provider}': {profile}"
+                )
 
-    provider_sections = [name for name, _, _ in section_spans(runtime_text) if name.startswith(PROVIDER_PREFIX)]
+    provider_sections = [
+        name
+        for name, _, _ in section_spans(runtime_text)
+        if name.startswith(PROVIDER_PREFIX)
+    ]
     if len(provider_sections) != 1:
         issues.append(
             f"runtime config should contain exactly 1 provider block, found {len(provider_sections)}"
@@ -825,6 +889,83 @@ def doctor(fix: bool) -> int:
     return 0
 
 
+def _read_key(fd: int) -> bytes:
+    ch = os.read(fd, 1)
+    if ch == b"\x1b":
+        ready, _, _ = select.select([fd], [], [], 0.1)
+        if ready:
+            return ch + os.read(fd, 2)
+    return ch
+
+
+def _render_provider_menu(names: list[str], cursor: int, current: str) -> None:
+    for index, name in enumerate(names):
+        marker = "*" if name == current else " "
+        pointer = ">" if index == cursor else " "
+        line = f"{pointer}{marker} {name}"
+        if index == cursor:
+            line = f"\x1b[7m{line}\x1b[0m"
+        sys.stdout.write("\r\x1b[K" + line + "\r\n")
+    sys.stdout.flush()
+
+
+def _redraw_provider_menu(names: list[str], cursor: int, current: str) -> None:
+    sys.stdout.write(f"\x1b[{len(names)}A")
+    _render_provider_menu(names, cursor, current)
+
+
+def _clear_render(lines: int) -> None:
+    sys.stdout.write(f"\x1b[{lines}A\r\x1b[J")
+    sys.stdout.flush()
+
+
+def select_provider_interactive(current: str, providers: list[str]) -> str | None:
+    if not providers:
+        raise SwitchError("no providers available; add one with 'add' first")
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        raise SwitchError(
+            "no provider specified and stdin/stdout is not a TTY; pass a provider name"
+        )
+
+    names = sorted(providers)
+    cursor = names.index(current) if current in names else 0
+    count = len(names)
+    hint_lines = 1
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    chosen: str | None = None
+    try:
+        tty.setraw(fd)
+        sys.stdout.write("Up/Down move, Enter select, Esc cancel\r\n")
+        _render_provider_menu(names, cursor, current)
+        while True:
+            key = _read_key(fd)
+            if key in (b"\r", b"\n"):
+                chosen = names[cursor]
+                break
+            if key == b"\x03":
+                raise KeyboardInterrupt
+            if key == b"\x1b[A":
+                cursor = (cursor - 1) % count
+                _redraw_provider_menu(names, cursor, current)
+            elif key == b"\x1b[B":
+                cursor = (cursor + 1) % count
+                _redraw_provider_menu(names, cursor, current)
+            elif key == b"\x1b":
+                chosen = None
+                break
+    finally:
+        _clear_render(count + hint_lines)
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    return chosen
+
+
+def prompt_provider_selection() -> str | None:
+    current, providers = ensure_registry_ready()
+    return select_provider_interactive(current, list(providers.keys()))
+
+
 def switch_provider(provider: str, dry_run: bool) -> int:
     provider = validate_provider_name(provider)
     current, providers = ensure_registry_ready()
@@ -841,7 +982,9 @@ def switch_provider(provider: str, dry_run: bool) -> int:
 
     action = "would switch" if dry_run else "switched"
     print(f"{action} provider: {current} -> {provider}")
-    print(f"{'would refresh' if dry_run else 'refreshed'} auth.json from {auth_profile_path(provider)}")
+    print(
+        f"{'would refresh' if dry_run else 'refreshed'} auth.json from {auth_profile_path(provider)}"
+    )
     return 0
 
 
@@ -852,56 +995,150 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("list", help="List providers from ~/.codex-provider/config.toml")
-    subparsers.add_parser("status", help="Show current provider and auth profile availability")
-    auth_parser = subparsers.add_parser("auth", help="Inspect or edit runtime/provider auth.json files")
+    subparsers.add_parser(
+        "list", help="List providers from ~/.codex-provider/config.toml"
+    )
+    subparsers.add_parser(
+        "status", help="Show current provider and auth profile availability"
+    )
+    auth_parser = subparsers.add_parser(
+        "auth", help="Inspect or edit runtime/provider auth.json files"
+    )
     auth_subparsers = auth_parser.add_subparsers(dest="auth_command", required=True)
-    auth_detail_parser = auth_subparsers.add_parser("detail", help="Show runtime auth.json or a provider auth snapshot")
-    auth_detail_parser.add_argument("provider", nargs="?", help="Provider name; defaults to current runtime auth.json")
-    auth_edit_parser = auth_subparsers.add_parser("edit", help="Open runtime auth.json or a provider auth snapshot in $VISUAL or $EDITOR")
-    auth_edit_parser.add_argument("provider", nargs="?", help="Provider name; defaults to current runtime auth.json")
-    config_parser = subparsers.add_parser("config", help="Inspect or edit provider config blocks")
-    config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
-    config_detail_parser = config_subparsers.add_parser("detail", help="Show a provider config block from ~/.codex-provider/config.toml")
-    config_detail_parser.add_argument("provider", nargs="?", help="Provider name; defaults to current provider")
-    config_edit_parser = config_subparsers.add_parser("edit", help="Open ~/.codex-provider/config.toml in $VISUAL or $EDITOR")
-    config_edit_parser.add_argument("provider", nargs="?", help="Provider name to validate before opening; defaults to current provider")
-    doctor_parser = subparsers.add_parser("doctor", help="Create ~/.codex-provider if needed and run basic checks")
-    doctor_parser.add_argument("--fix", action="store_true", help="Archive legacy ~/.codex/auth.json.* files to .bak.<timestamp>")
+    auth_detail_parser = auth_subparsers.add_parser(
+        "detail", help="Show runtime auth.json or a provider auth snapshot"
+    )
+    auth_detail_parser.add_argument(
+        "provider",
+        nargs="?",
+        help="Provider name; defaults to current runtime auth.json",
+    )
+    auth_edit_parser = auth_subparsers.add_parser(
+        "edit",
+        help="Open runtime auth.json or a provider auth snapshot in $VISUAL or $EDITOR",
+    )
+    auth_edit_parser.add_argument(
+        "provider",
+        nargs="?",
+        help="Provider name; defaults to current runtime auth.json",
+    )
+    config_parser = subparsers.add_parser(
+        "config", help="Inspect or edit provider config blocks"
+    )
+    config_subparsers = config_parser.add_subparsers(
+        dest="config_command", required=True
+    )
+    config_detail_parser = config_subparsers.add_parser(
+        "detail", help="Show a provider config block from ~/.codex-provider/config.toml"
+    )
+    config_detail_parser.add_argument(
+        "provider", nargs="?", help="Provider name; defaults to current provider"
+    )
+    config_edit_parser = config_subparsers.add_parser(
+        "edit", help="Open ~/.codex-provider/config.toml in $VISUAL or $EDITOR"
+    )
+    config_edit_parser.add_argument(
+        "provider",
+        nargs="?",
+        help="Provider name to validate before opening; defaults to current provider",
+    )
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="Create ~/.codex-provider if needed and run basic checks"
+    )
+    doctor_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Archive legacy ~/.codex/auth.json.* files to .bak.<timestamp>",
+    )
 
-    switch_parser = subparsers.add_parser("switch", help="Switch current runtime provider")
-    switch_parser.add_argument("provider", help="Provider name from registry")
-    switch_parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing files")
+    switch_parser = subparsers.add_parser(
+        "switch", help="Switch current runtime provider"
+    )
+    switch_parser.add_argument(
+        "provider",
+        nargs="?",
+        help="Provider name from registry; opens interactive picker when omitted",
+    )
+    switch_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing files"
+    )
 
-    test_parser = subparsers.add_parser("test", help="Test provider or direct base_url/API key with /models")
-    test_parser.add_argument("args", nargs="*", metavar="provider|base_url", help="No args/current provider, provider name, or base_url api_key")
-    test_parser.add_argument("--api-key-stdin", action="store_true", help="Read API key from stdin for direct base_url tests")
-    test_parser.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout in seconds, default: 30")
+    test_parser = subparsers.add_parser(
+        "test", help="Test provider or direct base_url/API key with /models"
+    )
+    test_parser.add_argument(
+        "args",
+        nargs="*",
+        metavar="provider|base_url",
+        help="No args/current provider, provider name, or base_url api_key",
+    )
+    test_parser.add_argument(
+        "--api-key-stdin",
+        action="store_true",
+        help="Read API key from stdin for direct base_url tests",
+    )
+    test_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=30.0,
+        help="HTTP timeout in seconds, default: 30",
+    )
 
     ping_parser = subparsers.add_parser(
         "ping",
         aliases=["p"],
         help="Test one provider with a minimal codex exec",
     )
-    ping_parser.add_argument("provider", nargs="?", help="Provider name; defaults to current provider")
-    ping_parser.add_argument("--timeout", type=float, default=120.0, help="codex exec timeout in seconds, default: 120")
+    ping_parser.add_argument(
+        "provider", nargs="?", help="Provider name; defaults to current provider"
+    )
+    ping_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=120.0,
+        help="codex exec timeout in seconds, default: 120",
+    )
     ping_parser.add_argument("-m", "--model", help="Override model for this ping")
-    ping_parser.add_argument("--prompt", default="say hi", help='Prompt for codex exec, default: "say hi"')
+    ping_parser.add_argument(
+        "--prompt", default="say hi", help='Prompt for codex exec, default: "say hi"'
+    )
 
-    add_parser = subparsers.add_parser("add", help="Add a provider config and auth profile")
+    add_parser = subparsers.add_parser(
+        "add", help="Add a provider config and auth profile"
+    )
     add_parser.add_argument("base_url", help="Provider base_url")
     add_parser.add_argument("api_key", nargs="?", help="OpenAI-compatible API key")
-    add_parser.add_argument("--api-key-stdin", action="store_true", help="Read API key from stdin")
-    add_parser.add_argument("--provider", help="Provider name; defaults to the base_url domain")
+    add_parser.add_argument(
+        "--api-key-stdin", action="store_true", help="Read API key from stdin"
+    )
+    add_parser.add_argument(
+        "--provider", help="Provider name; defaults to the base_url domain"
+    )
     add_parser.add_argument("--name", help="Display name stored in provider config")
-    add_parser.add_argument("--wire-api", default="responses", help="wire_api value, default: responses")
-    add_parser.add_argument("--supports-websockets", choices=["true", "false"], help="Set supports_websockets explicitly")
-    add_parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing files")
+    add_parser.add_argument(
+        "--wire-api", default="responses", help="wire_api value, default: responses"
+    )
+    add_parser.add_argument(
+        "--supports-websockets",
+        choices=["true", "false"],
+        help="Set supports_websockets explicitly",
+    )
+    add_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing files"
+    )
 
-    delete_parser = subparsers.add_parser("delete", help="Delete a provider config from registry")
+    delete_parser = subparsers.add_parser(
+        "delete", help="Delete a provider config from registry"
+    )
     delete_parser.add_argument("provider", help="Provider name to delete")
-    delete_parser.add_argument("--full", action="store_true", help="Also remove ~/.codex-provider/auth/<provider>.json")
-    delete_parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing files")
+    delete_parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Also remove ~/.codex-provider/auth/<provider>.json",
+    )
+    delete_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing files"
+    )
 
     return parser
 
@@ -928,7 +1165,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "doctor":
             return doctor(args.fix)
         if args.command == "switch":
-            return switch_provider(args.provider, args.dry_run)
+            provider = args.provider
+            if provider is None:
+                provider = prompt_provider_selection()
+                if provider is None:
+                    print("switch cancelled")
+                    return 0
+            return switch_provider(provider, args.dry_run)
         if args.command == "test":
             return dispatch_test(args.args, args.api_key_stdin, args.timeout)
         if args.command in {"ping", "p"}:
@@ -937,9 +1180,13 @@ def main(argv: list[str] | None = None) -> int:
             supports_websockets = None
             if args.supports_websockets is not None:
                 supports_websockets = args.supports_websockets == "true"
-            api_key = sys.stdin.readline().strip() if args.api_key_stdin else args.api_key
+            api_key = (
+                sys.stdin.readline().strip() if args.api_key_stdin else args.api_key
+            )
             if not api_key:
-                raise SwitchError("api_key is required; pass it as an argument or use --api-key-stdin")
+                raise SwitchError(
+                    "api_key is required; pass it as an argument or use --api-key-stdin"
+                )
             return add_provider(
                 provider=args.provider,
                 base_url=args.base_url,
@@ -958,6 +1205,9 @@ def main(argv: list[str] | None = None) -> int:
     except SwitchError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+        return 130
 
     parser.print_help()
     return 1

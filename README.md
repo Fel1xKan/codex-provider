@@ -28,6 +28,7 @@ EDITOR=vim ./codex-provider auth edit anyrouter
 EDITOR=vim ./codex-provider config edit
 EDITOR=vim ./codex-provider config edit anyrouter
 ./codex-provider doctor
+./codex-provider switch
 ./codex-provider switch anyrouter
 ./codex-provider switch krill --dry-run
 ./codex-provider test
@@ -87,6 +88,7 @@ extra_headers = { x_team = "infra" }
 - `doctor --fix` archives legacy `~/.codex/auth.json.*` files to `*.bak.<timestamp>` instead of deleting them.
 - `add <base-url> <api-key>` also auto-initializes `~/.codex-provider` on a fresh machine, derives the provider name from the base URL unless `--provider` is set, writes `requires_openai_auth = true`, defaults `wire_api = "responses"`, and creates `~/.codex-provider/auth/<provider>.json` with `OPENAI_API_KEY`. Host-only URLs such as `https://api.example.com` are normalized to `https://api.example.com/v1`; URLs that already include a path are kept as provided. Use `--api-key-stdin` when you do not want the key in shell history.
 - If you manually add custom provider keys in `~/.codex-provider/config.toml`, `switch` will carry the whole provider block into `~/.codex/config.toml`.
+- `switch` with no argument opens an interactive picker when stdin/stdout are TTYs: use Up/Down to move, Enter to select, Esc to cancel, Ctrl+C to abort. Without a TTY it errors and asks for a provider name.
 - `auth detail` defaults to the runtime `~/.codex/auth.json`; `auth detail <provider>` prints `~/.codex-provider/auth/<provider>.json`.
 - `auth edit` defaults to the runtime `~/.codex/auth.json`; `auth edit <provider>` opens `~/.codex-provider/auth/<provider>.json`.
 - `config detail` prints a provider block from `~/.codex-provider/config.toml`; without an argument it defaults to the current provider.
@@ -94,3 +96,4 @@ extra_headers = { x_team = "infra" }
 - `test` requests `<base_url>/models` to verify that a base URL and API key work. Without an argument it tests the current provider from config; with `<provider>` it tests that provider; with `<base-url> <api-key>` or `<base-url> --api-key-stdin` it tests direct input without writing config.
 - `ping` / `p` tests one provider with a minimal `codex exec` prompt `say hi`. Without an argument it tests the current provider; with `<provider>` it switches to that provider first and tests only that provider.
 - `delete <provider>` removes the provider config and keeps the auth snapshot by default. `delete <provider> --full` also removes the auth snapshot, and can clean up a leftover auth snapshot even when the provider config was already deleted.
+- Ctrl+C (SIGINT) during any long-running command (`ping`, `test`, `edit`, interactive `switch`) exits cleanly with code 130 instead of printing a traceback.
