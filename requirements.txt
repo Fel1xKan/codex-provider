@@ -1,1 +1,2 @@
-pyinstaller>=6.0
+tomlkit==0.15.0
+pyinstaller==6.21.0

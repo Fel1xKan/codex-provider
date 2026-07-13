@@ -2,18 +2,19 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shlex
 import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT_DIR = Path(__file__).resolve().parent
 SPEC_FILE = ROOT_DIR / "codex-provider-bin.spec"
 DIST_DIR = ROOT_DIR / "dist"
 BIN_NAME = "codex-provider-bin.exe" if os.name == "nt" else "codex-provider-bin"
 OUTPUT_BIN = DIST_DIR / BIN_NAME
+CHECKSUM_FILE = DIST_DIR / f"{BIN_NAME}.sha256"
 
 
 class BuildError(Exception):
@@ -119,13 +120,24 @@ def pyinstaller_version(python_cmd: list[str]) -> str | None:
     return result.stdout.strip()
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build the standalone codex-provider binary with PyInstaller.",
     )
     parser.add_argument(
         "--python",
-        help="Python command used to run PyInstaller. Defaults to PYTHON, .venv, then this interpreter.",
+        help=(
+            "Python command used to run PyInstaller. Defaults to PYTHON, .venv, "
+            "then this interpreter."
+        ),
     )
     parser.add_argument(
         "--skip-smoke-test",
@@ -150,8 +162,13 @@ def main() -> int:
     version = pyinstaller_version(python_cmd)
     if version is None:
         python_display = format_command(python_cmd)
-        print(f"error: PyInstaller is not installed for {python_display}", file=sys.stderr)
-        print(f"install it with: {python_display} -m pip install -r requirements.txt", file=sys.stderr)
+        print(
+            f"error: PyInstaller is not installed for {python_display}", file=sys.stderr
+        )
+        print(
+            f"install it with: {python_display} -m pip install -r requirements.txt",
+            file=sys.stderr,
+        )
         return 1
 
     print(f"Using Python: {format_command(python_cmd)}", flush=True)
@@ -161,16 +178,23 @@ def main() -> int:
         run([*python_cmd, "-m", "PyInstaller", "--clean", "-y", str(SPEC_FILE.name)])
 
         if not OUTPUT_BIN.is_file():
-            print(f"error: expected build output was not created: {OUTPUT_BIN}", file=sys.stderr)
+            print(
+                f"error: expected build output was not created: {OUTPUT_BIN}",
+                file=sys.stderr,
+            )
             return 1
 
         if not args.skip_smoke_test:
             run([str(OUTPUT_BIN), "--help"], quiet=True)
-    except BuildError as exc:
+
+        checksum = sha256_file(OUTPUT_BIN)
+        CHECKSUM_FILE.write_text(f"{checksum}  {OUTPUT_BIN.name}\n", encoding="ascii")
+    except (BuildError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     print(f"Built {OUTPUT_BIN.relative_to(ROOT_DIR)}")
+    print(f"Wrote {CHECKSUM_FILE.relative_to(ROOT_DIR)}")
     return 0
 
 
