@@ -190,6 +190,13 @@ installed on the build host. CI tests Python 3.11 through 3.13 on Linux, macOS,
 and Windows, builds a standalone binary on all three platforms, and uploads the
 binary plus checksum as workflow artifacts.
 
+The release version has one source of truth:
+`codex_provider_lib/constants.py`. Package metadata reads that value through
+setuptools dynamic metadata, and `build.py` rejects a binary whose `--version`
+output does not match it. If a command linked to `dist/codex-provider-bin`
+still shows an older version after a source update, rebuild it with
+`python build.py`.
+
 ## Validation
 
 ```bash

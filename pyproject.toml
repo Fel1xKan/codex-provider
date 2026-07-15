@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-provider"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Provider registry and auth snapshot manager for Codex"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,6 +27,9 @@ codex-provider = "codex_provider:main"
 [tool.setuptools]
 py-modules = ["codex_provider"]
 packages = ["codex_provider_lib"]
+
+[tool.setuptools.dynamic]
+version = { attr = "codex_provider_lib.constants.VERSION" }
 
 [tool.pytest.ini_options]
 addopts = "-ra"

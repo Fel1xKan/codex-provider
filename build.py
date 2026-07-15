@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from codex_provider_lib.constants import VERSION
+
 ROOT_DIR = Path(__file__).resolve().parent
 SPEC_FILE = ROOT_DIR / "codex-provider-bin.spec"
 DIST_DIR = ROOT_DIR / "dist"
@@ -120,6 +122,30 @@ def pyinstaller_version(python_cmd: list[str]) -> str | None:
     return result.stdout.strip()
 
 
+def verify_binary_version(path: Path) -> None:
+    try:
+        result = subprocess.run(
+            [str(path), "--version"],
+            cwd=ROOT_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        raise BuildError(f"could not verify binary version: {exc}") from exc
+    except subprocess.CalledProcessError as exc:
+        raise BuildError(
+            f"binary version check exited with status {exc.returncode}"
+        ) from exc
+
+    expected = f"codex-provider {VERSION}"
+    actual = result.stdout.strip()
+    if actual != expected:
+        raise BuildError(
+            f"binary version mismatch: expected {expected!r}, got {actual!r}"
+        )
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -187,6 +213,8 @@ def main() -> int:
         if not args.skip_smoke_test:
             run([str(OUTPUT_BIN), "--help"], quiet=True)
 
+        verify_binary_version(OUTPUT_BIN)
+
         checksum = sha256_file(OUTPUT_BIN)
         CHECKSUM_FILE.write_text(f"{checksum}  {OUTPUT_BIN.name}\n", encoding="ascii")
     except (BuildError, OSError) as exc:
@@ -194,6 +222,7 @@ def main() -> int:
         return 1
 
     print(f"Built {OUTPUT_BIN.relative_to(ROOT_DIR)}")
+    print(f"Verified version {VERSION}")
     print(f"Wrote {CHECKSUM_FILE.relative_to(ROOT_DIR)}")
     return 0
 

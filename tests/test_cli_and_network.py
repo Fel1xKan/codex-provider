@@ -165,7 +165,10 @@ def test_version_matches_project_metadata() -> None:
     project = tomllib.loads(
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )
-    assert project["project"]["version"] == cp.VERSION
+    assert "version" in project["project"]["dynamic"]
+    assert project["tool"]["setuptools"]["dynamic"]["version"]["attr"] == (
+        "codex_provider_lib.constants.VERSION"
+    )
 
 
 def test_auth_edit_validation_does_not_expose_invalid_contents(
