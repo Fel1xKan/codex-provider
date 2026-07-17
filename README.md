@@ -86,6 +86,9 @@ printf '%s\n' "$PROVIDER_API_KEY" | \
   codex-provider add https://api.example.com --api-key-stdin
 codex-provider add https://api.example.com --provider foo --name "Example"
 
+codex-provider rename foo bar
+codex-provider rename foo bar --dry-run
+
 codex-provider delete foo
 codex-provider delete foo --full
 ```
@@ -152,6 +155,9 @@ schemes are rejected.
   authorization headers, tokens, passwords, cookies, secrets, and API keys.
 - `switch --dry-run`, `add --dry-run`, and `delete --dry-run` do not write
   state. On a fresh HOME, they do not create tool directories or lock files.
+- `rename` changes the provider key in the registry, renames the matching
+  auth snapshot, and also updates the active runtime provider when the renamed
+  provider is current.
 - `test` calls `<base_url>/models`, limits the response body to 2 MiB, and
   requires an OpenAI-compatible JSON object with a `data` array.
 - `ping <provider>` holds the provider-state lock, temporarily updates runtime

@@ -241,6 +241,61 @@ def test_add_dry_run_does_not_create_files(isolated_paths: IsolatedPaths) -> Non
     assert not isolated_paths.codex_dir.exists()
 
 
+def test_rename_provider_updates_registry_and_auth_snapshot(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    assert cp.rename_provider("beta", "gamma", dry_run=False) == 0
+
+    _, providers = cp.load_provider_registry()
+    assert set(providers) == {"alpha", "gamma"}
+    assert not (initialized_registry.auth_store / "beta.json").exists()
+    gamma_auth = initialized_registry.auth_store / "gamma.json"
+    assert gamma_auth.exists()
+    assert cp.load_auth_json(gamma_auth)["OPENAI_API_KEY"] == "placeholder-beta-key"
+
+
+def test_rename_current_provider_updates_runtime_config(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    assert cp.rename_provider("alpha", "omega", dry_run=False) == 0
+
+    current, runtime_data, _ = cp.load_runtime_config()
+    assert current == "omega"
+    assert set(runtime_data["model_providers"]) == {"omega"}
+    _, providers = cp.load_provider_registry()
+    assert set(providers) == {"beta", "omega"}
+    assert not (initialized_registry.auth_store / "alpha.json").exists()
+    assert (initialized_registry.auth_store / "omega.json").exists()
+
+
+def test_rename_dry_run_leaves_existing_state_unchanged(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    tracked_paths = [
+        initialized_registry.tool_config,
+        initialized_registry.auth_store / "alpha.json",
+        initialized_registry.auth_store / "beta.json",
+        initialized_registry.codex_dir / "config.toml",
+        initialized_registry.codex_dir / "auth.json",
+    ]
+    before = {
+        path: (path.read_bytes(), path.stat().st_mtime_ns) for path in tracked_paths
+    }
+
+    assert cp.rename_provider("beta", "gamma", dry_run=True) == 0
+
+    for path, original in before.items():
+        assert (path.read_bytes(), path.stat().st_mtime_ns) == original
+    assert not (initialized_registry.auth_store / "gamma.json").exists()
+
+
+def test_rename_rejects_existing_target_provider(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    with pytest.raises(cp.SwitchError, match="provider already exists: beta"):
+        cp.rename_provider("alpha", "beta", dry_run=False)
+
+
 def test_all_dry_run_commands_leave_existing_state_unchanged(
     initialized_registry: IsolatedPaths,
 ) -> None:

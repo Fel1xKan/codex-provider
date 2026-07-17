@@ -547,6 +547,78 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
     return 0
 
 
+def rename_provider(old_provider: str, new_provider: str, dry_run: bool) -> int:
+    old_provider = validate_provider_name(old_provider)
+    new_provider = validate_provider_name(new_provider)
+    if old_provider == new_provider:
+        raise SwitchError("old and new provider names must differ")
+
+    lock = nullcontext() if dry_run else state_lock()
+    with lock:
+        current, providers = ensure_registry_ready(read_only=dry_run)
+        if old_provider not in providers:
+            known = ", ".join(sorted(providers.keys()))
+            raise SwitchError(
+                f"unknown provider '{old_provider}', available: {known}"
+            )
+        if new_provider in providers:
+            raise SwitchError(f"provider already exists: {new_provider}")
+
+        old_profile = auth_profile_path(old_provider, create=not dry_run)
+        new_profile = auth_profile_path(new_provider, create=not dry_run)
+        if new_profile.exists():
+            raise SwitchError(f"auth profile already exists: {new_profile}")
+
+        providers = dict(providers)
+        providers[new_provider] = providers.pop(old_provider)
+
+        if not dry_run:
+            codex_dir = get_codex_dir()
+            base_text = TOOL_CONFIG_PATH.read_text(encoding="utf-8")
+            changes = [
+                FileChange(
+                    TOOL_CONFIG_PATH,
+                    render_tool_config(codex_dir, providers, base_text).encode("utf-8"),
+                )
+            ]
+            if old_profile.exists():
+                changes.extend(
+                    [
+                        FileChange(new_profile, old_profile.read_bytes(), secret=True),
+                        FileChange(old_profile, None, secret=True),
+                    ]
+                )
+            if old_provider == current:
+                runtime_config = runtime_config_path(codex_dir)
+                if runtime_config.exists():
+                    runtime_base_text = runtime_config.read_text(encoding="utf-8")
+                else:
+                    runtime_base_text = f'model_provider = "{new_provider}"\n'
+                changes.append(
+                    FileChange(
+                        runtime_config,
+                        render_runtime_config(
+                            runtime_base_text, new_provider, providers[new_provider]
+                        ).encode("utf-8"),
+                    )
+                )
+            commit_file_changes(changes)
+
+    action = "would rename" if dry_run else "renamed"
+    print(f"{action} provider: {old_provider} -> {new_provider}")
+    if old_profile.exists():
+        profile_action = "would move" if dry_run else "moved"
+        print(f"{profile_action} auth profile: {old_profile} -> {new_profile}")
+    else:
+        print(f"auth profile missing, skipped move: {old_profile}")
+    if old_provider == current:
+        runtime_action = "would update" if dry_run else "updated"
+        print(f"{runtime_action} current runtime provider: {new_provider}")
+    else:
+        print(f"current provider remains: {current or '(none)'}")
+    return 0
+
+
 def load_auth_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise SwitchError(f"auth file not found: {path}")
@@ -1213,6 +1285,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="Preview changes without writing files"
     )
 
+    rename_parser = subparsers.add_parser(
+        "rename", help="Rename a provider in the registry"
+    )
+    rename_parser.add_argument("old_provider", help="Existing provider name")
+    rename_parser.add_argument("new_provider", help="New provider name")
+    rename_parser.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing files"
+    )
+
     return parser
 
 
@@ -1272,6 +1353,12 @@ def main(argv: list[str] | None = None) -> int:
             return delete_provider(
                 provider=args.provider,
                 delete_auth=args.full,
+                dry_run=args.dry_run,
+            )
+        if args.command == "rename":
+            return rename_provider(
+                old_provider=args.old_provider,
+                new_provider=args.new_provider,
                 dry_run=args.dry_run,
             )
     except SwitchError as exc:
