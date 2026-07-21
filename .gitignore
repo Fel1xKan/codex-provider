@@ -11,3 +11,4 @@ dist/
 !codex-provider-bin.spec
 
 .DS_Store
+temp
