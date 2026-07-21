@@ -938,6 +938,34 @@ def test_provider(provider: str | None, timeout: float) -> int:
     )
 
 
+def test_all_providers(timeout: float) -> int:
+    current, providers = ensure_registry_ready()
+    if not providers:
+        raise SwitchError("no providers configured")
+
+    results: list[tuple[str, int]] = []
+    for index, provider in enumerate(sorted(providers)):
+        if index:
+            print("")
+        try:
+            result = test_provider(provider, timeout)
+        except SwitchError as exc:
+            print(f"current provider: {current}")
+            print(f"test provider: {provider}")
+            print("result: failed")
+            print(f"error: {exc}")
+            result = 1
+        results.append((provider, result))
+
+    available = sum(result == 0 for _, result in results)
+    print("")
+    print("provider test summary:")
+    for provider, result in results:
+        print(f"- {provider}: {'ok' if result == 0 else 'failed'}")
+    print(f"available: {available}/{len(results)}")
+    return 0 if available == len(results) else 1
+
+
 def test_direct_base_url(base_url: str, api_key: str, timeout: float) -> int:
     base_url = normalize_base_url(base_url)
     if not api_key:
@@ -962,7 +990,16 @@ def read_api_key(api_key_stdin: bool, prompt: str = "API key: ") -> str:
     return api_key
 
 
-def dispatch_test(args: list[str], api_key_stdin: bool, timeout: float) -> int:
+def dispatch_test(
+    args: list[str], api_key_stdin: bool, timeout: float, test_all: bool = False
+) -> int:
+    if test_all:
+        if args:
+            raise SwitchError("--all cannot be combined with a provider or base_url")
+        if api_key_stdin:
+            raise SwitchError("--all cannot be combined with --api-key-stdin")
+        return test_all_providers(timeout)
+
     if not args:
         if api_key_stdin:
             raise SwitchError("--api-key-stdin requires a base_url")
@@ -1460,6 +1497,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="No args/current provider, provider name, or direct base_url",
     )
     test_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Test every configured provider and print an availability summary",
+    )
+    test_parser.add_argument(
         "--api-key-stdin",
         action="store_true",
         help="Read API key from stdin for direct base_url tests",
@@ -1575,7 +1617,9 @@ def main(argv: list[str] | None = None) -> int:
                     return 0
             return switch_provider(provider, args.dry_run)
         if args.command == "test":
-            return dispatch_test(args.args, args.api_key_stdin, args.timeout)
+            return dispatch_test(
+                args.args, args.api_key_stdin, args.timeout, test_all=args.all
+            )
         if args.command in {"ping", "p"}:
             return ping_provider(args.provider, args.timeout, args.model, args.prompt)
         if args.command == "add":

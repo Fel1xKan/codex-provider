@@ -75,6 +75,78 @@ def test_direct_test_rejects_positional_api_key_without_echoing_it(
     assert secret not in combined
 
 
+def test_all_tests_every_provider_and_prints_summary(
+    initialized_registry: IsolatedPaths,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls = []
+
+    def fake_models_test(
+        label: str,
+        base_url: str,
+        api_key: str,
+        timeout: float,
+        current_provider: str | None,
+    ) -> int:
+        calls.append((label, base_url, api_key, timeout, current_provider))
+        return 0 if label == "alpha" else 1
+
+    monkeypatch.setattr(cp, "run_models_test", fake_models_test)
+
+    assert cp.main(["test", "--all", "--timeout", "5"]) == 1
+    assert calls == [
+        (
+            "alpha",
+            "https://alpha.example.com/v1",
+            "placeholder-alpha-key",
+            5.0,
+            "alpha",
+        ),
+        (
+            "beta",
+            "https://beta.example.com/v1",
+            "placeholder-beta-key",
+            5.0,
+            "alpha",
+        ),
+    ]
+    output = capsys.readouterr().out
+    assert "provider test summary:" in output
+    assert "- alpha: ok" in output
+    assert "- beta: failed" in output
+    assert "available: 1/2" in output
+
+
+def test_all_continues_when_provider_auth_is_missing(
+    initialized_registry: IsolatedPaths,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (initialized_registry.auth_store / "alpha.json").unlink()
+    tested = []
+
+    def fake_models_test(*args: Any) -> int:
+        tested.append(args[0])
+        return 0
+
+    monkeypatch.setattr(cp, "run_models_test", fake_models_test)
+
+    assert cp.main(["test", "--all"]) == 1
+    assert tested == ["beta"]
+    output = capsys.readouterr().out
+    assert "- alpha: failed" in output
+    assert "- beta: ok" in output
+    assert "available: 1/2" in output
+
+
+def test_all_rejects_a_specific_target(
+    isolated_paths: IsolatedPaths, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert cp.main(["test", "--all", "alpha"]) == 1
+    assert "--all cannot be combined" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize(
     "value",
     [

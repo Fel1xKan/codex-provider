@@ -74,6 +74,7 @@ codex-provider switch anyrouter
 codex-provider switch krill --dry-run
 
 codex-provider test
+codex-provider test --all
 codex-provider test ggniao
 codex-provider test https://api.example.com
 printf '%s\n' "$PROVIDER_API_KEY" | \
@@ -187,6 +188,10 @@ blocks from the runtime config so only `model_providers.codex-provider` remains.
   provider is current. The runtime provider ID remains `codex-provider`.
 - `test` calls `<base_url>/models`, limits the response body to 2 MiB, and
   requires an OpenAI-compatible JSON object with a `data` array.
+- `test --all` checks every configured provider with its own auth snapshot,
+  continues after individual failures, and prints an availability summary. It
+  exits with status 1 when any provider fails and does not change the active
+  provider.
 - `ping <provider>` holds the provider-state lock, temporarily updates runtime
   config/auth, runs an ephemeral `codex exec`, and restores the original files
   even when the command fails or is interrupted.
