@@ -7,7 +7,11 @@ from typing import Any
 
 import tomlkit
 
-from codex_provider_lib.constants import PROVIDER_ORDER, SENSITIVE_KEY_PARTS
+from codex_provider_lib.constants import (
+    PROVIDER_ORDER,
+    RUNTIME_PROVIDER_ID,
+    SENSITIVE_KEY_PARTS,
+)
 from codex_provider_lib.errors import SwitchError
 from codex_provider_lib.network import normalize_base_url
 
@@ -79,19 +83,16 @@ def build_provider_block(provider: str, config: dict[str, Any]) -> str:
     return tomlkit.dumps(document)
 
 
-def render_runtime_config(
-    base_text: str, current_provider: str, config: dict[str, Any]
-) -> str:
-    current_provider = validate_provider_name(current_provider)
+def render_runtime_config(base_text: str, config: dict[str, Any]) -> str:
     try:
         document = tomlkit.parse(base_text)
     except tomlkit.exceptions.ParseError as exc:
         raise SwitchError(f"invalid runtime TOML: {exc}") from exc
-    document["model_provider"] = current_provider
+    document["model_provider"] = RUNTIME_PROVIDER_ID
     if "model_providers" in document:
         del document["model_providers"]
     providers_table = tomlkit.table()
-    providers_table.add(current_provider, build_provider_table(config))
+    providers_table.add(RUNTIME_PROVIDER_ID, build_provider_table(config))
     document.add("model_providers", providers_table)
     rendered = tomlkit.dumps(document)
     try:
@@ -105,6 +106,8 @@ def render_tool_config(
     codex_dir: Path,
     providers: dict[str, dict[str, Any]],
     base_text: str | None = None,
+    *,
+    active_provider: str | None = None,
 ) -> str:
     try:
         document = (
@@ -116,6 +119,13 @@ def render_tool_config(
         raise SwitchError(f"invalid tool config TOML: {exc}") from exc
 
     document["codex_dir"] = str(codex_dir)
+    if active_provider is not None:
+        if active_provider:
+            document["active_provider"] = validate_provider_name(active_provider)
+        elif "active_provider" in document:
+            del document["active_provider"]
+    if "legacy_provider_ids" in document:
+        del document["legacy_provider_ids"]
     existing_data = tomllib.loads(tomlkit.dumps(document)).get("model_providers", {})
     existing_table = document.get("model_providers")
     if existing_table is None:

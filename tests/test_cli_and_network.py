@@ -42,6 +42,29 @@ def test_add_rejects_positional_api_key_without_echoing_it(
     assert "must not be passed as a command argument" in combined
 
 
+def test_add_name_is_written_as_provider_display_name(
+    isolated_paths: IsolatedPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cp, "read_api_key", lambda from_stdin: "placeholder-key")
+
+    assert (
+        cp.main(
+            [
+                "add",
+                "https://api.example.com",
+                "--provider",
+                "example-id",
+                "--name",
+                "Example Display Name",
+            ]
+        )
+        == 0
+    )
+
+    data = tomllib.loads(isolated_paths.tool_config.read_text(encoding="utf-8"))
+    assert data["model_providers"]["example-id"]["name"] == ("Example Display Name")
+
+
 def test_direct_test_rejects_positional_api_key_without_echoing_it(
     isolated_paths: IsolatedPaths, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -74,6 +74,175 @@ def test_migration_reports_missing_current_provider(
         cp.migrate_provider_registry(dry_run=True)
 
 
+def test_existing_registry_migrates_to_stable_runtime_provider(
+    isolated_paths: IsolatedPaths,
+) -> None:
+    cp.add_provider(
+        provider="alpha",
+        base_url="https://alpha.example.com",
+        api_key="placeholder-alpha",
+        display_name="Alpha",
+        wire_api="responses",
+        supports_websockets=None,
+        dry_run=False,
+    )
+    cp.add_provider(
+        provider="beta",
+        base_url="https://beta.example.com",
+        api_key="placeholder-beta",
+        display_name="Beta",
+        wire_api="responses",
+        supports_websockets=None,
+        dry_run=False,
+    )
+    isolated_paths.codex_dir.mkdir(parents=True)
+    runtime_config = isolated_paths.codex_dir / "config.toml"
+    runtime_config.write_text(
+        'model_provider = "alpha"\n\n'
+        "[model_providers.alpha]\n"
+        'base_url = "https://alpha.example.com/v1"\n'
+        'name = "Alpha"\n'
+        "requires_openai_auth = true\n"
+        'wire_api = "responses"\n',
+        encoding="utf-8",
+    )
+    tool_text = isolated_paths.tool_config.read_text(encoding="utf-8")
+    isolated_paths.tool_config.write_text(
+        tool_text.replace(
+            f'codex_dir = "{isolated_paths.codex_dir}"',
+            f'codex_dir = "{isolated_paths.codex_dir}"\n'
+            'legacy_provider_ids = ["alpha", "beta"]',
+        ),
+        encoding="utf-8",
+    )
+
+    state = cp.ensure_provider_state()
+
+    assert state.active_provider == "alpha"
+    tool_data = tomllib.loads(isolated_paths.tool_config.read_text(encoding="utf-8"))
+    assert tool_data["active_provider"] == "alpha"
+    assert "legacy_provider_ids" not in tool_data
+    runtime_data = tomllib.loads(runtime_config.read_text(encoding="utf-8"))
+    assert runtime_data["model_provider"] == cp.RUNTIME_PROVIDER_ID
+    assert set(runtime_data["model_providers"]) == {cp.RUNTIME_PROVIDER_ID}
+    assert (
+        runtime_data["model_providers"][cp.RUNTIME_PROVIDER_ID]
+        == state.providers["alpha"]
+    )
+
+
+def test_switch_keeps_only_stable_runtime_provider_on_active_config(
+    isolated_paths: IsolatedPaths,
+) -> None:
+    cp.add_provider(
+        provider="alpha",
+        base_url="https://alpha.example.com",
+        api_key="placeholder-alpha",
+        display_name="Alpha",
+        wire_api="responses",
+        supports_websockets=None,
+        dry_run=False,
+    )
+    cp.add_provider(
+        provider="beta",
+        base_url="https://beta.example.com",
+        api_key="placeholder-beta",
+        display_name="Beta",
+        wire_api="responses",
+        supports_websockets=None,
+        dry_run=False,
+    )
+    isolated_paths.codex_dir.mkdir(parents=True)
+    (isolated_paths.codex_dir / "config.toml").write_text(
+        'model_provider = "alpha"\n\n'
+        "[model_providers.alpha]\n"
+        'base_url = "https://alpha.example.com/v1"\n'
+        'name = "Alpha"\n'
+        "requires_openai_auth = true\n"
+        'wire_api = "responses"\n',
+        encoding="utf-8",
+    )
+    cp.ensure_provider_state()
+    runtime_config = isolated_paths.codex_dir / "config.toml"
+    runtime_text = runtime_config.read_text(encoding="utf-8")
+    runtime_config.write_text(
+        runtime_text + "\n[model_providers.alpha]\n"
+        'base_url = "https://alpha.example.com/v1"\n'
+        'name = "Alpha"\n'
+        "requires_openai_auth = true\n"
+        'wire_api = "responses"\n' + "\n[model_providers.beta]\n"
+        'base_url = "https://alpha.example.com/v1"\n'
+        'name = "Alpha"\n'
+        "requires_openai_auth = true\n"
+        'wire_api = "responses"\n',
+        encoding="utf-8",
+    )
+
+    assert cp.switch_provider("beta", dry_run=False) == 0
+
+    state = cp.load_provider_state()
+    assert state.active_provider == "beta"
+    runtime_provider, runtime_data, _ = cp.load_runtime_config()
+    assert runtime_provider == cp.RUNTIME_PROVIDER_ID
+    assert set(runtime_data["model_providers"]) == {cp.RUNTIME_PROVIDER_ID}
+    assert (
+        runtime_data["model_providers"][cp.RUNTIME_PROVIDER_ID]
+        == state.providers["beta"]
+    )
+
+
+def test_fresh_switches_keep_single_stable_runtime_provider(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    assert cp.load_provider_state().active_provider == "alpha"
+
+    assert cp.switch_provider("beta", dry_run=False) == 0
+    first_runtime, first_data, _ = cp.load_runtime_config()
+    assert first_runtime == cp.RUNTIME_PROVIDER_ID
+    assert set(first_data["model_providers"]) == {cp.RUNTIME_PROVIDER_ID}
+    assert cp.load_provider_state().active_provider == "beta"
+
+    assert cp.switch_provider("alpha", dry_run=False) == 0
+    second_runtime, second_data, _ = cp.load_runtime_config()
+    assert second_runtime == cp.RUNTIME_PROVIDER_ID
+    assert set(second_data["model_providers"]) == {cp.RUNTIME_PROVIDER_ID}
+    assert cp.load_provider_state().active_provider == "alpha"
+
+
+def test_switch_current_provider_repairs_config_without_replacing_runtime_auth(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    runtime_auth = initialized_registry.codex_dir / "auth.json"
+    runtime_auth.write_text(
+        json.dumps({"OPENAI_API_KEY": "refreshed-runtime-key"}),
+        encoding="utf-8",
+    )
+    tool_text = initialized_registry.tool_config.read_text(encoding="utf-8")
+    initialized_registry.tool_config.write_text(
+        tool_text.replace(
+            'base_url = "https://alpha.example.com/v1"',
+            'base_url = "https://alpha-new.example.com/v1"',
+        ),
+        encoding="utf-8",
+    )
+
+    assert cp.switch_provider("alpha", dry_run=False) == 0
+
+    _, runtime_data, _ = cp.load_runtime_config()
+    assert runtime_data["model_providers"][cp.RUNTIME_PROVIDER_ID]["base_url"] == (
+        "https://alpha-new.example.com/v1"
+    )
+    assert cp.load_auth_json(runtime_auth)["OPENAI_API_KEY"] == (
+        "refreshed-runtime-key"
+    )
+    assert (
+        cp.load_auth_json(initialized_registry.auth_store / "alpha.json")[
+            "OPENAI_API_KEY"
+        ]
+        == "placeholder-alpha-key"
+    )
+
+
 def test_render_runtime_supports_valid_toml_and_preserves_comments() -> None:
     base = (
         "# keep this comment\n"
@@ -85,7 +254,6 @@ def test_render_runtime_supports_valid_toml_and_preserves_comments() -> None:
     )
     rendered = cp.render_runtime_config(
         base,
-        "beta",
         {
             "base_url": "https://beta.example.com/v1",
             "name": "line one\nline two",
@@ -93,9 +261,11 @@ def test_render_runtime_supports_valid_toml_and_preserves_comments() -> None:
         },
     )
     data = tomllib.loads(rendered)
-    assert data["model_provider"] == "beta"
-    assert list(data["model_providers"]) == ["beta"]
-    assert data["model_providers"]["beta"]["name"] == "line one\nline two"
+    assert data["model_provider"] == cp.RUNTIME_PROVIDER_ID
+    assert set(data["model_providers"]) == {cp.RUNTIME_PROVIDER_ID}
+    assert data["model_providers"][cp.RUNTIME_PROVIDER_ID]["name"] == (
+        "line one\nline two"
+    )
     assert data["features"]["enabled"] is True
     assert "# keep this comment" in rendered
     assert "# active provider" in rendered
@@ -136,6 +306,7 @@ def test_switch_rolls_back_every_file_when_commit_fails(
     runtime_auth = initialized_registry.codex_dir / "auth.json"
     alpha_auth = initialized_registry.auth_store / "alpha.json"
     before = {
+        initialized_registry.tool_config: initialized_registry.tool_config.read_bytes(),
         runtime_config: runtime_config.read_bytes(),
         runtime_auth: runtime_auth.read_bytes(),
         alpha_auth: alpha_auth.read_bytes(),
@@ -151,10 +322,10 @@ def test_switch_rolls_back_every_file_when_commit_fails(
         mode: int | None = None,
     ) -> None:
         nonlocal failed
-        if path == runtime_config and not failed:
+        if path == initialized_registry.tool_config and not failed:
             failed = True
             original_atomic_write(path, payload, secret=secret, mode=mode)
-            raise cp.SwitchError("injected runtime config failure")
+            raise cp.SwitchError("injected tool config failure")
         original_atomic_write(path, payload, secret=secret, mode=mode)
 
     monkeypatch.setattr(cp, "atomic_write_bytes", flaky_atomic_write)
@@ -260,8 +431,10 @@ def test_rename_current_provider_updates_runtime_config(
     assert cp.rename_provider("alpha", "omega", dry_run=False) == 0
 
     current, runtime_data, _ = cp.load_runtime_config()
-    assert current == "omega"
-    assert set(runtime_data["model_providers"]) == {"omega"}
+    assert current == cp.RUNTIME_PROVIDER_ID
+    assert set(runtime_data["model_providers"]) == {cp.RUNTIME_PROVIDER_ID}
+    state = cp.load_provider_state()
+    assert state.active_provider == "omega"
     _, providers = cp.load_provider_registry()
     assert set(providers) == {"beta", "omega"}
     assert not (initialized_registry.auth_store / "alpha.json").exists()
@@ -433,7 +606,8 @@ def test_first_provider_preserves_uninitialized_runtime_config(
     data = tomllib.loads(rendered)
     assert data["model"] == "gpt-5"
     assert data["features"]["enabled"] is True
-    assert data["model_provider"] == "alpha"
+    assert data["model_provider"] == cp.RUNTIME_PROVIDER_ID
+    assert set(data["model_providers"]) == {cp.RUNTIME_PROVIDER_ID}
     assert "# existing runtime settings" in rendered
 
 
@@ -449,7 +623,12 @@ def test_temporary_provider_restores_state_after_failure(
         pytest.raises(RuntimeError, match="injected ping failure"),
         cp.temporary_provider("beta"),
     ):
-        assert cp.load_runtime_config()[0] == "beta"
+        runtime_provider, runtime_data, _ = cp.load_runtime_config()
+        assert runtime_provider == cp.RUNTIME_PROVIDER_ID
+        assert (
+            runtime_data["model_providers"][cp.RUNTIME_PROVIDER_ID]["base_url"]
+            == "https://beta.example.com/v1"
+        )
         assert (
             runtime_auth.read_bytes()
             == (initialized_registry.auth_store / "beta.json").read_bytes()

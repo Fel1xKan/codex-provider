@@ -1,9 +1,10 @@
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 PRIVATE_DIR_MODE = 0o700
 SECRET_FILE_MODE = 0o600
 MAX_HTTP_BODY_BYTES = 2 * 1024 * 1024
 
 PROVIDER_PREFIX = "model_providers."
+RUNTIME_PROVIDER_ID = "codex-provider"
 PROVIDER_ORDER = [
     "base_url",
     "name",

@@ -28,7 +28,7 @@ from codex_provider_lib import (
     MissingModelProviderError,
     SwitchError,
 )
-from codex_provider_lib.constants import PROVIDER_PREFIX
+from codex_provider_lib.constants import PROVIDER_PREFIX, RUNTIME_PROVIDER_ID
 from codex_provider_lib.network import normalize_base_url, run_models_test
 from codex_provider_lib.platform import (
     run_editor,
@@ -68,6 +68,13 @@ class FileChange:
     path: Path
     payload: bytes | None
     secret: bool = False
+
+
+@dataclass(frozen=True)
+class ProviderState:
+    codex_dir: Path
+    active_provider: str
+    providers: dict[str, dict[str, Any]]
 
 
 _lock_depth = 0
@@ -322,14 +329,19 @@ def derive_provider_name(base_url: str) -> str:
     return validate_provider_name(name)
 
 
-def load_provider_registry(
-    *, create: bool = True
-) -> tuple[Path, dict[str, dict[str, Any]]]:
+def load_provider_state(*, create: bool = True) -> ProviderState:
     data = get_tool_config(create=create)
     codex_dir_value = data.get("codex_dir")
     if not isinstance(codex_dir_value, str) or not codex_dir_value:
         raise SwitchError(f"missing codex_dir in {TOOL_CONFIG_PATH}")
     codex_dir = Path(codex_dir_value).expanduser()
+
+    active_provider = data.get("active_provider", "")
+    if not isinstance(active_provider, str):
+        raise SwitchError(f"invalid active_provider in {TOOL_CONFIG_PATH}")
+    if active_provider:
+        active_provider = validate_provider_name(active_provider)
+
     providers = data.get("model_providers", {})
     if providers is None:
         providers = {}
@@ -344,7 +356,22 @@ def load_provider_registry(
             )
         validate_provider_config(provider, config)
         normalized[provider] = dict(config)
-    return codex_dir, normalized
+    if active_provider and active_provider not in normalized:
+        raise SwitchError(
+            f"active provider '{active_provider}' is missing from {TOOL_CONFIG_PATH}"
+        )
+    return ProviderState(
+        codex_dir,
+        active_provider,
+        normalized,
+    )
+
+
+def load_provider_registry(
+    *, create: bool = True
+) -> tuple[Path, dict[str, dict[str, Any]]]:
+    state = load_provider_state(create=create)
+    return state.codex_dir, state.providers
 
 
 def load_runtime_config(
@@ -358,8 +385,8 @@ def load_runtime_config(
     except (OSError, UnicodeDecodeError) as exc:
         raise SwitchError(f"unable to read runtime config {path}: {exc}") from exc
     data = parse_toml(path)
-    current = data.get("model_provider")
-    if not isinstance(current, str) or not current:
+    runtime_provider = data.get("model_provider")
+    if not isinstance(runtime_provider, str) or not runtime_provider:
         providers = data.get("model_providers", {})
         if not providers:
             raise MissingModelProviderError(
@@ -368,7 +395,101 @@ def load_runtime_config(
         raise SwitchError(
             "top-level model_provider is missing while runtime provider blocks exist"
         )
-    return validate_provider_name(current), data, text
+    return validate_provider_name(runtime_provider), data, text
+
+
+def render_tool_state(state: ProviderState, base_text: str) -> str:
+    return render_tool_config(
+        state.codex_dir,
+        state.providers,
+        base_text,
+        active_provider=state.active_provider,
+    )
+
+
+def infer_active_provider(
+    state: ProviderState, runtime_provider: str, runtime_data: dict[str, Any]
+) -> str:
+    if runtime_provider != RUNTIME_PROVIDER_ID:
+        if runtime_provider not in state.providers:
+            raise SwitchError(
+                f"current provider '{runtime_provider}' is missing from "
+                f"{TOOL_CONFIG_PATH}"
+            )
+        return runtime_provider
+
+    runtime_providers = runtime_data.get("model_providers", {})
+    runtime_config = (
+        runtime_providers.get(RUNTIME_PROVIDER_ID)
+        if isinstance(runtime_providers, dict)
+        else None
+    )
+    matches = [
+        provider
+        for provider, config in state.providers.items()
+        if config == runtime_config
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    raise SwitchError(
+        f"active_provider is missing from {TOOL_CONFIG_PATH} and cannot be "
+        "inferred from runtime config"
+    )
+
+
+def migrate_existing_provider_state(
+    state: ProviderState,
+    runtime_provider: str,
+    runtime_data: dict[str, Any],
+    runtime_text: str,
+    *,
+    dry_run: bool,
+) -> ProviderState:
+    if (
+        state.active_provider
+        and runtime_provider != RUNTIME_PROVIDER_ID
+        and runtime_provider != state.active_provider
+    ):
+        raise SwitchError(
+            "active provider/runtime provider mismatch: "
+            f"{state.active_provider} != {runtime_provider}"
+        )
+    active_provider = state.active_provider or infer_active_provider(
+        state, runtime_provider, runtime_data
+    )
+    migrated = ProviderState(
+        state.codex_dir,
+        active_provider,
+        state.providers,
+    )
+    runtime_providers = runtime_data.get("model_providers")
+    needs_migration = (
+        state.active_provider != migrated.active_provider
+        or runtime_provider != RUNTIME_PROVIDER_ID
+        or not isinstance(runtime_providers, dict)
+        or set(runtime_providers) != {RUNTIME_PROVIDER_ID}
+        or "legacy_provider_ids" in get_tool_config(create=not dry_run)
+    )
+    if not needs_migration or dry_run:
+        return migrated
+
+    base_text = TOOL_CONFIG_PATH.read_text(encoding="utf-8")
+    commit_file_changes(
+        [
+            FileChange(
+                TOOL_CONFIG_PATH,
+                render_tool_state(migrated, base_text).encode("utf-8"),
+            ),
+            FileChange(
+                runtime_config_path(state.codex_dir),
+                render_runtime_config(
+                    runtime_text,
+                    state.providers[active_provider],
+                ).encode("utf-8"),
+            ),
+        ]
+    )
+    return migrated
 
 
 def migrate_provider_registry(
@@ -378,6 +499,10 @@ def migrate_provider_registry(
         ensure_tool_home()
     codex_dir = codex_dir or get_codex_dir(create=not dry_run)
     current, data, text = load_runtime_config(codex_dir, create=not dry_run)
+    if current == RUNTIME_PROVIDER_ID:
+        raise SwitchError(
+            "cannot reconstruct provider registry from managed runtime config"
+        )
     providers = data.get("model_providers", {})
     if not isinstance(providers, dict) or not providers:
         raise SwitchError("no [model_providers.*] found in runtime config to migrate")
@@ -406,12 +531,15 @@ def migrate_provider_registry(
             if TOOL_CONFIG_PATH.exists()
             else None
         )
-        tool_payload = render_tool_config(codex_dir, normalized, base_text).encode(
+        tool_payload = render_tool_config(
+            codex_dir,
+            normalized,
+            base_text,
+            active_provider=current,
+        ).encode("utf-8")
+        runtime_payload = render_runtime_config(text, normalized[current]).encode(
             "utf-8"
         )
-        runtime_payload = render_runtime_config(
-            text, current, normalized[current]
-        ).encode("utf-8")
         commit_file_changes(
             [
                 FileChange(TOOL_CONFIG_PATH, tool_payload),
@@ -421,30 +549,50 @@ def migrate_provider_registry(
     return current, normalized
 
 
-def ensure_registry_ready(
-    *, read_only: bool = False
-) -> tuple[str, dict[str, dict[str, Any]]]:
+def _ensure_provider_state_unlocked(*, read_only: bool = False) -> ProviderState:
     if not read_only:
         ensure_tool_home()
-    codex_dir, providers = load_provider_registry(create=not read_only)
-    if providers:
+    state = load_provider_state(create=not read_only)
+    if state.providers:
         try:
-            current, _, _ = load_runtime_config(codex_dir, create=not read_only)
-        except MissingConfigError:
-            return "", providers
-        if current not in providers:
-            raise SwitchError(
-                f"current provider '{current}' is missing from {TOOL_CONFIG_PATH}"
+            runtime_provider, runtime_data, runtime_text = load_runtime_config(
+                state.codex_dir, create=not read_only
             )
-        return current, providers
+        except (MissingConfigError, MissingModelProviderError):
+            return state
+        return migrate_existing_provider_state(
+            state,
+            runtime_provider,
+            runtime_data,
+            runtime_text,
+            dry_run=read_only,
+        )
 
     try:
         current, migrated = migrate_provider_registry(
-            dry_run=read_only, codex_dir=codex_dir
+            dry_run=read_only, codex_dir=state.codex_dir
         )
     except MissingConfigError:
-        return "", {}
-    return current, migrated
+        return state
+    return ProviderState(
+        state.codex_dir,
+        current,
+        migrated,
+    )
+
+
+def ensure_provider_state(*, read_only: bool = False) -> ProviderState:
+    if read_only:
+        return _ensure_provider_state_unlocked(read_only=True)
+    with state_lock():
+        return _ensure_provider_state_unlocked()
+
+
+def ensure_registry_ready(
+    *, read_only: bool = False
+) -> tuple[str, dict[str, dict[str, Any]]]:
+    state = ensure_provider_state(read_only=read_only)
+    return state.active_provider, state.providers
 
 
 def add_provider(
@@ -460,19 +608,25 @@ def add_provider(
     provider = (
         validate_provider_name(provider) if provider else derive_provider_name(base_url)
     )
+    if display_name is not None:
+        display_name = display_name.strip()
+        if not display_name:
+            raise SwitchError("display name must not be empty")
     if not api_key:
         raise SwitchError("api_key must not be empty")
 
     lock = nullcontext() if dry_run else state_lock()
     with lock:
-        current, providers = ensure_registry_ready(read_only=dry_run)
+        state = ensure_provider_state(read_only=dry_run)
+        current = state.active_provider
+        providers = state.providers
         if provider in providers:
             raise SwitchError(f"provider already exists: {provider}")
 
         providers = dict(providers)
         providers[provider] = {
             "base_url": base_url,
-            "name": display_name or provider,
+            "name": display_name if display_name is not None else provider,
             "requires_openai_auth": True,
             "wire_api": wire_api,
         }
@@ -481,9 +635,14 @@ def add_provider(
 
         if not dry_run:
             base_text = TOOL_CONFIG_PATH.read_text(encoding="utf-8")
-            registry_payload = render_tool_config(
-                get_codex_dir(), providers, base_text
-            ).encode("utf-8")
+            updated_state = ProviderState(
+                state.codex_dir,
+                current,
+                providers,
+            )
+            registry_payload = render_tool_state(updated_state, base_text).encode(
+                "utf-8"
+            )
             auth_payload = (
                 json.dumps({"OPENAI_API_KEY": api_key}, indent=2).encode("utf-8")
                 + b"\n"
@@ -497,6 +656,7 @@ def add_provider(
 
     action = "would add" if dry_run else "added"
     print(f"{action} provider: {provider}")
+    print(f"display name: {providers[provider]['name']}")
     profile = auth_profile_path(provider, create=not dry_run)
     print(f"{'would create' if dry_run else 'created'} auth profile: {profile}")
     print(f"current provider remains: {current or '(none)'}")
@@ -507,7 +667,9 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
     provider = validate_provider_name(provider)
     lock = nullcontext() if dry_run else state_lock()
     with lock:
-        current, providers = ensure_registry_ready(read_only=dry_run)
+        state = ensure_provider_state(read_only=dry_run)
+        current = state.active_provider
+        providers = state.providers
         profile = auth_profile_path(provider, create=not dry_run)
         if provider not in providers:
             if delete_auth and profile.exists():
@@ -529,9 +691,14 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
 
         if not dry_run:
             base_text = TOOL_CONFIG_PATH.read_text(encoding="utf-8")
-            registry_payload = render_tool_config(
-                get_codex_dir(), providers, base_text
-            ).encode("utf-8")
+            updated_state = ProviderState(
+                state.codex_dir,
+                current,
+                providers,
+            )
+            registry_payload = render_tool_state(updated_state, base_text).encode(
+                "utf-8"
+            )
             changes = [FileChange(TOOL_CONFIG_PATH, registry_payload)]
             if delete_auth and profile.exists():
                 changes.append(FileChange(profile, None, secret=True))
@@ -555,33 +722,39 @@ def rename_provider(old_provider: str, new_provider: str, dry_run: bool) -> int:
 
     lock = nullcontext() if dry_run else state_lock()
     with lock:
-        current, providers = ensure_registry_ready(read_only=dry_run)
+        state = ensure_provider_state(read_only=dry_run)
+        current = state.active_provider
+        providers = state.providers
         if old_provider not in providers:
             known = ", ".join(sorted(providers.keys()))
-            raise SwitchError(
-                f"unknown provider '{old_provider}', available: {known}"
-            )
+            raise SwitchError(f"unknown provider '{old_provider}', available: {known}")
         if new_provider in providers:
             raise SwitchError(f"provider already exists: {new_provider}")
 
         old_profile = auth_profile_path(old_provider, create=not dry_run)
         new_profile = auth_profile_path(new_provider, create=not dry_run)
+        old_profile_exists = old_profile.exists()
         if new_profile.exists():
             raise SwitchError(f"auth profile already exists: {new_profile}")
 
         providers = dict(providers)
         providers[new_provider] = providers.pop(old_provider)
+        updated_current = new_provider if old_provider == current else current
+        updated_state = ProviderState(
+            state.codex_dir,
+            updated_current,
+            providers,
+        )
 
         if not dry_run:
-            codex_dir = get_codex_dir()
             base_text = TOOL_CONFIG_PATH.read_text(encoding="utf-8")
             changes = [
                 FileChange(
                     TOOL_CONFIG_PATH,
-                    render_tool_config(codex_dir, providers, base_text).encode("utf-8"),
+                    render_tool_state(updated_state, base_text).encode("utf-8"),
                 )
             ]
-            if old_profile.exists():
+            if old_profile_exists:
                 changes.extend(
                     [
                         FileChange(new_profile, old_profile.read_bytes(), secret=True),
@@ -589,16 +762,17 @@ def rename_provider(old_provider: str, new_provider: str, dry_run: bool) -> int:
                     ]
                 )
             if old_provider == current:
-                runtime_config = runtime_config_path(codex_dir)
+                runtime_config = runtime_config_path(state.codex_dir)
                 if runtime_config.exists():
                     runtime_base_text = runtime_config.read_text(encoding="utf-8")
                 else:
-                    runtime_base_text = f'model_provider = "{new_provider}"\n'
+                    runtime_base_text = f'model_provider = "{RUNTIME_PROVIDER_ID}"\n'
                 changes.append(
                     FileChange(
                         runtime_config,
                         render_runtime_config(
-                            runtime_base_text, new_provider, providers[new_provider]
+                            runtime_base_text,
+                            providers[new_provider],
                         ).encode("utf-8"),
                     )
                 )
@@ -606,14 +780,14 @@ def rename_provider(old_provider: str, new_provider: str, dry_run: bool) -> int:
 
     action = "would rename" if dry_run else "renamed"
     print(f"{action} provider: {old_provider} -> {new_provider}")
-    if old_profile.exists():
+    if old_profile_exists:
         profile_action = "would move" if dry_run else "moved"
         print(f"{profile_action} auth profile: {old_profile} -> {new_profile}")
     else:
         print(f"auth profile missing, skipped move: {old_profile}")
     if old_provider == current:
-        runtime_action = "would update" if dry_run else "updated"
-        print(f"{runtime_action} current runtime provider: {new_provider}")
+        current_action = "would update" if dry_run else "updated"
+        print(f"{current_action} current provider: {new_provider}")
     else:
         print(f"current provider remains: {current or '(none)'}")
     return 0
@@ -666,8 +840,8 @@ def resolve_provider(
 
 def auth_target_path(provider: str | None) -> tuple[str | None, Path]:
     if provider is None:
-        current, _, _ = load_runtime_config()
-        return current, runtime_auth_path()
+        state = ensure_provider_state()
+        return state.active_provider or None, runtime_auth_path(state.codex_dir)
     provider = validate_provider_name(provider)
     return provider, auth_profile_path(provider)
 
@@ -855,7 +1029,9 @@ def run_codex_ping(current: str, timeout: float, model: str | None, prompt: str)
 def temporary_provider(provider: str) -> Iterator[str]:
     provider = validate_provider_name(provider)
     with state_lock():
-        current, providers = ensure_registry_ready()
+        state = ensure_provider_state()
+        current = state.active_provider
+        providers = state.providers
         if provider not in providers:
             known = ", ".join(sorted(providers))
             raise SwitchError(f"unknown provider '{provider}', available: {known}")
@@ -872,11 +1048,11 @@ def temporary_provider(provider: str) -> Iterator[str]:
         base_text = (
             original_config.payload.decode("utf-8")
             if original_config.exists and original_config.payload is not None
-            else f'model_provider = "{provider}"\n'
+            else f'model_provider = "{RUNTIME_PROVIDER_ID}"\n'
         )
-        runtime_payload = render_runtime_config(
-            base_text, provider, providers[provider]
-        ).encode("utf-8")
+        runtime_payload = render_runtime_config(base_text, providers[provider]).encode(
+            "utf-8"
+        )
         commit_file_changes(
             [
                 FileChange(runtime_auth, target_auth.read_bytes(), secret=True),
@@ -907,8 +1083,10 @@ def ping_provider(
     provider: str | None, timeout: float, model: str | None, prompt: str
 ) -> int:
     if provider is None:
-        current, _, _ = load_runtime_config()
-        return run_codex_ping(current, timeout, model, prompt)
+        state = ensure_provider_state()
+        if not state.active_provider:
+            raise SwitchError("no active provider; switch to a provider first")
+        return run_codex_ping(state.active_provider, timeout, model, prompt)
     with temporary_provider(provider) as current:
         return run_codex_ping(current, timeout, model, prompt)
 
@@ -948,34 +1126,45 @@ def doctor(fix: bool) -> int:
     if not TOOL_CONFIG_PATH.exists():
         issues.append(f"missing tool config: {TOOL_CONFIG_PATH}")
 
-    current = None
+    active_provider = ""
+    runtime_provider = None
     runtime_data: dict[str, Any] = {}
     providers: dict[str, dict[str, Any]] = {}
     try:
-        current, runtime_data, _ = load_runtime_config()
+        runtime_provider, runtime_data, _ = load_runtime_config()
     except SwitchError as exc:
         issues.append(str(exc))
 
     try:
-        _, providers = load_provider_registry()
+        state = load_provider_state()
+        active_provider = state.active_provider
+        providers = state.providers
     except SwitchError as exc:
         issues.append(str(exc))
 
-    if current:
-        print(f"current provider: {current}")
-        if current not in providers:
-            issues.append(f"current provider missing from registry: {current}")
-        current_profile = auth_profile_path(current)
+    if active_provider:
+        print(f"current provider: {active_provider}")
+        current_profile = auth_profile_path(active_provider)
         if not current_profile.exists():
             issues.append(
                 f"missing auth snapshot for current provider: {current_profile}"
+            )
+    elif providers:
+        issues.append(f"active_provider is missing from {TOOL_CONFIG_PATH}")
+
+    if runtime_provider:
+        print(f"runtime provider: {runtime_provider}")
+        if runtime_provider != RUNTIME_PROVIDER_ID:
+            issues.append(
+                "runtime model_provider mismatch: "
+                f"expected {RUNTIME_PROVIDER_ID}, found {runtime_provider}"
             )
 
     if providers:
         print("")
         print("providers:")
         for provider in sorted(providers.keys()):
-            marker = "*" if provider == current else " "
+            marker = "*" if provider == active_provider else " "
             profile = auth_profile_path(provider)
             exists = profile.exists()
             auth_state = "yes" if exists else "no"
@@ -990,20 +1179,33 @@ def doctor(fix: bool) -> int:
                 except SwitchError as exc:
                     issues.append(str(exc))
 
-    runtime_providers = runtime_data.get("model_providers", {})
-    if not isinstance(runtime_providers, dict):
-        runtime_providers = {}
-    if len(runtime_providers) != 1:
-        issues.append(
-            "runtime config should contain exactly 1 provider block, "
-            f"found {len(runtime_providers)}"
-        )
-    elif current and current not in runtime_providers:
-        found = next(iter(runtime_providers))
-        issues.append(
-            "runtime config provider block mismatch: "
-            f"expected {PROVIDER_PREFIX}{current}, found {PROVIDER_PREFIX}{found}"
-        )
+    if runtime_data:
+        runtime_providers = runtime_data.get("model_providers", {})
+        if not isinstance(runtime_providers, dict):
+            runtime_providers = {}
+        expected_runtime_ids = {RUNTIME_PROVIDER_ID}
+        if set(runtime_providers) != expected_runtime_ids:
+            found = (
+                ", ".join(
+                    f"{PROVIDER_PREFIX}{provider}" for provider in runtime_providers
+                )
+                or "(none)"
+            )
+            expected = ", ".join(
+                f"{PROVIDER_PREFIX}{provider}"
+                for provider in sorted(expected_runtime_ids)
+            )
+            issues.append(
+                f"runtime provider blocks mismatch: expected {expected}, found {found}"
+            )
+        elif active_provider and any(
+            config != providers[active_provider]
+            for config in runtime_providers.values()
+        ):
+            issues.append(
+                "runtime provider config does not match active provider: "
+                f"{active_provider}"
+            )
 
     runtime_auth = runtime_auth_path()
     if runtime_auth.exists():
@@ -1075,34 +1277,57 @@ def prompt_provider_selection() -> str | None:
     return select_provider_interactive(current, list(providers.keys()))
 
 
+def runtime_config_matches(
+    data: dict[str, Any],
+    config: dict[str, Any],
+) -> bool:
+    if data.get("model_provider") != RUNTIME_PROVIDER_ID:
+        return False
+    runtime_providers = data.get("model_providers")
+    if not isinstance(runtime_providers, dict):
+        return False
+    return set(runtime_providers) == {RUNTIME_PROVIDER_ID} and (
+        runtime_providers[RUNTIME_PROVIDER_ID] == config
+    )
+
+
 def switch_provider(provider: str, dry_run: bool) -> int:
     provider = validate_provider_name(provider)
     lock = nullcontext() if dry_run else state_lock()
     with lock:
-        current, providers = ensure_registry_ready(read_only=dry_run)
+        state = ensure_provider_state(read_only=dry_run)
+        current = state.active_provider
+        providers = state.providers
         if provider not in providers:
             known = ", ".join(sorted(providers.keys()))
             raise SwitchError(f"unknown provider '{provider}', available: {known}")
-        if provider == current:
-            print(f"already using provider: {provider}")
-            return 0
 
         target_auth = auth_profile_path(provider, create=not dry_run)
         load_auth_json(target_auth)
-        codex_dir = get_codex_dir(create=not dry_run)
+        codex_dir = state.codex_dir
         runtime_config = runtime_config_path(codex_dir, create=not dry_run)
         runtime_auth = runtime_auth_path(codex_dir, create=not dry_run)
         if runtime_config.exists():
             base_text = runtime_config.read_text(encoding="utf-8")
+            runtime_data = parse_toml(runtime_config)
         else:
-            base_text = f'model_provider = "{provider}"\n'
-        runtime_payload = render_runtime_config(
-            base_text, provider, providers[provider]
-        ).encode("utf-8")
+            base_text = f'model_provider = "{RUNTIME_PROVIDER_ID}"\n'
+            runtime_data = {}
+        if (
+            provider == current
+            and runtime_auth.exists()
+            and runtime_config_matches(runtime_data, providers[provider])
+        ):
+            print(f"already using provider: {provider}")
+            return 0
+        runtime_payload = render_runtime_config(base_text, providers[provider]).encode(
+            "utf-8"
+        )
 
         if not dry_run:
             changes = []
-            if current and runtime_auth.exists():
+            same_provider = provider == current
+            if current and runtime_auth.exists() and not same_provider:
                 changes.append(
                     FileChange(
                         auth_profile_path(current),
@@ -1110,16 +1335,35 @@ def switch_provider(provider: str, dry_run: bool) -> int:
                         secret=True,
                     )
                 )
+            if not same_provider or not runtime_auth.exists():
+                changes.append(
+                    FileChange(runtime_auth, target_auth.read_bytes(), secret=True)
+                )
+            updated_state = ProviderState(
+                state.codex_dir,
+                provider,
+                providers,
+            )
+            tool_base_text = TOOL_CONFIG_PATH.read_text(encoding="utf-8")
             changes.extend(
                 [
-                    FileChange(runtime_auth, target_auth.read_bytes(), secret=True),
                     FileChange(runtime_config, runtime_payload),
+                    FileChange(
+                        TOOL_CONFIG_PATH,
+                        render_tool_state(updated_state, tool_base_text).encode(
+                            "utf-8"
+                        ),
+                    ),
                 ]
             )
             commit_file_changes(changes)
 
     action = "would switch" if dry_run else "switched"
-    if current:
+    if current == provider:
+        print(
+            f"{'would refresh' if dry_run else 'refreshed'} provider config: {provider}"
+        )
+    elif current:
         print(f"{action} provider: {current} -> {provider}")
     else:
         print(f"{'would activate' if dry_run else 'activated'} provider: {provider}")
@@ -1195,7 +1439,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     switch_parser = subparsers.add_parser(
-        "switch", help="Switch current runtime provider"
+        "switch", help="Switch the active logical provider"
     )
     switch_parser.add_argument(
         "provider",
@@ -1259,7 +1503,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument(
         "--provider", help="Provider name; defaults to the base_url domain"
     )
-    add_parser.add_argument("--name", help="Display name stored in provider config")
+    add_parser.add_argument(
+        "--name",
+        dest="display_name",
+        help="Display name stored in provider config",
+    )
     add_parser.add_argument(
         "--wire-api", default="responses", help="wire_api value, default: responses"
     )
@@ -1344,7 +1592,7 @@ def main(argv: list[str] | None = None) -> int:
                 provider=args.provider,
                 base_url=args.base_url,
                 api_key=api_key,
-                display_name=args.name,
+                display_name=args.display_name,
                 wire_api=args.wire_api,
                 supports_websockets=supports_websockets,
                 dry_run=args.dry_run,

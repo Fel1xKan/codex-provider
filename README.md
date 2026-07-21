@@ -4,8 +4,10 @@
 their matching `auth.json` snapshots.
 
 It keeps the complete provider registry outside the Codex runtime config,
-copies only the active provider into `~/.codex/config.toml`, and switches the
-matching auth snapshot together with it.
+projects the active provider onto the stable runtime ID `codex-provider` in
+`~/.codex/config.toml`, and switches the matching auth snapshot together with
+it. Because the runtime ID does not change, Codex sessions created after this
+setup can be resumed after switching providers.
 
 ## Safety properties
 
@@ -116,7 +118,9 @@ stored in shell history or exposed through process inspection.
 - `~/.codex-provider/config.toml` contains the full provider registry.
 - `~/.codex-provider/auth/<provider>.json` contains each provider auth
   snapshot.
-- `~/.codex/config.toml` contains only the active provider block.
+- `~/.codex/config.toml` selects the stable runtime provider ID
+  `codex-provider` and contains only that provider block with the active
+  provider configuration.
 - `~/.codex/auth.json` contains the active auth snapshot.
 
 Before a persistent switch, the current runtime auth is saved back to its
@@ -127,6 +131,7 @@ recoverable operation.
 
 ```toml
 codex_dir = "/home/you/.codex"
+active_provider = "anyrouter"
 
 [model_providers.anyrouter]
 base_url = "https://anyrouter.top/v1"
@@ -142,6 +147,28 @@ into the active runtime block. Host-only HTTP(S) URLs are normalized to `/v1`.
 URLs containing user credentials, query parameters, fragments, or non-HTTP(S)
 schemes are rejected.
 
+The generated runtime config always uses a stable provider ID:
+
+```toml
+model_provider = "codex-provider"
+
+[model_providers.codex-provider]
+base_url = "https://anyrouter.top/v1"
+name = "Any Router"
+requires_openai_auth = true
+wire_api = "responses"
+```
+
+`active_provider` is the logical provider selected by this tool. Switching
+changes the contents of `[model_providers.codex-provider]` and `auth.json`, but
+never changes the runtime provider ID stored in new Codex sessions. Resuming a
+session therefore uses whichever logical provider is active at resume time.
+
+When an older tool config has no `active_provider`, the next state-loading
+command, such as `status` or `switch`, infers it from the legacy runtime config
+and migrates the runtime ID automatically. Migration removes old provider
+blocks from the runtime config so only `model_providers.codex-provider` remains.
+
 ## Command behavior
 
 - `auth detail` reports the auth path, field names, value types, and whether a
@@ -155,9 +182,9 @@ schemes are rejected.
   authorization headers, tokens, passwords, cookies, secrets, and API keys.
 - `switch --dry-run`, `add --dry-run`, and `delete --dry-run` do not write
   state. On a fresh HOME, they do not create tool directories or lock files.
-- `rename` changes the provider key in the registry, renames the matching
-  auth snapshot, and also updates the active runtime provider when the renamed
-  provider is current.
+- `rename` changes the logical provider key in the registry, renames the
+  matching auth snapshot, and updates `active_provider` when the renamed
+  provider is current. The runtime provider ID remains `codex-provider`.
 - `test` calls `<base_url>/models`, limits the response body to 2 MiB, and
   requires an OpenAI-compatible JSON object with a `data` array.
 - `ping <provider>` holds the provider-state lock, temporarily updates runtime
