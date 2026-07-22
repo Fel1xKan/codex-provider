@@ -50,7 +50,7 @@ def test_registry_rejects_invalid_provider_from_toml(
 ) -> None:
     cp.ensure_tool_home()
     isolated_paths.tool_config.write_text(
-        f'codex_dir = "{isolated_paths.codex_dir}"\n\n'
+        f"codex_dir = {cp.format_toml_value(str(isolated_paths.codex_dir))}\n\n"
         '[model_providers."../../outside"]\n'
         'base_url = "https://example.com/v1"\n',
         encoding="utf-8",
@@ -107,11 +107,13 @@ def test_existing_registry_migrates_to_stable_runtime_provider(
         encoding="utf-8",
     )
     tool_text = isolated_paths.tool_config.read_text(encoding="utf-8")
+    codex_dir_line = (
+        f"codex_dir = {cp.format_toml_value(str(isolated_paths.codex_dir))}"
+    )
     isolated_paths.tool_config.write_text(
         tool_text.replace(
-            f'codex_dir = "{isolated_paths.codex_dir}"',
-            f'codex_dir = "{isolated_paths.codex_dir}"\n'
-            'legacy_provider_ids = ["alpha", "beta"]',
+            codex_dir_line,
+            f'{codex_dir_line}\nlegacy_provider_ids = ["alpha", "beta"]',
         ),
         encoding="utf-8",
     )
