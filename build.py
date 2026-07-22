@@ -12,11 +12,17 @@ from pathlib import Path
 from codex_provider_lib.constants import VERSION
 
 ROOT_DIR = Path(__file__).resolve().parent
-SPEC_FILE = ROOT_DIR / "codex-provider-bin.spec"
 DIST_DIR = ROOT_DIR / "dist"
-BIN_NAME = "codex-provider-bin.exe" if os.name == "nt" else "codex-provider-bin"
-OUTPUT_BIN = DIST_DIR / BIN_NAME
-CHECKSUM_FILE = DIST_DIR / f"{BIN_NAME}.sha256"
+BUILD_TARGETS = {
+    "codex": (
+        ROOT_DIR / "codex-provider-bin.spec",
+        "codex-provider.exe" if os.name == "nt" else "codex-provider",
+    ),
+    "opencode": (
+        ROOT_DIR / "opencode-provider.spec",
+        "opencode-provider.exe" if os.name == "nt" else "opencode-provider",
+    ),
+}
 
 
 class BuildError(Exception):
@@ -122,7 +128,7 @@ def pyinstaller_version(python_cmd: list[str]) -> str | None:
     return result.stdout.strip()
 
 
-def verify_binary_version(path: Path) -> None:
+def verify_binary_version(path: Path, program: str) -> None:
     try:
         result = subprocess.run(
             [str(path), "--version"],
@@ -138,7 +144,7 @@ def verify_binary_version(path: Path) -> None:
             f"binary version check exited with status {exc.returncode}"
         ) from exc
 
-    expected = f"codex-provider {VERSION}"
+    expected = f"{program} {VERSION}"
     actual = result.stdout.strip()
     if actual != expected:
         raise BuildError(
@@ -156,7 +162,7 @@ def sha256_file(path: Path) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build the standalone codex-provider binary with PyInstaller.",
+        description="Build the standalone Codex and OpenCode provider binaries.",
     )
     parser.add_argument(
         "--python",
@@ -170,7 +176,32 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip the post-build '--help' check for the generated binary.",
     )
+    parser.add_argument(
+        "--target",
+        choices=["all", *BUILD_TARGETS],
+        default="all",
+        help="Build codex, opencode, or both targets (default: all)",
+    )
     return parser.parse_args()
+
+
+def build_target(python_cmd: list[str], target: str, skip_smoke_test: bool) -> None:
+    spec_file, bin_name = BUILD_TARGETS[target]
+    if not spec_file.is_file():
+        raise BuildError(f"missing {spec_file.relative_to(ROOT_DIR)}")
+    run([*python_cmd, "-m", "PyInstaller", "--clean", "-y", spec_file.name])
+    output_bin = DIST_DIR / bin_name
+    if not output_bin.is_file():
+        raise BuildError(f"expected build output was not created: {output_bin}")
+    if not skip_smoke_test:
+        run([str(output_bin), "--help"], quiet=True)
+    verify_binary_version(output_bin, target + "-provider")
+    checksum_file = DIST_DIR / f"{bin_name}.sha256"
+    checksum = sha256_file(output_bin)
+    checksum_file.write_text(f"{checksum}  {output_bin.name}\n", encoding="ascii")
+    print(f"Built {output_bin.relative_to(ROOT_DIR)}")
+    print(f"Verified version {VERSION}")
+    print(f"Wrote {checksum_file.relative_to(ROOT_DIR)}")
 
 
 def main() -> int:
@@ -179,10 +210,6 @@ def main() -> int:
         python_cmd = select_python(args.python)
     except (BuildError, ValueError) as exc:
         print(f"error: invalid Python command: {exc}", file=sys.stderr)
-        return 1
-
-    if not SPEC_FILE.is_file():
-        print(f"error: missing {SPEC_FILE.relative_to(ROOT_DIR)}", file=sys.stderr)
         return 1
 
     version = pyinstaller_version(python_cmd)
@@ -201,29 +228,14 @@ def main() -> int:
     print(f"Using PyInstaller: {version}", flush=True)
 
     try:
-        run([*python_cmd, "-m", "PyInstaller", "--clean", "-y", str(SPEC_FILE.name)])
-
-        if not OUTPUT_BIN.is_file():
-            print(
-                f"error: expected build output was not created: {OUTPUT_BIN}",
-                file=sys.stderr,
-            )
-            return 1
-
-        if not args.skip_smoke_test:
-            run([str(OUTPUT_BIN), "--help"], quiet=True)
-
-        verify_binary_version(OUTPUT_BIN)
-
-        checksum = sha256_file(OUTPUT_BIN)
-        CHECKSUM_FILE.write_text(f"{checksum}  {OUTPUT_BIN.name}\n", encoding="ascii")
+        targets = list(BUILD_TARGETS) if args.target == "all" else [args.target]
+        for target in targets:
+            build_target(python_cmd, target, args.skip_smoke_test)
     except (BuildError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Built {OUTPUT_BIN.relative_to(ROOT_DIR)}")
-    print(f"Verified version {VERSION}")
-    print(f"Wrote {CHECKSUM_FILE.relative_to(ROOT_DIR)}")
+    print(f"Built targets: {', '.join(targets)}")
     return 0
 
 

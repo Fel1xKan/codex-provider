@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import json
 import os
 import re
@@ -27,6 +26,16 @@ from codex_provider_lib import (
     MissingConfigError,
     MissingModelProviderError,
     SwitchError,
+)
+from codex_provider_lib.cli import (
+    add_ping_parser,
+    add_test_parser,
+)
+from codex_provider_lib.cli import (
+    dispatch_test as dispatch_common_test,
+)
+from codex_provider_lib.cli import (
+    read_api_key as read_common_api_key,
 )
 from codex_provider_lib.constants import PROVIDER_PREFIX, RUNTIME_PROVIDER_ID
 from codex_provider_lib.network import normalize_base_url, run_models_test
@@ -979,44 +988,20 @@ def looks_like_url(value: str) -> bool:
 
 
 def read_api_key(api_key_stdin: bool, prompt: str = "API key: ") -> str:
-    if api_key_stdin:
-        api_key = sys.stdin.readline().strip()
-    elif sys.stdin.isatty():
-        api_key = getpass.getpass(prompt).strip()
-    else:
-        raise SwitchError("API key input requires a TTY or --api-key-stdin")
-    if not api_key:
-        raise SwitchError("api_key must not be empty")
-    return api_key
+    return read_common_api_key(api_key_stdin, prompt)
 
 
 def dispatch_test(
     args: list[str], api_key_stdin: bool, timeout: float, test_all: bool = False
 ) -> int:
-    if test_all:
-        if args:
-            raise SwitchError("--all cannot be combined with a provider or base_url")
-        if api_key_stdin:
-            raise SwitchError("--all cannot be combined with --api-key-stdin")
-        return test_all_providers(timeout)
-
-    if not args:
-        if api_key_stdin:
-            raise SwitchError("--api-key-stdin requires a base_url")
-        return test_provider(None, timeout)
-
-    if len(args) == 1:
-        target = args[0]
-        if looks_like_url(target):
-            api_key = read_api_key(api_key_stdin)
-            return test_direct_base_url(target, api_key, timeout)
-        if api_key_stdin:
-            raise SwitchError("--api-key-stdin requires a direct base_url")
-        return test_provider(target, timeout)
-
-    raise SwitchError(
-        "test accepts either [provider] or <base-url>; API keys must not be "
-        "passed as command arguments"
+    return dispatch_common_test(
+        args,
+        api_key_stdin,
+        timeout,
+        test_all,
+        test_provider,
+        test_all_providers,
+        test_direct_base_url,
     )
 
 
@@ -1487,50 +1472,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="Preview changes without writing files"
     )
 
-    test_parser = subparsers.add_parser(
-        "test", help="Test a provider or direct base_url with /models"
-    )
-    test_parser.add_argument(
-        "args",
-        nargs="*",
-        metavar="provider|base_url",
-        help="No args/current provider, provider name, or direct base_url",
-    )
-    test_parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Test every configured provider and print an availability summary",
-    )
-    test_parser.add_argument(
-        "--api-key-stdin",
-        action="store_true",
-        help="Read API key from stdin for direct base_url tests",
-    )
-    test_parser.add_argument(
-        "--timeout",
-        type=float,
-        default=30.0,
-        help="HTTP timeout in seconds, default: 30",
-    )
-
-    ping_parser = subparsers.add_parser(
-        "ping",
-        aliases=["p"],
-        help="Test one provider temporarily with a minimal codex exec",
-    )
-    ping_parser.add_argument(
-        "provider", nargs="?", help="Provider name; defaults to current provider"
-    )
-    ping_parser.add_argument(
-        "--timeout",
-        type=float,
-        default=120.0,
-        help="codex exec timeout in seconds, default: 120",
-    )
-    ping_parser.add_argument("-m", "--model", help="Override model for this ping")
-    ping_parser.add_argument(
-        "--prompt", default="say hi", help='Prompt for codex exec, default: "say hi"'
-    )
+    add_test_parser(subparsers)
+    add_ping_parser(subparsers, "codex")
 
     add_parser = subparsers.add_parser(
         "add", help="Add a provider config and auth profile"

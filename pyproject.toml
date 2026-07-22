@@ -3,12 +3,13 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "codex-provider"
+name = "opencode-provider"
 dynamic = ["version"]
-description = "Provider registry and auth snapshot manager for Codex"
+description = "Default provider and model switcher for OpenCode"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "json5>=0.12,<1",
   "tomlkit>=0.13,<1",
 ]
 
@@ -23,9 +24,10 @@ dev = [
 
 [project.scripts]
 codex-provider = "codex_provider:main"
+opencode-provider = "opencode_provider:main"
 
 [tool.setuptools]
-py-modules = ["codex_provider"]
+py-modules = ["codex_provider", "opencode_provider"]
 packages = ["codex_provider_lib"]
 
 [tool.setuptools.dynamic]
