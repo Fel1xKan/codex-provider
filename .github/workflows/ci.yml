@@ -40,6 +40,14 @@ jobs:
       - run: python build.py
       - uses: actions/upload-artifact@v4
         with:
-          name: codex-provider-${{ matrix.os }}
+          name: binaries-${{ matrix.os }}
           path: |
-            dist/codex-provider-bin*
+            dist/codex-provider
+            dist/codex-provider.exe
+            dist/codex-provider.sha256
+            dist/codex-provider.exe.sha256
+            dist/opencode-provider
+            dist/opencode-provider.exe
+            dist/opencode-provider.sha256
+            dist/opencode-provider.exe.sha256
+          if-no-files-found: error
