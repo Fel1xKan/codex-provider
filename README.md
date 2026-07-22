@@ -1,36 +1,37 @@
-# codex-provider
+# codex-provider / opencode-provider
 
-`codex-provider` is a Python 3.11+ CLI for managing Codex model providers and
-their matching `auth.json` snapshots.
+This repository builds two provider managers with the same CLI shape:
 
-It keeps the complete provider registry outside the Codex runtime config,
-projects the active provider onto the stable runtime ID `codex-provider` in
-`~/.codex/config.toml`, and switches the matching auth snapshot together with
-it. Because the runtime ID does not change, Codex sessions created after this
-setup can be resumed after switching providers.
+- `codex-provider` manages Codex's TOML runtime config and auth snapshots.
+- `opencode-provider` manages OpenCode's JSON/JSONC provider config and auth.
+
+Both commands share the same `list`, `status`, `auth`, `config`, `doctor`,
+`switch`, `test`, `ping`/`p`, `add`, `delete`, and `rename` command forms. Their
+backend only differs in the config/auth file format, locations, and the target
+CLI used by `ping`. OpenCode additionally provides `models` discovery and a
+model selector on `switch`.
+
+OpenCode keeps all custom provider definitions in its global JSON/JSONC config
+and all `/connect` credentials in a separate auth file. This tool leaves those
+provider definitions and credentials in place. A switch only updates the
+top-level `model` value to `provider/model`, which is OpenCode's native default
+model mechanism.
 
 ## Safety properties
 
-- Credential values are never printed by `auth detail`.
-- API keys are read from a hidden prompt or standard input, never accepted as
-  normal command arguments.
-- Provider names are validated before they are used in file paths.
-- Provider state changes are protected by a process lock.
-- Multi-file `add`, `delete`, and `switch` changes roll back when a write fails.
-- On POSIX systems, state directories use mode `0700` and auth files use
-  `0600`.
-- TOML updates preserve unrelated settings, comments, and supported custom
-  provider values.
-- `ping <provider>` activates that provider only for the duration of the ping
-  and restores the original runtime state afterward.
+- Provider API keys and auth values are never printed.
+- Switches preserve unrelated global config values.
+- JSONC comments and trailing commas are preserved.
+- Config writes are atomic and retain existing POSIX permissions.
+- A provider excluded by `enabled_providers` or `disabled_providers` cannot be
+  selected accidentally.
+- `switch --dry-run` does not modify the config.
 
 ## Installation
 
-The recommended installation uses `pipx`:
-
 ```bash
 pipx install .
-codex-provider --version
+opencode-provider --version
 ```
 
 For development:
@@ -38,17 +39,7 @@ For development:
 ```bash
 python3 -m venv .venv
 ./.venv/bin/python -m pip install -r requirements-dev.txt
-./.venv/bin/python -m pytest
-```
-
-On Windows, use `.venv\Scripts\python.exe` in place of
-`./.venv/bin/python`.
-
-The repository launcher uses `.venv/bin/python` when available and otherwise
-falls back to `python3`:
-
-```bash
-./codex-provider --help
+./opencode-provider --help
 ```
 
 ## Commands
@@ -56,161 +47,123 @@ falls back to `python3`:
 ```bash
 codex-provider list
 codex-provider status
+opencode-provider list
+opencode-provider status
 
-codex-provider auth detail
-codex-provider auth detail anyrouter
-EDITOR=vim codex-provider auth edit
-EDITOR="code --wait" codex-provider auth edit anyrouter
-
-codex-provider config detail
-codex-provider config detail anyrouter
-EDITOR=vim codex-provider config edit anyrouter
-
+codex-provider auth detail ggniao
+codex-provider config detail ggniao
 codex-provider doctor
-codex-provider doctor --fix
-
-codex-provider switch
-codex-provider switch anyrouter
-codex-provider switch krill --dry-run
+opencode-provider auth detail foye
+opencode-provider config detail foye
+opencode-provider doctor
 
 codex-provider test
 codex-provider test --all
-codex-provider test ggniao
-codex-provider test https://api.example.com
-printf '%s\n' "$PROVIDER_API_KEY" | \
-  codex-provider test https://api.example.com --api-key-stdin
-
 codex-provider ping
-codex-provider ping ggniao
 codex-provider ping ggniao --model gpt-5
 
-codex-provider add https://api.example.com
-printf '%s\n' "$PROVIDER_API_KEY" | \
-  codex-provider add https://api.example.com --api-key-stdin
-codex-provider add https://api.example.com --provider foo --name "Example"
+opencode-provider test
+opencode-provider test --all
+opencode-provider ping
+opencode-provider ping foye --model grok-4.5
 
-codex-provider rename foo bar
-codex-provider rename foo bar --dry-run
+opencode-provider models list foye
+opencode-provider models sync foye
+opencode-provider models sync --all
+opencode-provider models sync foye --dry-run
 
-codex-provider delete foo
-codex-provider delete foo --full
+opencode-provider switch
+opencode-provider switch foye
+opencode-provider switch bailian-token-plan-personal --model qwen3-coder-plus
+opencode-provider switch bailian-token-plan-personal \
+  --model bailian-token-plan-personal/qwen3-coder-plus
+opencode-provider switch foye --dry-run
+
+opencode-provider add https://api.dejong21.me --provider dejong
+opencode-provider add https://api.dejong21.me --provider dejong --api-key-stdin
+opencode-provider delete foye
+opencode-provider delete foye --full
+opencode-provider delete foye --dry-run
+opencode-provider rename foye foye-new
+opencode-provider rename foye foye-new --dry-run
 ```
 
-When `add` or a direct URL `test` runs in an interactive terminal, it prompts
-for the API key without echoing it. Use `--api-key-stdin` for automation. Do
-not put API keys directly in a command line because command arguments may be
-stored in shell history or exposed through process inspection.
+`auth detail` prints field metadata without credential values. `auth edit`
+opens the backend auth file in `$VISUAL` or `$EDITOR` and validates it before
+keeping the edit. `config detail` redacts inline secrets; `config edit` opens
+and validates the backend provider config. `doctor` validates the config,
+provider model declarations, and auth JSON. Both CLIs accept `doctor --fix`;
+OpenCode currently has no legacy files requiring an automatic repair.
 
-## State layout
+`add` obtains the API key from a hidden terminal prompt by default. Use
+`--api-key-stdin` for scripts; API keys passed as positional arguments are
+rejected. OpenCode accepts `--supports-websockets` for CLI compatibility, but
+does not store it because OpenCode has no equivalent provider config field.
+
+`list` reports the custom providers declared in the global OpenCode config,
+their configured model counts, whether credentials are present, and whether
+OpenCode provider filters allow them.
+
+`switch` sets the global config's top-level `model` field. When the target has
+one model, that model is selected automatically. When the current model ID also
+exists on the target, the model ID is retained. Otherwise an interactive
+terminal presents a model menu; in non-interactive use, pass `--model`.
+
+For `codex-provider`, `test` probes the configured provider's `/models` endpoint
+and `ping` invokes `codex exec`. For `opencode-provider`, the same commands
+probe the OpenCode provider endpoint and `ping` invokes `opencode run` with the
+selected `provider/model`.
+
+`models list` fetches model IDs from an OpenAI-compatible provider's
+`options.baseURL/models` endpoint without changing config. `models sync` adds
+new IDs to `provider.<id>.models` and keeps existing model metadata unchanged.
+It never removes models. Use `--all` to continue through every configured
+provider and return status 1 if any provider cannot be queried. Credentials are
+read from `options.apiKey` or OpenCode's `~/.local/share/opencode/auth.json`;
+API keys are never printed.
+
+Running `switch` without a provider opens the existing provider picker. In a
+non-interactive environment, provide the provider explicitly.
+
+`delete` removes the provider block from the global OpenCode config while
+preserving unrelated JSONC content. It keeps the OpenCode auth entry by default;
+pass `--full` to remove that entry too. The current provider cannot be deleted
+until another provider is selected.
+
+`rename` updates the OpenCode provider key, the top-level default model when it
+uses that provider, and the matching OpenCode auth entry in one operation.
+
+## OpenCode files
+
+The tool follows the same XDG locations as OpenCode on macOS and Linux:
 
 ```text
-~/.codex-provider/
-├── .lock
-├── config.toml
-└── auth/
-    ├── anyrouter.json
-    └── example.json
-
-~/.codex/
-├── config.toml
-└── auth.json
+~/.config/opencode/opencode.jsonc
+~/.config/opencode/opencode.json
+~/.config/opencode/config.json
+~/.local/share/opencode/auth.json
 ```
 
-- `~/.codex-provider/config.toml` contains the full provider registry.
-- `~/.codex-provider/auth/<provider>.json` contains each provider auth
-  snapshot.
-- `~/.codex/config.toml` selects the stable runtime provider ID
-  `codex-provider` and contains only that provider block with the active
-  provider configuration.
-- `~/.codex/auth.json` contains the active auth snapshot.
+For global config, the first existing filename in the order above is used.
+`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_STATE_HOME` are respected.
 
-Before a persistent switch, the current runtime auth is saved back to its
-provider snapshot. The target auth and runtime config are then committed as one
-recoverable operation.
+Only providers explicitly defined under the global config's `provider` object
+are switchable because OpenCode requires a concrete model ID. Built-in
+providers that exist only in `auth.json` are not listed by this tool.
 
-## Tool config
-
-```toml
-codex_dir = "/home/you/.codex"
-active_provider = "anyrouter"
-
-[model_providers.anyrouter]
-base_url = "https://anyrouter.top/v1"
-name = "Any Router"
-requires_openai_auth = true
-wire_api = "responses"
-supports_websockets = false
-extra_headers = { x_team = "infra" }
-```
-
-Provider names must match `[A-Za-z0-9_-]+`. Custom provider values are carried
-into the active runtime block. Host-only HTTP(S) URLs are normalized to `/v1`.
-URLs containing user credentials, query parameters, fragments, or non-HTTP(S)
-schemes are rejected.
-
-The generated runtime config always uses a stable provider ID:
-
-```toml
-model_provider = "codex-provider"
-
-[model_providers.codex-provider]
-base_url = "https://anyrouter.top/v1"
-name = "Any Router"
-requires_openai_auth = true
-wire_api = "responses"
-```
-
-`active_provider` is the logical provider selected by this tool. Switching
-changes the contents of `[model_providers.codex-provider]` and `auth.json`, but
-never changes the runtime provider ID stored in new Codex sessions. Resuming a
-session therefore uses whichever logical provider is active at resume time.
-
-When an older tool config has no `active_provider`, the next state-loading
-command, such as `status` or `switch`, infers it from the legacy runtime config
-and migrates the runtime ID automatically. Migration removes old provider
-blocks from the runtime config so only `model_providers.codex-provider` remains.
-
-## Command behavior
-
-- `auth detail` reports the auth path, field names, value types, and whether a
-  field is configured. It never prints credential values.
-- `auth edit` validates the edited JSON and restores the original file if the
-  edit is invalid. POSIX permissions are reset to `0600` after a valid edit.
-- `config edit` validates the edited registry and restores the original file
-  if the edit is invalid. `$VISUAL` and `$EDITOR` may include arguments such as
-  `code --wait`.
-- `config detail` redacts values whose keys look credential-related, including
-  authorization headers, tokens, passwords, cookies, secrets, and API keys.
-- `switch --dry-run`, `add --dry-run`, and `delete --dry-run` do not write
-  state. On a fresh HOME, they do not create tool directories or lock files.
-- `rename` changes the logical provider key in the registry, renames the
-  matching auth snapshot, and updates `active_provider` when the renamed
-  provider is current. The runtime provider ID remains `codex-provider`.
-- `test` calls `<base_url>/models`, limits the response body to 2 MiB, and
-  requires an OpenAI-compatible JSON object with a `data` array.
-- `test --all` checks every configured provider with its own auth snapshot,
-  continues after individual failures, and prints an availability summary. It
-  exits with status 1 when any provider fails and does not change the active
-  provider.
-- `ping <provider>` holds the provider-state lock, temporarily updates runtime
-  config/auth, runs an ephemeral `codex exec`, and restores the original files
-  even when the command fails or is interrupted.
-- `doctor` checks registry/runtime consistency, auth JSON validity, missing
-  snapshots, legacy snapshots, and POSIX permissions.
-- `doctor --fix` archives legacy `~/.codex/auth.json.*` files and repairs
-  insecure POSIX permissions. It does not invent missing provider data.
-- On Unix-like terminals, `switch` without a provider uses an arrow-key menu.
-  On Windows, it uses a numbered prompt. In non-interactive environments, pass
-  the provider name explicitly.
+Project-level `opencode.json` files have higher precedence than the global
+config. If a project sets its own top-level `model`, that project setting will
+continue to override a global switch.
 
 ## Build
 
-The standalone binary is built with the pinned PyInstaller version in
-`requirements.txt`:
+One build invocation produces both standalone binaries:
 
 ```bash
 python build.py
 ./build.sh
+./dist/codex-provider --help
+./dist/opencode-provider --help
 ```
 
 On Windows:
@@ -218,22 +171,12 @@ On Windows:
 ```bat
 py -3 build.py
 build.cmd
+dist\opencode-provider.exe --help
+dist\codex-provider.exe --help
 ```
 
-The output is `dist/codex-provider-bin` on macOS/Linux and
-`dist/codex-provider-bin.exe` on Windows. `build.py` verifies the generated
-binary with `--help` after building and writes a matching `.sha256` checksum.
-UPX compression is disabled so the build does not vary based on whether UPX is
-installed on the build host. CI tests Python 3.11 through 3.13 on Linux, macOS,
-and Windows, builds a standalone binary on all three platforms, and uploads the
-binary plus checksum as workflow artifacts.
-
-The release version has one source of truth:
-`codex_provider_lib/constants.py`. Package metadata reads that value through
-setuptools dynamic metadata, and `build.py` rejects a binary whose `--version`
-output does not match it. If a command linked to `dist/codex-provider-bin`
-still shows an older version after a source update, rebuild it with
-`python build.py`.
+Use `--target codex` or `--target opencode` to build only one target.
+`build.py` verifies both binary versions and writes a matching `.sha256` file.
 
 ## Validation
 

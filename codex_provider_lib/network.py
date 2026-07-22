@@ -71,6 +71,7 @@ def run_models_test(
     api_key: str,
     timeout: float,
     current_provider: str | None,
+    program: str = "codex-provider",
 ) -> int:
     if timeout <= 0:
         raise SwitchError("timeout must be greater than 0")
@@ -81,7 +82,7 @@ def run_models_test(
         headers={
             "Authorization": f"Bearer {api_key}",
             "Accept": "application/json",
-            "User-Agent": f"codex-provider/{VERSION}",
+            "User-Agent": f"{program}/{VERSION}",
         },
     )
 
