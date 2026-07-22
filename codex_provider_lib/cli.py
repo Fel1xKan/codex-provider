@@ -13,6 +13,115 @@ AllProvidersTest = Callable[[float], int]
 DirectTest = Callable[[str, str, float], int]
 
 
+def add_auth_parser(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "auth", help="Inspect or edit provider authentication data"
+    )
+    commands = parser.add_subparsers(dest="auth_command", required=True)
+    detail = commands.add_parser(
+        "detail", help="Show auth metadata without printing credential values"
+    )
+    detail.add_argument(
+        "provider", nargs="?", help="Provider name; defaults to the current scope"
+    )
+    edit = commands.add_parser(
+        "edit", help="Open provider authentication data in $VISUAL or $EDITOR"
+    )
+    edit.add_argument(
+        "provider", nargs="?", help="Provider name; defaults to the current scope"
+    )
+
+
+def add_config_parser(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "config", help="Inspect or edit provider configuration"
+    )
+    commands = parser.add_subparsers(dest="config_command", required=True)
+    detail = commands.add_parser("detail", help="Show a provider config block")
+    detail.add_argument(
+        "provider", nargs="?", help="Provider name; defaults to the current provider"
+    )
+    edit = commands.add_parser(
+        "edit", help="Open provider configuration in $VISUAL or $EDITOR"
+    )
+    edit.add_argument(
+        "provider",
+        nargs="?",
+        help="Provider name to validate; defaults to the current provider",
+    )
+
+
+def add_doctor_parser(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "doctor", help="Validate provider configuration and authentication data"
+    )
+    parser.add_argument(
+        "--fix", action="store_true", help="Apply supported automatic repairs"
+    )
+
+
+def add_switch_parser(
+    subparsers: argparse._SubParsersAction, *, include_model: bool = False
+) -> None:
+    parser = subparsers.add_parser("switch", help="Switch the active provider")
+    parser.add_argument(
+        "provider",
+        nargs="?",
+        help="Provider name; opens an interactive picker when omitted",
+    )
+    if include_model:
+        parser.add_argument(
+            "-m", "--model", help="Model ID or provider/model; prompts when ambiguous"
+        )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing files"
+    )
+
+
+def add_provider_parsers(subparsers: argparse._SubParsersAction) -> None:
+    add = subparsers.add_parser("add", help="Add a provider config and auth entry")
+    add.add_argument("base_url", help="Provider base_url")
+    add.add_argument("legacy_api_key", nargs="?", help=argparse.SUPPRESS)
+    add.add_argument(
+        "--api-key-stdin",
+        action="store_true",
+        help="Read API key from stdin instead of a hidden interactive prompt",
+    )
+    add.add_argument(
+        "--provider", help="Provider name; defaults to the base_url domain"
+    )
+    add.add_argument(
+        "--name", dest="display_name", help="Display name stored in provider config"
+    )
+    add.add_argument(
+        "--wire-api", default="responses", help="wire_api value, default: responses"
+    )
+    add.add_argument(
+        "--supports-websockets",
+        choices=["true", "false"],
+        help="Set supports_websockets explicitly when supported by the backend",
+    )
+    add.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing files"
+    )
+
+    delete = subparsers.add_parser("delete", help="Delete a provider config")
+    delete.add_argument("provider", help="Provider name to delete")
+    delete.add_argument(
+        "--full", action="store_true", help="Also remove provider authentication data"
+    )
+    delete.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing files"
+    )
+
+    rename = subparsers.add_parser("rename", help="Rename a provider")
+    rename.add_argument("old_provider", help="Existing provider name")
+    rename.add_argument("new_provider", help="New provider name")
+    rename.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing files"
+    )
+
+
 def add_test_parser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "test", help="Test a provider or direct base_url with /models"

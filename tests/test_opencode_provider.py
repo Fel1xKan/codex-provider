@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
 import json5
 import pytest
 
+import codex_provider as codex
 import opencode_provider as op
 
 
@@ -255,6 +257,28 @@ def test_models_sync_adds_missing_ids_and_preserves_existing_config(
     assert data["provider"]["alpha"]["models"]["gpt-5-new"] == {}
 
 
+def test_models_sync_adds_first_model_to_empty_models_object(
+    opencode_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = write_config(opencode_paths)
+    data = json.loads(config.read_text())
+    data["provider"]["alpha"]["models"] = {}
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        op.urllib.request,
+        "urlopen",
+        lambda request, timeout: ModelsResponse(
+            json.dumps({"data": [{"id": "first-model"}]}).encode()
+        ),
+    )
+
+    assert op.main(["models", "sync", "alpha"]) == 0
+
+    updated = json5.loads(config.read_text())
+    assert updated["provider"]["alpha"]["models"] == {"first-model": {}}
+
+
 def test_models_list_uses_auth_json_without_printing_secret(
     opencode_paths: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -399,3 +423,183 @@ def test_delete_dry_run_does_not_write(
 
     assert config.read_bytes() == before
     assert not op.STATE_DIR.exists()
+
+
+def test_add_provider_matches_codex_arguments_and_writes_auth(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write_config(opencode_paths)
+    monkeypatch.setattr(op, "read_api_key", lambda from_stdin: "placeholder-new-key")
+
+    assert (
+        op.main(
+            [
+                "add",
+                "https://api.dejong21.me",
+                "--provider",
+                "dejong",
+                "--name",
+                "DeJong",
+                "--api-key-stdin",
+            ]
+        )
+        == 0
+    )
+
+    config_data = json5.loads(config.read_text())
+    added = config_data["provider"]["dejong"]
+    assert added["name"] == "DeJong"
+    assert added["npm"] == "@ai-sdk/openai"
+    assert added["options"]["baseURL"] == "https://api.dejong21.me/v1"
+    auth = json.loads(op.AUTH_PATH.read_text())
+    assert auth["dejong"] == {"type": "api", "key": "placeholder-new-key"}
+
+
+def test_add_rejects_positional_api_key(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_config(opencode_paths)
+
+    assert op.main(["add", "https://api.example.com", "secret"]) == 1
+    assert "must not be passed as a command argument" in capsys.readouterr().err
+
+
+def parser_commands(
+    parser: argparse.ArgumentParser,
+) -> dict[str, argparse.ArgumentParser]:
+    action = next(
+        item for item in parser._actions if isinstance(item, argparse._SubParsersAction)
+    )
+    return action.choices
+
+
+def parser_signature(parser: argparse.ArgumentParser) -> set[tuple[object, ...]]:
+    return {
+        (
+            action.dest,
+            tuple(action.option_strings),
+            action.nargs,
+            action.required,
+            tuple(action.choices) if action.choices is not None else None,
+        )
+        for action in parser._actions
+        if action.dest != "help"
+    }
+
+
+def test_command_matrix_matches_codex_with_models_extension() -> None:
+    codex_commands = parser_commands(codex.build_parser())
+    opencode_commands = parser_commands(op.build_parser())
+
+    assert set(opencode_commands) == set(codex_commands) | {"models"}
+    for command in set(codex_commands) - {"switch"}:
+        assert parser_signature(opencode_commands[command]) == parser_signature(
+            codex_commands[command]
+        )
+    assert parser_signature(codex_commands["switch"]) < parser_signature(
+        opencode_commands["switch"]
+    )
+
+
+def test_auth_detail_never_prints_credentials(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_config(opencode_paths)
+    op.AUTH_PATH.write_text(
+        json.dumps(
+            {
+                "alpha": {
+                    "type": "api",
+                    "key": "placeholder-alpha-secret",
+                    "refresh": "placeholder-refresh-secret",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert op.main(["auth", "detail", "alpha"]) == 0
+
+    output = capsys.readouterr().out
+    assert "provider: alpha" in output
+    assert "key: configured" in output
+    assert "refresh: configured" in output
+    assert "placeholder-alpha-secret" not in output
+    assert "placeholder-refresh-secret" not in output
+
+
+def test_config_detail_redacts_inline_api_key(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_config(opencode_paths)
+
+    assert op.main(["config", "detail", "alpha"]) == 0
+
+    output = capsys.readouterr().out
+    assert '"alpha"' in output
+    assert '"apiKey": "[REDACTED]"' in output
+    assert "placeholder-secret" not in output
+
+
+def test_config_detail_redacts_common_secret_key_spellings(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(opencode_paths)
+    data = json.loads(config.read_text())
+    data["provider"]["alpha"]["options"].update(
+        {
+            "api_key": "placeholder-api-key",
+            "access-token": "placeholder-access-token",
+            "client_secret": "placeholder-client-secret",
+        }
+    )
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    assert op.main(["config", "detail", "alpha"]) == 0
+
+    output = capsys.readouterr().out
+    assert output.count("[REDACTED]") == 4
+    assert "placeholder-api-key" not in output
+    assert "placeholder-access-token" not in output
+    assert "placeholder-client-secret" not in output
+
+
+def test_doctor_accepts_shared_fix_argument(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_config(opencode_paths)
+
+    assert op.main(["doctor", "--fix"]) == 0
+
+    output = capsys.readouterr().out
+    assert "doctor fix: no repairs needed" in output
+    assert "doctor result: ok" in output
+
+
+def test_rename_updates_provider_current_model_and_auth(
+    opencode_paths: Path,
+) -> None:
+    config = write_config(opencode_paths)
+    data = json.loads(config.read_text())
+    data["model"] = "alpha/gpt-5"
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    op.AUTH_PATH.write_text(
+        json.dumps(
+            {
+                "alpha": {"type": "api", "key": "placeholder-alpha"},
+                "beta": {"type": "api", "key": "placeholder-beta"},
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert op.main(["rename", "alpha", "renamed"]) == 0
+
+    updated = json5.loads(config.read_text())
+    assert set(updated["provider"]) == {"renamed", "beta"}
+    assert updated["model"] == "renamed/gpt-5"
+    auth = json.loads(op.AUTH_PATH.read_text())
+    assert set(auth) == {"renamed", "beta"}
+    assert auth["renamed"]["key"] == "placeholder-alpha"

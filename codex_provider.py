@@ -28,7 +28,12 @@ from codex_provider_lib import (
     SwitchError,
 )
 from codex_provider_lib.cli import (
+    add_auth_parser,
+    add_config_parser,
+    add_doctor_parser,
     add_ping_parser,
+    add_provider_parsers,
+    add_switch_parser,
     add_test_parser,
 )
 from codex_provider_lib.cli import (
@@ -1410,122 +1415,13 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "status", help="Show current provider and auth profile availability"
     )
-    auth_parser = subparsers.add_parser(
-        "auth", help="Inspect or edit runtime/provider auth.json files"
-    )
-    auth_subparsers = auth_parser.add_subparsers(dest="auth_command", required=True)
-    auth_detail_parser = auth_subparsers.add_parser(
-        "detail", help="Show auth metadata without printing credential values"
-    )
-    auth_detail_parser.add_argument(
-        "provider",
-        nargs="?",
-        help="Provider name; defaults to current runtime auth.json",
-    )
-    auth_edit_parser = auth_subparsers.add_parser(
-        "edit",
-        help="Open runtime auth.json or a provider auth snapshot in $VISUAL or $EDITOR",
-    )
-    auth_edit_parser.add_argument(
-        "provider",
-        nargs="?",
-        help="Provider name; defaults to current runtime auth.json",
-    )
-    config_parser = subparsers.add_parser(
-        "config", help="Inspect or edit provider config blocks"
-    )
-    config_subparsers = config_parser.add_subparsers(
-        dest="config_command", required=True
-    )
-    config_detail_parser = config_subparsers.add_parser(
-        "detail", help="Show a provider config block from ~/.codex-provider/config.toml"
-    )
-    config_detail_parser.add_argument(
-        "provider", nargs="?", help="Provider name; defaults to current provider"
-    )
-    config_edit_parser = config_subparsers.add_parser(
-        "edit", help="Open ~/.codex-provider/config.toml in $VISUAL or $EDITOR"
-    )
-    config_edit_parser.add_argument(
-        "provider",
-        nargs="?",
-        help="Provider name to validate before opening; defaults to current provider",
-    )
-    doctor_parser = subparsers.add_parser(
-        "doctor", help="Create ~/.codex-provider if needed and run basic checks"
-    )
-    doctor_parser.add_argument(
-        "--fix",
-        action="store_true",
-        help="Archive legacy ~/.codex/auth.json.* files to .bak.<timestamp>",
-    )
-
-    switch_parser = subparsers.add_parser(
-        "switch", help="Switch the active logical provider"
-    )
-    switch_parser.add_argument(
-        "provider",
-        nargs="?",
-        help="Provider name from registry; opens interactive picker when omitted",
-    )
-    switch_parser.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
+    add_auth_parser(subparsers)
+    add_config_parser(subparsers)
+    add_doctor_parser(subparsers)
+    add_switch_parser(subparsers)
     add_test_parser(subparsers)
     add_ping_parser(subparsers, "codex")
-
-    add_parser = subparsers.add_parser(
-        "add", help="Add a provider config and auth profile"
-    )
-    add_parser.add_argument("base_url", help="Provider base_url")
-    add_parser.add_argument("legacy_api_key", nargs="?", help=argparse.SUPPRESS)
-    add_parser.add_argument(
-        "--api-key-stdin",
-        action="store_true",
-        help="Read API key from stdin instead of a hidden interactive prompt",
-    )
-    add_parser.add_argument(
-        "--provider", help="Provider name; defaults to the base_url domain"
-    )
-    add_parser.add_argument(
-        "--name",
-        dest="display_name",
-        help="Display name stored in provider config",
-    )
-    add_parser.add_argument(
-        "--wire-api", default="responses", help="wire_api value, default: responses"
-    )
-    add_parser.add_argument(
-        "--supports-websockets",
-        choices=["true", "false"],
-        help="Set supports_websockets explicitly",
-    )
-    add_parser.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
-    delete_parser = subparsers.add_parser(
-        "delete", help="Delete a provider config from registry"
-    )
-    delete_parser.add_argument("provider", help="Provider name to delete")
-    delete_parser.add_argument(
-        "--full",
-        action="store_true",
-        help="Also remove ~/.codex-provider/auth/<provider>.json",
-    )
-    delete_parser.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
-    rename_parser = subparsers.add_parser(
-        "rename", help="Rename a provider in the registry"
-    )
-    rename_parser.add_argument("old_provider", help="Existing provider name")
-    rename_parser.add_argument("new_provider", help="New provider name")
-    rename_parser.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
+    add_provider_parsers(subparsers)
 
     return parser
 

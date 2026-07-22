@@ -17,19 +17,26 @@ from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import json5
 
 from codex_provider_lib import VERSION, SwitchError
 from codex_provider_lib.cli import (
+    add_auth_parser,
+    add_config_parser,
+    add_doctor_parser,
     add_ping_parser,
+    add_provider_parsers,
+    add_switch_parser,
     add_test_parser,
+    read_api_key,
 )
 from codex_provider_lib.cli import (
     dispatch_test as dispatch_common_test,
 )
 from codex_provider_lib.network import normalize_base_url, run_models_test
-from codex_provider_lib.platform import select_provider_interactive
+from codex_provider_lib.platform import run_editor, select_provider_interactive
 
 if os.name == "nt":
     import msvcrt
@@ -445,6 +452,137 @@ def print_status() -> int:
     return print_list()
 
 
+def show_auth(provider: str | None) -> int:
+    if not AUTH_PATH.exists():
+        raise SwitchError(f"auth file not found: {AUTH_PATH}")
+    try:
+        data = json.loads(AUTH_PATH.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SwitchError(f"invalid OpenCode auth JSON: {AUTH_PATH}") from exc
+    if not isinstance(data, dict):
+        raise SwitchError(f"OpenCode auth file must contain an object: {AUTH_PATH}")
+    if provider is not None and provider not in data:
+        raise SwitchError(f"auth entry not found: {provider}")
+    print(f"auth file: {AUTH_PATH}")
+    if provider is not None:
+        print(f"provider: {provider}")
+    print("fields:")
+    entries = {provider: data[provider]} if provider else data
+    for name, value in sorted(entries.items()):
+        if not isinstance(value, dict):
+            print(f"- {name}: invalid ({type(value).__name__})")
+            continue
+        print(f"- {name}: type={value.get('type', '(missing)')}")
+        for key in sorted(value):
+            if key != "type":
+                print(f"  {key}: configured ({type(value[key]).__name__})")
+    return 0
+
+
+def edit_auth(provider: str | None) -> int:
+    if provider is not None:
+        load_auth_keys()
+        if provider not in load_auth_provider_ids():
+            raise SwitchError(f"auth entry not found: {provider}")
+    if not AUTH_PATH.exists():
+        raise SwitchError(f"auth file not found: {AUTH_PATH}")
+    before = AUTH_PATH.read_text(encoding="utf-8")
+    run_editor(AUTH_PATH)
+    try:
+        load_auth_keys()
+    except SwitchError:
+        atomic_write_config(AUTH_PATH, AUTH_PATH.read_text(encoding="utf-8"), before)
+        raise
+    print(f"edited auth file: {AUTH_PATH}")
+    return 0
+
+
+def redact_config(value: Any) -> Any:
+    sensitive = {
+        "apikey",
+        "key",
+        "authorization",
+        "token",
+        "accesstoken",
+        "refreshtoken",
+        "password",
+        "secret",
+        "clientsecret",
+    }
+    if isinstance(value, dict):
+        return {
+            name: (
+                "[REDACTED]"
+                if re.sub(r"[^a-z0-9]", "", name.lower()) in sensitive
+                else redact_config(item)
+            )
+            for name, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_config(item) for item in value]
+    return value
+
+
+def show_config(provider: str | None) -> int:
+    state = load_state()
+    target = provider or state.current_provider
+    if not target:
+        raise SwitchError("no current provider; pass a provider name")
+    if target not in state.providers:
+        raise SwitchError(f"unknown provider '{target}'")
+    print(f"global config: {state.path}")
+    targets = {target: state.providers[target]}
+    print(json.dumps(redact_config(targets), ensure_ascii=False, indent=2))
+    return 0
+
+
+def edit_config(provider: str | None) -> int:
+    if provider is not None:
+        state = load_state()
+        if provider not in state.providers:
+            raise SwitchError(f"unknown provider '{provider}'")
+    state = load_state()
+    before = state.text
+    run_editor(state.path)
+    try:
+        load_state()
+    except SwitchError:
+        atomic_write_config(state.path, state.path.read_text(encoding="utf-8"), before)
+        raise
+    print(f"edited global config: {state.path}")
+    return 0
+
+
+def doctor(fix: bool) -> int:
+    issues = []
+    try:
+        state = load_state()
+        print(f"global config: {state.path}")
+        print(f"providers: {len(state.providers)}")
+        for provider in sorted(state.providers):
+            try:
+                count = len(provider_models(state, provider))
+            except SwitchError as exc:
+                issues.append(str(exc))
+                continue
+            print(f"- {provider}: models={count}")
+    except SwitchError as exc:
+        issues.append(str(exc))
+    try:
+        load_auth_provider_ids()
+    except SwitchError as exc:
+        issues.append(str(exc))
+    if issues:
+        print("doctor result: issues found")
+        for issue in issues:
+            print(f"- {issue}")
+        return 1
+    if fix:
+        print("doctor fix: no repairs needed")
+    print("doctor result: ok")
+    return 0
+
+
 def select_model_interactive(
     provider: str, models: dict[str, dict[str, Any]]
 ) -> str | None:
@@ -692,6 +830,68 @@ def patch_delete_provider(text: str, provider: str) -> str:
     return text[:start] + text[end:]
 
 
+def patch_rename_provider(text: str, old: str, new: str) -> str:
+    tokens = tokenize_jsonc(text)
+    matches = object_matches(tokens)
+    root_end = matches.get(0)
+    if root_end is None:
+        raise SwitchError("OpenCode config must contain a top-level object")
+    provider_value = object_properties(tokens, 0, root_end).get("provider")
+    provider_end = matches.get(provider_value) if provider_value is not None else None
+    if provider_value is None or provider_end is None:
+        raise SwitchError("provider config must contain an object")
+    entries = object_property_entries(tokens, provider_value, provider_end)
+    if old not in entries:
+        raise SwitchError(f"unknown provider '{old}'")
+    if new in entries:
+        raise SwitchError(f"provider already exists: {new}")
+    key_index, _ = entries[old]
+    old_key = tokens[key_index]
+    return text[: old_key.start] + json.dumps(new) + text[old_key.end :]
+
+
+def rename_provider(old: str, new: str, dry_run: bool) -> int:
+    if not PROVIDER_PATTERN.fullmatch(new):
+        raise SwitchError(f"invalid provider ID: {new}")
+    lock = nullcontext() if dry_run else state_lock()
+    with lock:
+        state = load_state()
+        if old == new:
+            raise SwitchError("old and new provider IDs must differ")
+        updated = patch_rename_provider(state.text, old, new)
+        if state.data.get("model", "").startswith(old + "/"):
+            updated = patch_default_model(
+                updated, new + "/" + state.data["model"].split("/", 1)[1]
+            )
+        read_jsonc_text(state.path, updated)
+        auth_text = (
+            AUTH_PATH.read_text(encoding="utf-8") if AUTH_PATH.exists() else "{}"
+        )
+        try:
+            auth_data = json.loads(auth_text)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise SwitchError(f"invalid OpenCode auth JSON: {AUTH_PATH}") from exc
+        if not isinstance(auth_data, dict):
+            raise SwitchError(f"OpenCode auth file must contain an object: {AUTH_PATH}")
+        auth_changed = old in auth_data
+        if auth_changed:
+            if new in auth_data:
+                raise SwitchError(f"auth entry already exists: {new}")
+            auth_data[new] = auth_data.pop(old)
+        updated_auth = json.dumps(auth_data, ensure_ascii=False, indent=2) + "\n"
+        if not dry_run:
+            atomic_write_config(state.path, state.text, updated)
+            if auth_changed:
+                try:
+                    atomic_write_config(AUTH_PATH, auth_text, updated_auth)
+                except SwitchError:
+                    atomic_write_config(state.path, updated, state.text)
+                    raise
+    action = "would rename" if dry_run else "renamed"
+    print(f"{action} provider: {old} -> {new}")
+    return 0
+
+
 def patch_provider_models(text: str, provider: str, model_ids: list[str]) -> str:
     if not model_ids:
         return text
@@ -724,9 +924,11 @@ def patch_provider_models(text: str, provider: str, model_ids: list[str]) -> str
             return text
         close = tokens[models_end]
         line = text.rfind("\n", 0, close.start) + 1
-        indent = text[line : close.start] + "  "
+        close_prefix = text[line : close.start]
+        base_indent = close_prefix[: len(close_prefix) - len(close_prefix.lstrip())]
+        indent = base_indent + "  "
         previous = tokens[models_end - 1]
-        comma = "" if previous.kind == "," else ","
+        comma = "" if previous.kind in {",", "{"} else ","
         additions = "".join(
             f"{indent}{json.dumps(model)}: {{}}"
             f"{',' if index < len(missing) - 1 else ''}\n"
@@ -737,6 +939,7 @@ def patch_provider_models(text: str, provider: str, model_ids: list[str]) -> str
             + comma
             + "\n"
             + additions
+            + base_indent
             + text[close.start :]
         )
 
@@ -752,6 +955,110 @@ def patch_provider_models(text: str, provider: str, model_ids: list[str]) -> str
         + f'\n{indent}"models": {{\n{entries}\n{text[line : close.start]}}}'
         + text[close.start :]
     )
+
+
+def patch_add_provider(
+    text: str, provider: str, provider_config: dict[str, Any]
+) -> str:
+    tokens = tokenize_jsonc(text)
+    matches = object_matches(tokens)
+    root_end = matches.get(0)
+    if root_end is None:
+        raise SwitchError("OpenCode config must contain a top-level object")
+    provider_value = object_properties(tokens, 0, root_end).get("provider")
+    provider_end = matches.get(provider_value) if provider_value is not None else None
+    if provider_value is None or provider_end is None:
+        raise SwitchError("provider config must contain an object")
+    provider_props = object_properties(tokens, provider_value, provider_end)
+    if provider in provider_props:
+        raise SwitchError(f"provider already exists: {provider}")
+
+    close = tokens[provider_end]
+    line = text.rfind("\n", 0, close.start) + 1
+    close_indent = text[line : close.start]
+    indent = close_indent + "  "
+    previous = tokens[provider_end - 1]
+    comma = "" if previous.kind == "," else ","
+    serialized = json.dumps(provider_config, ensure_ascii=False, indent=2)
+    serialized_lines = serialized.splitlines()
+    formatted = "\n".join(
+        (indent + serialized_lines[0]) if index == 0 else indent + line_value
+        for index, line_value in enumerate(serialized_lines)
+    )
+    return (
+        text[: close.start].rstrip()
+        + comma
+        + f"\n{indent}{json.dumps(provider)}: {formatted[len(indent) :]},"
+        + text[close.start :]
+    )
+
+
+def derive_provider_name(base_url: str) -> str:
+    hostname = urlparse(base_url).hostname
+    if not hostname:
+        raise SwitchError("unable to derive provider name from base_url")
+    name = re.sub(r"[^A-Za-z0-9_-]+", "-", hostname.split(".")[0]).strip("-_")
+    if not name:
+        raise SwitchError("unable to derive provider name from base_url")
+    return name.lower()
+
+
+def add_provider(
+    base_url: str,
+    api_key: str,
+    provider: str | None,
+    display_name: str | None,
+    wire_api: str,
+    dry_run: bool,
+) -> int:
+    base_url = normalize_base_url(base_url)
+    provider = provider or derive_provider_name(base_url)
+    if not PROVIDER_PATTERN.fullmatch(provider):
+        raise SwitchError(f"invalid provider ID: {provider}")
+    if not api_key:
+        raise SwitchError("api_key must not be empty")
+    display_name = (display_name or provider).strip()
+    if not display_name:
+        raise SwitchError("display name must not be empty")
+    npm = "@ai-sdk/openai" if wire_api == "responses" else "@ai-sdk/openai-compatible"
+    provider_config = {
+        "name": display_name,
+        "npm": npm,
+        "options": {"baseURL": base_url},
+        "models": {},
+    }
+    auth_data = {"type": "api", "key": api_key}
+    lock = nullcontext() if dry_run else state_lock()
+    with lock:
+        state = load_state()
+        updated = patch_add_provider(state.text, provider, provider_config)
+        read_jsonc_text(state.path, updated)
+        auth_text = (
+            AUTH_PATH.read_text(encoding="utf-8") if AUTH_PATH.exists() else "{}"
+        )
+        try:
+            auth_payload = json.loads(auth_text)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise SwitchError(f"invalid OpenCode auth JSON: {AUTH_PATH}") from exc
+        if not isinstance(auth_payload, dict):
+            raise SwitchError(f"OpenCode auth file must contain an object: {AUTH_PATH}")
+        if provider in auth_payload:
+            raise SwitchError(f"auth entry already exists: {provider}")
+        auth_payload[provider] = auth_data
+        updated_auth = json.dumps(auth_payload, ensure_ascii=False, indent=2) + "\n"
+        if not dry_run:
+            atomic_write_config(state.path, state.text, updated)
+            try:
+                atomic_write_config(AUTH_PATH, auth_text, updated_auth)
+            except SwitchError:
+                atomic_write_config(state.path, updated, state.text)
+                raise
+    action = "would add" if dry_run else "added"
+    print(f"{action} provider: {provider}")
+    print(f"base_url: {base_url}")
+    print(f"auth file: {AUTH_PATH}")
+    print("models: none; run 'opencode-provider models sync " + provider + "'")
+    return 0
 
 
 def sync_provider(provider: str, timeout: float, dry_run: bool) -> int:
@@ -795,9 +1102,10 @@ def sync_all_providers(timeout: float, dry_run: bool) -> int:
 
 def atomic_write_config(path: Path, original: str, updated: str) -> None:
     try:
-        if path.read_text(encoding="utf-8") != original:
+        if path.exists() and path.read_text(encoding="utf-8") != original:
             raise SwitchError(f"OpenCode config changed while switching: {path}")
-        mode = path.stat().st_mode & 0o777
+        path.parent.mkdir(parents=True, exist_ok=True)
+        mode = path.stat().st_mode & 0o777 if path.exists() else 0o600
         temp_path: Path | None = None
         with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
             temp_path = Path(handle.name)
@@ -948,6 +1256,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "status", help="Show the current global default and providers"
     )
+    add_auth_parser(subparsers)
+    add_config_parser(subparsers)
+    add_doctor_parser(subparsers)
     models_parser = subparsers.add_parser(
         "models", help="Discover models from OpenAI-compatible providers"
     )
@@ -970,32 +1281,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_test_parser(subparsers)
     add_ping_parser(subparsers, "opencode")
-    switch_parser = subparsers.add_parser(
-        "switch", help="Switch the global default provider/model"
-    )
-    switch_parser.add_argument(
-        "provider",
-        nargs="?",
-        help="Provider ID; opens an interactive picker when omitted",
-    )
-    switch_parser.add_argument(
-        "-m", "--model", help="Model ID or provider/model; prompts when ambiguous"
-    )
-    switch_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview the config change without writing",
-    )
-    delete_parser = subparsers.add_parser(
-        "delete", help="Delete a provider from OpenCode global config"
-    )
-    delete_parser.add_argument("provider", help="Provider ID to delete")
-    delete_parser.add_argument(
-        "--full", action="store_true", help="Also remove the OpenCode auth entry"
-    )
-    delete_parser.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing"
-    )
+    add_switch_parser(subparsers, include_model=True)
+    add_provider_parsers(subparsers)
     return parser
 
 
@@ -1007,6 +1294,18 @@ def main(argv: list[str] | None = None) -> int:
             return print_list()
         if args.command == "status":
             return print_status()
+        if args.command == "auth":
+            if args.auth_command == "detail":
+                return show_auth(args.provider)
+            if args.auth_command == "edit":
+                return edit_auth(args.provider)
+        if args.command == "config":
+            if args.config_command == "detail":
+                return show_config(args.provider)
+            if args.config_command == "edit":
+                return edit_config(args.provider)
+        if args.command == "doctor":
+            return doctor(args.fix)
         if args.command == "test":
             return dispatch_test(args.args, args.api_key_stdin, args.timeout, args.all)
         if args.command in {"ping", "p"}:
@@ -1045,6 +1344,28 @@ def main(argv: list[str] | None = None) -> int:
             return switch_provider(provider, args.model, args.dry_run)
         if args.command == "delete":
             return delete_provider(args.provider, args.full, args.dry_run)
+        if args.command == "add":
+            if args.legacy_api_key is not None:
+                raise SwitchError(
+                    "API keys must not be passed as a command argument; "
+                    "use the hidden prompt or --api-key-stdin"
+                )
+            if args.supports_websockets is not None:
+                print(
+                    "warning: --supports-websockets has no OpenCode config equivalent; "
+                    "the value is not stored",
+                    file=sys.stderr,
+                )
+            return add_provider(
+                args.base_url,
+                read_api_key(args.api_key_stdin),
+                args.provider,
+                args.display_name,
+                args.wire_api,
+                args.dry_run,
+            )
+        if args.command == "rename":
+            return rename_provider(args.old_provider, args.new_provider, args.dry_run)
     except SwitchError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
