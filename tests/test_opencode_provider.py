@@ -369,6 +369,34 @@ def test_ping_command_matches_codex_provider_shape(
     ]
 
 
+def test_ping_all_pings_every_provider(
+    opencode_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_config(opencode_paths)
+    calls = []
+
+    def fake_ping(
+        provider: str | None, timeout: float, model: str | None, prompt: str
+    ) -> int:
+        calls.append((provider, timeout, model, prompt))
+        return 0 if provider == "alpha" else 1
+
+    monkeypatch.setattr(op, "ping_provider", fake_ping)
+
+    assert op.main(["ping", "--all", "--timeout", "5", "--prompt", "hello"]) == 1
+    assert calls == [
+        ("alpha", 5.0, None, "hello"),
+        ("beta", 5.0, None, "hello"),
+    ]
+    output = capsys.readouterr().out
+    assert "provider ping summary:" in output
+    assert "- alpha: ok" in output
+    assert "- beta: failed" in output
+    assert "available: 1/2" in output
+
+
 def test_delete_provider_preserves_other_config(
     opencode_paths: Path,
 ) -> None:
@@ -399,6 +427,26 @@ def test_delete_full_removes_auth_entry(
 
     auth = json.loads(op.AUTH_PATH.read_text())
     assert set(auth) == {"alpha"}
+
+
+def test_delete_full_removes_orphaned_auth_entry(
+    opencode_paths: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_config(opencode_paths)
+    op.AUTH_PATH.write_text(
+        json.dumps({"beta": {"type": "api", "key": "beta-key"}}),
+        encoding="utf-8",
+    )
+
+    assert op.main(["delete", "beta"]) == 0
+    assert "beta" in json.loads(op.AUTH_PATH.read_text())
+
+    assert op.main(["delete", "beta", "--full"]) == 0
+    assert "beta" not in json.loads(op.AUTH_PATH.read_text())
+    output = capsys.readouterr().out
+    assert "provider not found: beta" in output
+    assert "removed auth entry: beta" in output
 
 
 def test_delete_rejects_current_provider(
@@ -453,6 +501,58 @@ def test_add_provider_matches_codex_arguments_and_writes_auth(
     assert added["options"]["baseURL"] == "https://api.dejong21.me/v1"
     auth = json.loads(op.AUTH_PATH.read_text())
     assert auth["dejong"] == {"type": "api", "key": "placeholder-new-key"}
+
+
+def test_add_provider_replaces_orphaned_auth_entry(
+    opencode_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_config(opencode_paths)
+    op.AUTH_PATH.write_text(
+        json.dumps({"sub": {"type": "api", "key": "old-key"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(op, "read_api_key", lambda from_stdin: "new-key")
+
+    assert (
+        op.main(
+            [
+                "add",
+                "https://sub.yxxb.eu.cc/",
+                "--provider",
+                "sub",
+                "--api-key-stdin",
+            ]
+        )
+        == 0
+    )
+
+    assert json.loads(op.AUTH_PATH.read_text())["sub"] == {
+        "type": "api",
+        "key": "new-key",
+    }
+    assert "replaced auth entry: sub" in capsys.readouterr().out
+
+
+def test_auth_edit_can_update_orphaned_auth_entry(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_config(opencode_paths)
+    op.AUTH_PATH.write_text(
+        json.dumps({"sub": {"type": "api", "key": "old-key"}}),
+        encoding="utf-8",
+    )
+
+    def update_key(path: Path) -> None:
+        data = json.loads(path.read_text())
+        data["sub"]["key"] = "new-key"
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+    monkeypatch.setattr(op, "run_editor", update_key)
+
+    assert op.main(["auth", "edit", "sub"]) == 0
+    assert json.loads(op.AUTH_PATH.read_text())["sub"]["key"] == "new-key"
 
 
 def test_add_rejects_positional_api_key(

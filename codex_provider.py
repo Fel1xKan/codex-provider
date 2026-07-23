@@ -37,6 +37,9 @@ from codex_provider_lib.cli import (
     add_test_parser,
 )
 from codex_provider_lib.cli import (
+    dispatch_ping as dispatch_common_ping,
+)
+from codex_provider_lib.cli import (
     dispatch_test as dispatch_common_test,
 )
 from codex_provider_lib.cli import (
@@ -647,6 +650,8 @@ def add_provider(
         if supports_websockets is not None:
             providers[provider]["supports_websockets"] = supports_websockets
 
+        profile = auth_profile_path(provider, create=not dry_run)
+        auth_replaced = profile.exists()
         if not dry_run:
             base_text = TOOL_CONFIG_PATH.read_text(encoding="utf-8")
             updated_state = ProviderState(
@@ -664,15 +669,18 @@ def add_provider(
             commit_file_changes(
                 [
                     FileChange(TOOL_CONFIG_PATH, registry_payload),
-                    FileChange(auth_profile_path(provider), auth_payload, secret=True),
+                    FileChange(profile, auth_payload, secret=True),
                 ]
             )
 
     action = "would add" if dry_run else "added"
     print(f"{action} provider: {provider}")
     print(f"display name: {providers[provider]['name']}")
-    profile = auth_profile_path(provider, create=not dry_run)
-    print(f"{'would create' if dry_run else 'created'} auth profile: {profile}")
+    if auth_replaced:
+        auth_action = "would replace" if dry_run else "replaced"
+    else:
+        auth_action = "would create" if dry_run else "created"
+    print(f"{auth_action} auth profile: {profile}")
     print(f"current provider remains: {current or '(none)'}")
     return 0
 
@@ -920,6 +928,7 @@ def edit_provider_config(provider: str | None) -> int:
 
     print(f"opening {TOOL_CONFIG_PATH}")
     print(f"target provider: {target}")
+    print(f"API key: use 'codex-provider auth edit {target}'")
     before = snapshot_file(TOOL_CONFIG_PATH)
     run_editor(TOOL_CONFIG_PATH)
     try:
@@ -1116,6 +1125,52 @@ def ping_provider(
         return run_codex_ping(state.active_provider, timeout, model, prompt)
     with temporary_provider(provider) as current:
         return run_codex_ping(current, timeout, model, prompt)
+
+
+def ping_all_providers(timeout: float, model: str | None, prompt: str) -> int:
+    state = ensure_provider_state()
+    if not state.providers:
+        raise SwitchError("no providers configured")
+
+    results: list[tuple[str, int]] = []
+    for index, provider in enumerate(sorted(state.providers)):
+        if index:
+            print("")
+        try:
+            result = ping_provider(provider, timeout, model, prompt)
+        except SwitchError as exc:
+            print(f"current provider: {state.active_provider}")
+            print(f"ping provider: {provider}")
+            print("ping result: failed")
+            print(f"error: {exc}")
+            result = 1
+        results.append((provider, result))
+
+    available = sum(result == 0 for _, result in results)
+    print("")
+    print("provider ping summary:")
+    for provider, result in results:
+        print(f"- {provider}: {'ok' if result == 0 else 'failed'}")
+    print(f"available: {available}/{len(results)}")
+    return 0 if available == len(results) else 1
+
+
+def dispatch_ping(
+    provider: str | None,
+    ping_all: bool,
+    timeout: float,
+    model: str | None,
+    prompt: str,
+) -> int:
+    return dispatch_common_ping(
+        provider,
+        ping_all,
+        timeout,
+        model,
+        prompt,
+        ping_provider,
+        ping_all_providers,
+    )
 
 
 def archive_legacy_profiles() -> list[tuple[Path, Path]]:
@@ -1460,7 +1515,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.args, args.api_key_stdin, args.timeout, test_all=args.all
             )
         if args.command in {"ping", "p"}:
-            return ping_provider(args.provider, args.timeout, args.model, args.prompt)
+            return dispatch_ping(
+                args.provider, args.all, args.timeout, args.model, args.prompt
+            )
         if args.command == "add":
             if args.legacy_api_key is not None:
                 raise SwitchError(

@@ -147,6 +147,55 @@ def test_all_rejects_a_specific_target(
     assert "--all cannot be combined" in capsys.readouterr().err
 
 
+def test_ping_all_pings_every_provider_and_restores_current_provider(
+    initialized_registry: IsolatedPaths,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls = []
+
+    def fake_codex_ping(
+        provider: str, timeout: float, model: str | None, prompt: str
+    ) -> int:
+        calls.append((provider, timeout, model, prompt))
+        return 0 if provider == "alpha" else 1
+
+    monkeypatch.setattr(cp, "run_codex_ping", fake_codex_ping)
+
+    assert (
+        cp.main(
+            [
+                "ping",
+                "--all",
+                "--timeout",
+                "5",
+                "--model",
+                "gpt-5",
+                "--prompt",
+                "hello",
+            ]
+        )
+        == 1
+    )
+    assert calls == [
+        ("alpha", 5.0, "gpt-5", "hello"),
+        ("beta", 5.0, "gpt-5", "hello"),
+    ]
+    assert cp.ensure_provider_state().active_provider == "alpha"
+    output = capsys.readouterr().out
+    assert "provider ping summary:" in output
+    assert "- alpha: ok" in output
+    assert "- beta: failed" in output
+    assert "available: 1/2" in output
+
+
+def test_ping_all_rejects_a_specific_provider(
+    isolated_paths: IsolatedPaths, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert cp.main(["ping", "alpha", "--all"]) == 1
+    assert "--all cannot be combined with a provider" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize(
     "value",
     [

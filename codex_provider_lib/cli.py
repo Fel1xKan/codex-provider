@@ -11,6 +11,8 @@ from codex_provider_lib.errors import SwitchError
 ProviderTest = Callable[[str | None, float], int]
 AllProvidersTest = Callable[[float], int]
 DirectTest = Callable[[str, str, float], int]
+ProviderPing = Callable[[str | None, float, str | None, str], int]
+AllProvidersPing = Callable[[float, str | None, str], int]
 
 
 def add_auth_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -25,7 +27,8 @@ def add_auth_parser(subparsers: argparse._SubParsersAction) -> None:
         "provider", nargs="?", help="Provider name; defaults to the current scope"
     )
     edit = commands.add_parser(
-        "edit", help="Open provider authentication data in $VISUAL or $EDITOR"
+        "edit",
+        help="Open provider authentication data, including API keys, in the editor",
     )
     edit.add_argument(
         "provider", nargs="?", help="Provider name; defaults to the current scope"
@@ -34,7 +37,7 @@ def add_auth_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def add_config_parser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
-        "config", help="Inspect or edit provider configuration"
+        "config", help="Inspect or edit provider configuration; API keys use auth"
     )
     commands = parser.add_subparsers(dest="config_command", required=True)
     detail = commands.add_parser("detail", help="Show a provider config block")
@@ -42,7 +45,8 @@ def add_config_parser(subparsers: argparse._SubParsersAction) -> None:
         "provider", nargs="?", help="Provider name; defaults to the current provider"
     )
     edit = commands.add_parser(
-        "edit", help="Open provider configuration in $VISUAL or $EDITOR"
+        "edit",
+        help="Open provider configuration; use auth edit to change API keys",
     )
     edit.add_argument(
         "provider",
@@ -154,10 +158,15 @@ def add_ping_parser(subparsers: argparse._SubParsersAction, program: str) -> Non
     parser = subparsers.add_parser(
         "ping",
         aliases=["p"],
-        help=f"Test one provider with a minimal {program} command",
+        help=f"Test providers with a minimal {program} command",
     )
     parser.add_argument(
         "provider", nargs="?", help="Provider name; defaults to current provider"
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Ping every configured provider and print an availability summary",
     )
     parser.add_argument(
         "--timeout",
@@ -169,6 +178,22 @@ def add_ping_parser(subparsers: argparse._SubParsersAction, program: str) -> Non
     parser.add_argument(
         "--prompt", default="say hi", help='Prompt for the ping, default: "say hi"'
     )
+
+
+def dispatch_ping(
+    provider: str | None,
+    ping_all: bool,
+    timeout: float,
+    model: str | None,
+    prompt: str,
+    ping_provider: ProviderPing,
+    ping_all_providers: AllProvidersPing,
+) -> int:
+    if ping_all:
+        if provider is not None:
+            raise SwitchError("--all cannot be combined with a provider")
+        return ping_all_providers(timeout, model, prompt)
+    return ping_provider(provider, timeout, model, prompt)
 
 
 def read_api_key(api_key_stdin: bool, prompt: str = "API key: ") -> str:

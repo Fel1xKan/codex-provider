@@ -51,20 +51,24 @@ opencode-provider list
 opencode-provider status
 
 codex-provider auth detail ggniao
+codex-provider auth edit ggniao
 codex-provider config detail ggniao
 codex-provider doctor
 opencode-provider auth detail foye
+opencode-provider auth edit foye
 opencode-provider config detail foye
 opencode-provider doctor
 
 codex-provider test
 codex-provider test --all
 codex-provider ping
+codex-provider ping --all
 codex-provider ping ggniao --model gpt-5
 
 opencode-provider test
 opencode-provider test --all
 opencode-provider ping
+opencode-provider ping --all
 opencode-provider ping foye --model grok-4.5
 
 opencode-provider models list foye
@@ -90,8 +94,9 @@ opencode-provider rename foye foye-new --dry-run
 
 `auth detail` prints field metadata without credential values. `auth edit`
 opens the backend auth file in `$VISUAL` or `$EDITOR` and validates it before
-keeping the edit. `config detail` redacts inline secrets; `config edit` opens
-and validates the backend provider config. `doctor` validates the config,
+keeping the edit; use it instead of `config edit` to change an API key.
+`config detail` redacts inline secrets; `config edit` opens and validates the
+backend provider config. `doctor` validates the config,
 provider model declarations, and auth JSON. Both CLIs accept `doctor --fix`;
 OpenCode currently has no legacy files requiring an automatic repair.
 
@@ -112,7 +117,8 @@ terminal presents a model menu; in non-interactive use, pass `--model`.
 For `codex-provider`, `test` probes the configured provider's `/models` endpoint
 and `ping` invokes `codex exec`. For `opencode-provider`, the same commands
 probe the OpenCode provider endpoint and `ping` invokes `opencode run` with the
-selected `provider/model`.
+selected `provider/model`. Use `ping --all` to run that CLI-level check for
+every configured provider, continue after failures, and print a summary.
 
 `models list` fetches model IDs from an OpenAI-compatible provider's
 `options.baseURL/models` endpoint without changing config. `models sync` adds
@@ -125,10 +131,12 @@ API keys are never printed.
 Running `switch` without a provider opens the existing provider picker. In a
 non-interactive environment, provide the provider explicitly.
 
-`delete` removes the provider block from the global OpenCode config while
-preserving unrelated JSONC content. It keeps the OpenCode auth entry by default;
-pass `--full` to remove that entry too. The current provider cannot be deleted
-until another provider is selected.
+`delete` removes the provider configuration but keeps its auth by default in
+both CLIs; pass `--full` to remove the auth too. If the provider was already
+deleted, run `delete <provider> --full` again to remove its orphaned auth.
+Re-adding the same provider replaces retained auth with the newly entered API
+key. OpenCode preserves unrelated JSONC content while deleting a provider. The
+current provider cannot be deleted until another provider is selected.
 
 `rename` updates the OpenCode provider key, the top-level default model when it
 uses that provider, and the matching OpenCode auth entry in one operation.

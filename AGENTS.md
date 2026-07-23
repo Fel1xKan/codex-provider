@@ -2,26 +2,41 @@
 
 ## Project Structure & Module Organization
 
-This repository is a small Python CLI for managing Codex provider config and auth snapshots.
+This repository contains two Python CLIs for managing Codex and OpenCode provider configuration and authentication.
 
-- `codex_provider.py`: main implementation, command routing, file IO, and provider logic.
-- `codex-provider`: shell launcher that executes the Python entrypoint.
+- `codex_provider.py`: Codex implementation, command routing, file IO, and provider logic.
+- `opencode_provider.py`: OpenCode implementation, command routing, file IO, and provider logic.
+- `codex_provider_lib/`: shared CLI parsing, validation, networking, and platform helpers.
+- `codex-provider` and `opencode-provider`: shell launchers for the Python entrypoints.
 - `README.md`: user-facing command reference and examples.
-- `codex-provider-bin.spec`: PyInstaller spec for the standalone binary.
+- `codex-provider-bin.spec` and `opencode-provider.spec`: PyInstaller specs for the standalone binaries.
 - `build/` and `dist/`: generated artifacts from packaging; treat them as outputs, not source.
 
-Keep new code near `codex_provider.py` unless the file is being intentionally split into modules.
+Keep backend-specific code near its provider module. Put genuinely shared behavior in `codex_provider_lib/`.
+
+## Dual CLI API Consistency
+
+`codex-provider` and `opencode-provider` must expose a consistent API for every shared command. A change to a shared command must update both CLIs in the same change, even when the request mentions only one of them.
+
+- Keep shared command names, aliases, positional arguments, options, defaults, validation rules, exit-code semantics, dry-run behavior, and user-facing result wording aligned.
+- Before completing a change to `list`, `status`, `auth`, `config`, `doctor`, `switch`, `test`, `ping`, `add`, `delete`, or `rename`, inspect and update the corresponding parser, dispatch path, implementation, documentation, and tests for both CLIs.
+- Put shared parsing and dispatch behavior in `codex_provider_lib` when practical. Keep backend-specific config, auth, model selection, and filesystem logic in the relevant provider module.
+- Backend-specific differences are allowed only when the target tools genuinely require them. Document the difference and keep the remaining command shape consistent. OpenCode-only `models` commands are an explicit example.
+- Add mirrored behavioral tests for both CLIs and retain the parser command-matrix test so API drift fails during validation.
+- Do not mark a shared CLI change complete after validating only one executable.
 
 ## Build, Test, and Development Commands
 
 Run commands from the repository root:
 
-- `python3 codex_provider.py --help`: inspect the CLI directly.
-- `./codex-provider status`: run the wrapper script the same way end users do.
-- `./.venv/bin/python -m PyInstaller --clean -y codex-provider-bin.spec`: rebuild the packaged binary into `dist/`.
-- `./dist/codex-provider-bin --help`: confirm the packaged binary starts and exposes expected commands.
+- `./codex-provider --help` and `./opencode-provider --help`: inspect both wrapper CLIs.
+- `./codex-provider status` and `./opencode-provider status`: run the wrappers the same way end users do.
+- `./.venv/bin/python -m pytest -q`: run the complete test suite, including CLI parity checks.
+- `./.venv/bin/ruff check .`: run static checks.
+- `./.venv/bin/python -m PyInstaller --clean -y codex-provider-bin.spec` and the corresponding `opencode-provider.spec` command: rebuild both standalone binaries into `dist/`.
+- `./dist/codex-provider --help` and `./dist/opencode-provider --help`: confirm both packaged binaries start and expose the expected commands.
 
-There is no formal test suite yet. Validate the exact commands touched by your change, especially `auth detail`, `auth edit`, `config detail`, `config edit`, `switch`, and `doctor`.
+In addition to the full suite, validate the exact commands touched by your change, especially `auth detail`, `auth edit`, `config detail`, `config edit`, `switch`, and `doctor` in both CLIs.
 
 ## Coding Style & Naming Conventions
 

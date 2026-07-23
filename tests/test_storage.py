@@ -505,6 +505,57 @@ def test_all_dry_run_commands_leave_existing_state_unchanged(
     assert not (initialized_registry.auth_store / "gamma.json").exists()
 
 
+def test_delete_full_removes_orphaned_auth_profile(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    cp.delete_provider("beta", delete_auth=False, dry_run=False)
+    profile = initialized_registry.auth_store / "beta.json"
+    assert profile.exists()
+
+    assert cp.delete_provider("beta", delete_auth=True, dry_run=False) == 0
+    assert not profile.exists()
+
+
+def test_add_replaces_orphaned_auth_profile(
+    isolated_paths: IsolatedPaths, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cp.ensure_tool_config()
+    profile = cp.auth_profile_path("sub")
+    profile.write_text('{"OPENAI_API_KEY": "old-key"}\n', encoding="utf-8")
+
+    assert (
+        cp.add_provider(
+            provider="sub",
+            base_url="https://sub.yxxb.eu.cc/",
+            api_key="new-key",
+            display_name=None,
+            wire_api="responses",
+            supports_websockets=None,
+            dry_run=False,
+        )
+        == 0
+    )
+
+    assert json.loads(profile.read_text())["OPENAI_API_KEY"] == "new-key"
+    assert "replaced auth profile:" in capsys.readouterr().out
+
+
+def test_auth_edit_can_update_orphaned_auth_profile(
+    isolated_paths: IsolatedPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cp.ensure_tool_config()
+    profile = cp.auth_profile_path("sub")
+    profile.write_text('{"OPENAI_API_KEY": "old-key"}\n', encoding="utf-8")
+
+    def update_key(path: Path) -> None:
+        path.write_text('{"OPENAI_API_KEY": "new-key"}\n', encoding="utf-8")
+
+    monkeypatch.setattr(cp, "run_editor", update_key)
+
+    assert cp.main(["auth", "edit", "sub"]) == 0
+    assert json.loads(profile.read_text())["OPENAI_API_KEY"] == "new-key"
+
+
 def test_add_rolls_back_registry_when_auth_write_fails(
     isolated_paths: IsolatedPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:

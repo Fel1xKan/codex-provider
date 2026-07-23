@@ -33,6 +33,9 @@ from codex_provider_lib.cli import (
     read_api_key,
 )
 from codex_provider_lib.cli import (
+    dispatch_ping as dispatch_common_ping,
+)
+from codex_provider_lib.cli import (
     dispatch_test as dispatch_common_test,
 )
 from codex_provider_lib.network import normalize_base_url, run_models_test
@@ -418,6 +421,52 @@ def ping_provider(
     return run_opencode_ping(target, selected, timeout, prompt)
 
 
+def ping_all_providers(timeout: float, model: str | None, prompt: str) -> int:
+    state = load_state()
+    if not state.providers:
+        raise SwitchError("no providers configured")
+
+    results: list[tuple[str, int]] = []
+    for index, provider in enumerate(sorted(state.providers)):
+        if index:
+            print("")
+        try:
+            result = ping_provider(provider, timeout, model, prompt)
+        except SwitchError as exc:
+            print(f"current provider: {state.current_provider or '(none)'}")
+            print(f"ping provider: {provider}")
+            print("ping result: failed")
+            print(f"error: {exc}")
+            result = 1
+        results.append((provider, result))
+
+    available = sum(result == 0 for _, result in results)
+    print("")
+    print("provider ping summary:")
+    for provider, result in results:
+        print(f"- {provider}: {'ok' if result == 0 else 'failed'}")
+    print(f"available: {available}/{len(results)}")
+    return 0 if available == len(results) else 1
+
+
+def dispatch_ping(
+    provider: str | None,
+    ping_all: bool,
+    timeout: float,
+    model: str | None,
+    prompt: str,
+) -> int:
+    return dispatch_common_ping(
+        provider,
+        ping_all,
+        timeout,
+        model,
+        prompt,
+        ping_provider,
+        ping_all_providers,
+    )
+
+
 def provider_is_enabled(state: ConfigState, provider: str) -> bool:
     enabled = state.data.get("enabled_providers")
     disabled = state.data.get("disabled_providers")
@@ -543,6 +592,13 @@ def edit_config(provider: str | None) -> int:
             raise SwitchError(f"unknown provider '{provider}'")
     state = load_state()
     before = state.text
+    auth_target = provider or state.current_provider
+    auth_command = (
+        f"opencode-provider auth edit {auth_target}"
+        if auth_target
+        else "opencode-provider auth edit <provider>"
+    )
+    print(f"API key: use '{auth_command}'")
     run_editor(state.path)
     try:
         load_state()
@@ -1042,8 +1098,7 @@ def add_provider(
             raise SwitchError(f"invalid OpenCode auth JSON: {AUTH_PATH}") from exc
         if not isinstance(auth_payload, dict):
             raise SwitchError(f"OpenCode auth file must contain an object: {AUTH_PATH}")
-        if provider in auth_payload:
-            raise SwitchError(f"auth entry already exists: {provider}")
+        auth_replaced = provider in auth_payload
         auth_payload[provider] = auth_data
         updated_auth = json.dumps(auth_payload, ensure_ascii=False, indent=2) + "\n"
         if not dry_run:
@@ -1057,6 +1112,11 @@ def add_provider(
     print(f"{action} provider: {provider}")
     print(f"base_url: {base_url}")
     print(f"auth file: {AUTH_PATH}")
+    if auth_replaced:
+        auth_action = "would replace" if dry_run else "replaced"
+    else:
+        auth_action = "would create" if dry_run else "created"
+    print(f"{auth_action} auth entry: {provider}")
     print("models: none; run 'opencode-provider models sync " + provider + "'")
     return 0
 
@@ -1193,7 +1253,34 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
     lock = nullcontext() if dry_run else state_lock()
     with lock:
         state = load_state()
+        auth_text = ""
+        updated_auth = ""
+        auth_removed = False
+        if delete_auth and AUTH_PATH.exists():
+            try:
+                auth_text = AUTH_PATH.read_text(encoding="utf-8")
+                auth_data = json.loads(auth_text)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise SwitchError(f"invalid OpenCode auth JSON: {AUTH_PATH}") from exc
+            if not isinstance(auth_data, dict):
+                raise SwitchError(
+                    f"OpenCode auth file must contain an object: {AUTH_PATH}"
+                )
+            if provider in auth_data:
+                auth_data.pop(provider)
+                auth_removed = True
+                updated_auth = (
+                    json.dumps(auth_data, ensure_ascii=False, indent=2) + "\n"
+                )
+
         if provider not in state.providers:
+            if auth_removed:
+                if not dry_run:
+                    atomic_write_config(AUTH_PATH, auth_text, updated_auth)
+                auth_action = "would remove" if dry_run else "removed"
+                print(f"provider not found: {provider}")
+                print(f"{auth_action} auth entry: {provider}")
+                return 0
             available = ", ".join(sorted(state.providers)) or "(none)"
             raise SwitchError(f"unknown provider '{provider}', available: {available}")
         if provider == state.current_provider:
@@ -1207,20 +1294,12 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
             raise SwitchError("updated config still contains the deleted provider")
         if not dry_run:
             atomic_write_config(state.path, state.text, updated)
-
-        auth_removed = False
-        if delete_auth and AUTH_PATH.exists():
-            try:
-                auth_text = AUTH_PATH.read_text(encoding="utf-8")
-                auth_data = json.loads(auth_text)
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise SwitchError(f"invalid OpenCode auth JSON: {AUTH_PATH}") from exc
-            if isinstance(auth_data, dict) and provider in auth_data:
-                auth_data.pop(provider)
-                auth_removed = True
-                if not dry_run:
-                    payload = json.dumps(auth_data, ensure_ascii=False, indent=2) + "\n"
-                    atomic_write_config(AUTH_PATH, auth_text, payload)
+            if auth_removed:
+                try:
+                    atomic_write_config(AUTH_PATH, auth_text, updated_auth)
+                except SwitchError:
+                    atomic_write_config(state.path, updated, state.text)
+                    raise
 
     action = "would delete" if dry_run else "deleted"
     print(f"{action} provider: {provider}")
@@ -1309,7 +1388,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "test":
             return dispatch_test(args.args, args.api_key_stdin, args.timeout, args.all)
         if args.command in {"ping", "p"}:
-            return ping_provider(args.provider, args.timeout, args.model, args.prompt)
+            return dispatch_ping(
+                args.provider, args.all, args.timeout, args.model, args.prompt
+            )
         if args.command == "models":
             if args.models_command == "list":
                 state = load_state()
