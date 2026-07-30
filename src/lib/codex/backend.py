@@ -18,6 +18,8 @@ from lib.common.cli import (
     add_auth_parser,
     add_config_parser,
     add_doctor_parser,
+    add_export_parser,
+    add_import_parser,
     add_ping_parser,
     add_provider_parsers,
     add_switch_parser,
@@ -115,6 +117,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_ping_parser(subparsers, "codex")
     add_switch_parser(subparsers, include_model=False)
     add_provider_parsers(subparsers)
+    add_export_parser(subparsers)
+    add_import_parser(subparsers)
 
     return parser
 
@@ -214,6 +218,14 @@ def main(argv: list[str] | None = None) -> int:
                 ping_provider,
                 ping_all_providers,
             )
+
+        if args.command == "export":
+            import lib.codex.transfer as transfer
+            return transfer.export_command(args.file)
+
+        if args.command == "import":
+            import lib.codex.transfer as transfer
+            return transfer.import_command(args.file, args.dry_run)
 
         return 0
     except SwitchError as e:

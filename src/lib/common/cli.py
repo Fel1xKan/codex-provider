@@ -180,6 +180,36 @@ def add_ping_parser(subparsers: argparse._SubParsersAction, program: str) -> Non
     )
 
 
+def add_export_parser(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "export",
+        help="Export configuration and authentication data to a JSON file or stdout",
+    )
+    parser.add_argument(
+        "file",
+        nargs="?",
+        help="Output file path; prints to stdout if omitted or '-'",
+    )
+
+
+def add_import_parser(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "import",
+        help="Import configuration and authentication data from a JSON file or stdin",
+    )
+    parser.add_argument(
+        "file",
+        nargs="?",
+        help="Input file path; reads from stdin if omitted or '-'",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview changes without writing files",
+    )
+
+
+
 def dispatch_ping(
     provider: str | None,
     ping_all: bool,

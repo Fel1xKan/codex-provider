@@ -6,7 +6,8 @@ This repository builds two provider managers with the same CLI shape:
 - `opencode-provider` manages OpenCode's JSON/JSONC provider config and auth.
 
 Both commands share the same `list`, `status`, `auth`, `config`, `doctor`,
-`switch`, `test`, `ping`/`p`, `add`, `delete`, and `rename` command forms. Their
+`switch`, `test`, `ping`/`p`, `add`, `delete`, `rename`, `export`, and `import`
+command forms. Their
 backend only differs in the config/auth file format, locations, and the target
 CLI used by `ping`. OpenCode additionally provides `models` discovery and a
 model selector on `switch`.
@@ -90,6 +91,10 @@ opencode-provider delete foye --full
 opencode-provider delete foye --dry-run
 opencode-provider rename foye foye-new
 opencode-provider rename foye foye-new --dry-run
+
+codex-provider export backup.json
+opencode-provider import backup.json --dry-run
+opencode-provider import backup.json
 ```
 
 `auth detail` prints field metadata without credential values. `auth edit`

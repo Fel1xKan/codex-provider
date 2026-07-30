@@ -690,3 +690,54 @@ def test_temporary_provider_restores_state_after_failure(
 
     assert runtime_config.read_bytes() == original_config
     assert runtime_auth.read_bytes() == original_auth
+
+
+def test_codex_export_and_import(
+    initialized_registry: IsolatedPaths, capsys: pytest.CaptureFixture[str]
+) -> None:
+    export_file = initialized_registry.tool_home / "export.json"
+    assert cp.main(["export", str(export_file)]) == 0
+
+    assert export_file.exists()
+    exported = json.loads(export_file.read_text(encoding="utf-8"))
+    assert exported["type"] == "codex-provider"
+    assert exported["active_provider"] == "alpha"
+    assert "alpha" in exported["providers"]
+    assert "beta" in exported["providers"]
+
+    capsys.readouterr()
+    assert cp.main(["export"]) == 0
+    stdout_out = capsys.readouterr().out
+    exported_stdout = json.loads(stdout_out)
+    assert exported_stdout["type"] == "codex-provider"
+    assert exported_stdout["active_provider"] == "alpha"
+
+    cp.add_provider(
+        provider="dummy",
+        base_url="https://dummy.example.com",
+        api_key="placeholder-dummy",
+        display_name="Dummy",
+        wire_api="responses",
+        supports_websockets=None,
+        dry_run=False,
+    )
+    assert cp.main(["switch", "dummy"]) == 0
+    assert cp.main(["delete", "alpha", "--full"]) == 0
+    assert cp.main(["delete", "beta", "--full"]) == 0
+
+    capsys.readouterr()
+    assert cp.main(["import", str(export_file), "--dry-run"]) == 0
+    dry_run_out = capsys.readouterr().out
+    assert "would add/update provider: alpha" in dry_run_out
+    assert "would add/update provider: beta" in dry_run_out
+    assert "would switch default provider: alpha" in dry_run_out
+
+    assert cp.main(["import", str(export_file)]) == 0
+
+    capsys.readouterr()
+    assert cp.main(["status"]) == 0
+    status_out = capsys.readouterr().out
+    assert "* alpha" in status_out
+    assert "beta" in status_out
+    assert "active provider: alpha" in status_out
+

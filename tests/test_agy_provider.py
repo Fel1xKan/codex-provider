@@ -186,3 +186,70 @@ def test_agy_login_flow(
     capsys.readouterr()
     assert agy.main(["status"]) == 0
     assert "Active identity: login_user@example.com" in capsys.readouterr().out
+
+
+def test_agy_export_and_import(
+    agy_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token_a = {
+        "token": "tok_a",
+        "id_token": "h.eyJlbWFpbCI6ICJhQGV4YW1wbGUuY29tIn0=.s",
+        "auth_method": "consumer",
+    }
+    agy.OAUTH_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    agy.OAUTH_TOKEN_PATH.write_text(json.dumps(token_a), encoding="utf-8")
+    assert agy.main(["add", "acc_a", "--from-current"]) == 0
+
+    token_b = {
+        "token": "tok_b",
+        "id_token": "h.eyJlbWFpbCI6ICJiQGV4YW1wbGUuY29tIn0=.s",
+        "auth_method": "google",
+    }
+    agy.OAUTH_TOKEN_PATH.write_text(json.dumps(token_b), encoding="utf-8")
+    assert agy.main(["add", "acc_b", "--from-current"]) == 0
+    assert agy.main(["switch", "acc_b"]) == 0
+
+    export_file = agy_paths / "export.json"
+    assert agy.main(["export", str(export_file)]) == 0
+
+    assert export_file.exists()
+    exported = json.loads(export_file.read_text(encoding="utf-8"))
+    assert exported["type"] == "agy-provider"
+    assert exported["current"] == "acc_b"
+    assert "acc_a" in exported["accounts"]
+    assert "acc_b" in exported["accounts"]
+
+    capsys.readouterr()
+    assert agy.main(["export"]) == 0
+    stdout_out = capsys.readouterr().out
+    exported_stdout = json.loads(stdout_out)
+    assert exported_stdout["type"] == "agy-provider"
+    assert exported_stdout["current"] == "acc_b"
+
+    assert agy.main(["delete", "acc_a"]) == 0
+    assert agy.main(["delete", "acc_b"]) == 0
+
+    capsys.readouterr()
+    assert agy.main(["list"]) == 0
+    assert "acc_a" not in capsys.readouterr().out
+
+    capsys.readouterr()
+    assert agy.main(["import", str(export_file), "--dry-run"]) == 0
+    dry_run_out = capsys.readouterr().out
+    assert "would add/update account: acc_a" in dry_run_out
+    assert "would add/update account: acc_b" in dry_run_out
+    assert "would switch account: acc_b" in dry_run_out
+
+    capsys.readouterr()
+    assert agy.main(["list"]) == 0
+    assert "acc_a" not in capsys.readouterr().out
+
+    assert agy.main(["import", str(export_file)]) == 0
+
+    capsys.readouterr()
+    assert agy.main(["status"]) == 0
+    status_out = capsys.readouterr().out
+    assert "* acc_b" in status_out
+    assert "acc_a" in status_out
+    assert "Current account: acc_b" in status_out
+

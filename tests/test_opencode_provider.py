@@ -781,3 +781,68 @@ def test_rename_updates_provider_current_model_and_auth(
     auth = json.loads(op.AUTH_PATH.read_text())
     assert set(auth) == {"renamed", "beta"}
     assert auth["renamed"]["key"] == "placeholder-alpha"
+
+
+def test_opencode_export_and_import(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(opencode_paths)
+    op.AUTH_PATH.write_text(
+        json.dumps(
+            {
+                "alpha": {"type": "api", "key": "placeholder-alpha"},
+                "beta": {"type": "api", "key": "placeholder-beta"},
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert op.main(["switch", "alpha"]) == 0
+
+    export_file = opencode_paths / "export.json"
+    assert op.main(["export", str(export_file)]) == 0
+
+    assert export_file.exists()
+    exported = json.loads(export_file.read_text(encoding="utf-8"))
+    assert exported["type"] == "opencode-provider"
+    assert exported["current_provider"] == "alpha"
+    assert exported["current_model"] == "gpt-5"
+    assert "alpha" in exported["providers"]
+    assert "beta" in exported["providers"]
+
+    capsys.readouterr()
+    assert op.main(["export"]) == 0
+    stdout_out = capsys.readouterr().out
+    exported_stdout = json.loads(stdout_out)
+    assert exported_stdout["type"] == "opencode-provider"
+    assert exported_stdout["current_provider"] == "alpha"
+
+    data = json.loads(config.read_text())
+    data["provider"]["dummy"] = {
+        "name": "Dummy",
+        "npm": "@ai-sdk/openai",
+        "options": {"baseURL": "https://dummy.example.com/v1"},
+        "models": {"dummy-model": {"name": "Dummy Model"}},
+    }
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    assert op.main(["switch", "dummy"]) == 0
+    assert op.main(["delete", "alpha", "--full"]) == 0
+    assert op.main(["delete", "beta", "--full"]) == 0
+
+    capsys.readouterr()
+    assert op.main(["import", str(export_file), "--dry-run"]) == 0
+    dry_run_out = capsys.readouterr().out
+    assert "would add/update provider: alpha" in dry_run_out
+    assert "would add/update provider: beta" in dry_run_out
+    assert "would switch default model: alpha/gpt-5" in dry_run_out
+
+    assert op.main(["import", str(export_file)]) == 0
+
+    capsys.readouterr()
+    assert op.main(["status"]) == 0
+    status_out = capsys.readouterr().out
+    assert "* alpha" in status_out
+    assert "beta" in status_out
+    assert "default provider: alpha" in status_out
+
