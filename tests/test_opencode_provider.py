@@ -580,6 +580,44 @@ def test_add_provider_replaces_orphaned_auth_entry(
     assert "replaced auth entry: sub" in capsys.readouterr().out
 
 
+def test_add_provider_handles_compact_trailing_comma_config(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = opencode_paths / "opencode.json"
+    config.write_text(
+        '{\n'
+        '  "provider": {\n'
+        '    "existing": {\n'
+        '      "models": {}\n'
+        '    },}\n'
+        '}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(op, "read_api_key", lambda from_stdin: "new-key")
+
+    assert (
+        op.main(
+            [
+                "add",
+                "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+                "--provider",
+                "bailian",
+                "--api-key-stdin",
+            ]
+        )
+        == 0
+    )
+
+    data = json5.loads(config.read_text(encoding="utf-8"))
+    assert data["provider"]["bailian"]["options"]["baseURL"] == (
+        "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+    )
+    assert json.loads(op.AUTH_PATH.read_text(encoding="utf-8"))["bailian"] == {
+        "type": "api",
+        "key": "new-key",
+    }
+
+
 def test_auth_edit_can_update_orphaned_auth_entry(
     opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

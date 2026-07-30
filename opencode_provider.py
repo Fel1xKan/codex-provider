@@ -1043,8 +1043,23 @@ def patch_add_provider(
 
     close = tokens[provider_end]
     line = text.rfind("\n", 0, close.start) + 1
-    close_indent = text[line : close.start]
-    indent = close_indent + "  "
+    # The closing brace may share a line with a trailing comma (for example
+    # `},}`); only the whitespace prefix is the indentation in that case.
+    close_line_prefix = text[line : close.start]
+    close_indent = close_line_prefix[
+        : len(close_line_prefix) - len(close_line_prefix.lstrip())
+    ]
+    entries = object_property_entries(tokens, provider_value, provider_end)
+    if entries:
+        first_key_index = next(iter(entries.values()))[0]
+        first_key = tokens[first_key_index]
+        first_line = text.rfind("\n", 0, first_key.start) + 1
+        first_line_prefix = text[first_line : first_key.start]
+        indent = first_line_prefix[
+            : len(first_line_prefix) - len(first_line_prefix.lstrip())
+        ]
+    else:
+        indent = close_indent + "  "
     previous = tokens[provider_end - 1]
     comma = "" if previous.kind == "," else ","
     serialized = json.dumps(provider_config, ensure_ascii=False, indent=2)
