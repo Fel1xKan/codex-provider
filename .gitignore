@@ -10,6 +10,7 @@ dist/
 *.spec
 !codex-provider-bin.spec
 !opencode-provider.spec
+!agy-provider.spec
 
 .DS_Store
 temp

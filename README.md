@@ -177,13 +177,14 @@ continue to override a global switch.
 
 ## Build
 
-One build invocation produces both standalone binaries:
+One build invocation produces all three standalone binaries:
 
 ```bash
 python build.py
 ./build.sh
 ./dist/codex-provider --help
 ./dist/opencode-provider --help
+./dist/agy-provider --help
 ```
 
 On Windows:
@@ -193,10 +194,12 @@ py -3 build.py
 build.cmd
 dist\opencode-provider.exe --help
 dist\codex-provider.exe --help
+dist\agy-provider.exe --help
 ```
 
-Use `--target codex` or `--target opencode` to build only one target.
-`build.py` verifies both binary versions and writes a matching `.sha256` file.
+Use `--target codex`, `--target opencode`, or `--target agy` to build only one
+target. `build.py` verifies every binary version and writes a matching `.sha256`
+file.
 
 ## Release
 
