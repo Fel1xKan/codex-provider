@@ -24,6 +24,7 @@ from lib.agy.commands import (
     rename_account,
     switch_account,
 )
+from lib.agy.login import login_account
 from lib.common.cli import (
     add_auth_parser,
     add_config_parser,
@@ -54,6 +55,15 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("list", help="List accounts from agy-provider config")
     subparsers.add_parser("status", help="Show the current active account and status")
 
+    login = subparsers.add_parser(
+        "login",
+        help="Initiate interactive AGY login session and save as account",
+    )
+    login.add_argument("account", nargs="?", help="Account name to save as")
+    login.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing files"
+    )
+
     add_auth_parser(subparsers)
     add_config_parser(subparsers)
     add_doctor_parser(subparsers)
@@ -70,6 +80,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add.add_argument("--from-dir", help="Import token from an account directory")
     add.add_argument("--from-current", action="store_true", help="Import active token")
+    add.add_argument(
+        "--login", action="store_true", help="Initiate interactive login session"
+    )
     add.add_argument(
         "--dry-run", action="store_true", help="Preview changes without writing files"
     )
@@ -104,6 +117,9 @@ def main(argv: list[str] | None = None) -> int:
         return e.code if isinstance(e.code, int) else 1
 
     try:
+        if args.command == "login":
+            return login_account(args.account, args.dry_run)
+
         if args.command == "list":
             return print_list()
         if args.command == "status":
@@ -122,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
             return switch_account(account, args.dry_run)
 
         if args.command == "add":
+            if getattr(args, "login", False):
+                return login_account(args.account or args.base_url, args.dry_run)
             target_acc = args.account or args.base_url
             return add_account(
                 name=target_acc,

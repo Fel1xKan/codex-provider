@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import lib.agy.store as st
 from lib.common.common_store import (
@@ -17,6 +18,17 @@ from lib.common.recent import (
     rename_recent_provider,
     sort_providers_by_recent,
 )
+
+
+def _save_state_file(current: str, accounts: dict[str, Any]) -> None:
+    state_data = {"current": current, "accounts": accounts}
+    st.state_dir().mkdir(parents=True, exist_ok=True)
+    atomic_write_bytes(
+        st.state_path(),
+        json.dumps(state_data, indent=2).encode("utf-8") + b"\n",
+        secret=True,
+        mode=SECRET_FILE_MODE,
+    )
 
 
 def print_list() -> int:
@@ -62,25 +74,16 @@ def switch_account(account_name: str, dry_run: bool = False) -> int:
                 mode=SECRET_FILE_MODE,
             )
             fsync_directory(st.oauth_token_path().parent)
-            state_data = {
-                "current": account_name,
-                "accounts": {
-                    name: {
-                        "email": a.email,
-                        "display_name": a.display_name,
-                        "auth_method": a.auth_method,
-                        "token_data": a.token_data,
-                    }
-                    for name, a in store.accounts.items()
-                },
+            accounts_data = {
+                name: {
+                    "email": a.email,
+                    "display_name": a.display_name,
+                    "auth_method": a.auth_method,
+                    "token_data": a.token_data,
+                }
+                for name, a in store.accounts.items()
             }
-            st.state_dir().mkdir(parents=True, exist_ok=True)
-            atomic_write_bytes(
-                st.state_path(),
-                json.dumps(state_data, indent=2).encode("utf-8") + b"\n",
-                secret=True,
-                mode=SECRET_FILE_MODE,
-            )
+            _save_state_file(account_name, accounts_data)
             record_recent_provider(st.recent_path(), account_name)
     finally:
         st.release_lock()
@@ -96,6 +99,14 @@ def add_account(
     from_file: str | None = None,
     dry_run: bool = False,
 ) -> int:
+    if not (from_current or from_dir or from_file):
+        given_path = Path(name).expanduser()
+        if given_path.is_dir():
+            from_dir = str(given_path)
+            name = given_path.name
+        elif st.oauth_token_path().exists():
+            from_current = True
+
     if not st.ACCOUNT_PATTERN.fullmatch(name):
         raise SwitchError(f"invalid account name: {name}")
 
@@ -159,18 +170,8 @@ def add_account(
             "auth_method": auth_method,
             "token_data": token_data,
         }
-        state_data = {
-            "current": store.current or name,
-            "accounts": accounts_data,
-        }
         if not dry_run:
-            st.state_dir().mkdir(parents=True, exist_ok=True)
-            atomic_write_bytes(
-                st.state_path(),
-                json.dumps(state_data, indent=2).encode("utf-8") + b"\n",
-                secret=True,
-                mode=SECRET_FILE_MODE,
-            )
+            _save_state_file(store.current or name, accounts_data)
             record_recent_provider(st.recent_path(), name)
     finally:
         st.release_lock()
@@ -200,17 +201,8 @@ def delete_account(name: str, full: bool = False, dry_run: bool = False) -> int:
             for n, a in store.accounts.items()
             if n != name
         }
-        state_data = {
-            "current": current,
-            "accounts": accounts_data,
-        }
         if not dry_run:
-            atomic_write_bytes(
-                st.state_path(),
-                json.dumps(state_data, indent=2).encode("utf-8") + b"\n",
-                secret=True,
-                mode=SECRET_FILE_MODE,
-            )
+            _save_state_file(current, accounts_data)
             forget_recent_provider(st.recent_path(), name)
     finally:
         st.release_lock()
@@ -240,17 +232,8 @@ def rename_account(old_name: str, new_name: str, dry_run: bool = False) -> int:
                 "auth_method": a.auth_method,
                 "token_data": a.token_data,
             }
-        state_data = {
-            "current": current,
-            "accounts": accounts_data,
-        }
         if not dry_run:
-            atomic_write_bytes(
-                st.state_path(),
-                json.dumps(state_data, indent=2).encode("utf-8") + b"\n",
-                secret=True,
-                mode=SECRET_FILE_MODE,
-            )
+            _save_state_file(current, accounts_data)
             rename_recent_provider(st.recent_path(), old_name, new_name)
     finally:
         st.release_lock()

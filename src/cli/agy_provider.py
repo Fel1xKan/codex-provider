@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -23,6 +25,7 @@ from lib.agy.commands import (
     rename_account,
     switch_account,
 )
+from lib.agy.login import login_account
 from lib.agy.store import (
     ACCOUNT_PATTERN,
     AccountState,
@@ -83,11 +86,14 @@ __all__ = [
     "doctor_command",
     "extract_account_info",
     "load_store",
+    "login_account",
     "main",
     "print_list",
     "print_status",
     "release_lock",
     "rename_account",
+    "shutil",
+    "subprocess",
     "switch_account",
 ]
 

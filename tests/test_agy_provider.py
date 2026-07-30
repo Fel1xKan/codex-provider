@@ -152,3 +152,37 @@ def test_agy_doctor(agy_paths: Path, capsys: pytest.CaptureFixture[str]) -> None
     out = capsys.readouterr().out
     assert "[OK] Token file exists" in out
     assert "user@example.com" in out
+
+
+def test_agy_login_flow(
+    agy_paths: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_run(cmd, env, check=False):
+        home = Path(env["HOME"])
+        t_dir = home / ".gemini" / "antigravity-cli"
+        t_dir.mkdir(parents=True, exist_ok=True)
+        id_tok = "h.eyJlbWFpbCI6ICJsb2dpbl91c2VyQGV4YW1wbGUuY29tIn0=.s"
+        (t_dir / "antigravity-oauth-token").write_text(
+            json.dumps({"token": "new_tok", "id_token": id_tok}), encoding="utf-8"
+        )
+
+        class Proc:
+            returncode = 0
+
+        return Proc()
+
+    import shutil
+    import subprocess
+
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/agy")
+    monkeypatch.setattr(agy, "shutil", shutil)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(agy, "subprocess", subprocess)
+
+    assert agy.main(["login", "new_account"]) == 0
+    active = json.loads(agy.OAUTH_TOKEN_PATH.read_text(encoding="utf-8"))
+    assert active["token"] == "new_tok"
+
+    capsys.readouterr()
+    assert agy.main(["status"]) == 0
+    assert "Active identity: login_user@example.com" in capsys.readouterr().out

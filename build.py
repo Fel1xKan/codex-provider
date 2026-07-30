@@ -14,7 +14,7 @@ SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from lib.common.constants import VERSION
+from lib.common.constants import VERSION  # noqa: E402
 
 DIST_DIR = ROOT_DIR / "dist"
 BUILD_TARGETS = {
