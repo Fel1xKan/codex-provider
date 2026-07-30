@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from codex_provider_lib.errors import SwitchError
+from lib.common.errors import SwitchError
 
 if os.name == "nt":
     from ctypes import wintypes

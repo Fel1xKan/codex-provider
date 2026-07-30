@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable
 from urllib.parse import urlparse
 
-from codex_provider_lib.errors import SwitchError
+from lib.common.errors import SwitchError
 
 ProviderTest = Callable[[str | None, float], int]
 AllProvidersTest = Callable[[float], int]

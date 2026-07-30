@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$SCRIPT_DIR/src:${PYTHONPATH:-}"
 
 if [[ -x "$SCRIPT_DIR/.venv/bin/python" ]]; then
-  exec "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/src/cli/codex_provider.py" "$@"
+  exec "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/src/cli/agy_provider.py" "$@"
 fi
 
-exec python3 "$SCRIPT_DIR/src/cli/codex_provider.py" "$@"
+exec python3 "$SCRIPT_DIR/src/cli/agy_provider.py" "$@"

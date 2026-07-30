@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from conftest import IsolatedPaths
 
-import codex_provider as cp
+import cli.codex_provider as cp
 
 
 def test_auth_detail_never_prints_values(

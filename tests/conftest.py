@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import codex_provider as cp
+import cli.codex_provider as cp
 
 
 @dataclass(frozen=True)

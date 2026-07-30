@@ -4,15 +4,14 @@
 
 This repository contains two Python CLIs for managing Codex and OpenCode provider configuration and authentication.
 
-- `codex_provider.py`: Codex implementation, command routing, file IO, and provider logic.
-- `opencode_provider.py`: OpenCode implementation, command routing, file IO, and provider logic.
-- `codex_provider_lib/`: shared CLI parsing, validation, networking, and platform helpers.
-- `codex-provider` and `opencode-provider`: shell launchers for the Python entrypoints.
+- `src/cli/`: CLI entrypoints (`codex_provider.py`, `opencode_provider.py`, `agy_provider.py`).
+- `src/lib/`: modularized packages (`common/`, `codex/`, `opencode/`, `agy/`).
+- `codex-provider`, `opencode-provider`, `agy-provider`: shell launchers for the Python entrypoints.
 - `README.md`: user-facing command reference and examples.
-- `codex-provider-bin.spec` and `opencode-provider.spec`: PyInstaller specs for the standalone binaries.
+- `codex-provider-bin.spec`, `opencode-provider.spec`, `agy-provider.spec`: PyInstaller specs for the standalone binaries.
 - `build/` and `dist/`: generated artifacts from packaging; treat them as outputs, not source.
 
-Keep backend-specific code near its provider module. Put genuinely shared behavior in `codex_provider_lib/`.
+Keep backend-specific code near its provider module under `src/lib/`. Put genuinely shared behavior in `src/lib/common/`.
 
 ## Dual CLI API Consistency
 

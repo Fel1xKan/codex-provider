@@ -23,19 +23,20 @@ dev = [
 ]
 
 [project.scripts]
-codex-provider = "codex_provider:main"
-opencode-provider = "opencode_provider:main"
+codex-provider = "cli.codex_provider:main"
+opencode-provider = "cli.opencode_provider:main"
+agy-provider = "cli.agy_provider:main"
 
 [tool.setuptools]
-py-modules = ["codex_provider", "opencode_provider"]
-packages = ["codex_provider_lib"]
+package-dir = {"" = "src"}
+packages = ["cli", "lib", "lib.common", "lib.codex", "lib.opencode", "lib.agy"]
 
 [tool.setuptools.dynamic]
-version = { attr = "codex_provider_lib.constants.VERSION" }
+version = { attr = "lib.common.constants.VERSION" }
 
 [tool.pytest.ini_options]
 addopts = "-ra"
-pythonpath = ["."]
+pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]

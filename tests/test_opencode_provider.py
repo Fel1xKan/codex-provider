@@ -7,8 +7,8 @@ from pathlib import Path
 import json5
 import pytest
 
-import codex_provider as codex
-import opencode_provider as op
+import cli.codex_provider as codex
+import cli.opencode_provider as op
 
 
 @pytest.fixture
@@ -585,12 +585,7 @@ def test_add_provider_handles_compact_trailing_comma_config(
 ) -> None:
     config = opencode_paths / "opencode.json"
     config.write_text(
-        '{\n'
-        '  "provider": {\n'
-        '    "existing": {\n'
-        '      "models": {}\n'
-        '    },}\n'
-        '}\n',
+        '{\n  "provider": {\n    "existing": {\n      "models": {}\n    },}\n}\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(op, "read_api_key", lambda from_stdin: "new-key")

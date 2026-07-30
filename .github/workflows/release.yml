@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(python -c 'from codex_provider_lib.constants import VERSION; print(VERSION)')"
+          version="$(python -c 'import sys; sys.path.insert(0, "src"); from lib.common.constants import VERSION; print(VERSION)')"
           platform="${{ matrix.platform }}"
           mkdir -p release
           if [[ "${{ runner.os }}" == "Windows" ]]; then
@@ -84,7 +84,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          version="$(python -c 'from codex_provider_lib.constants import VERSION; print(VERSION)')"
+          version="$(python -c 'import sys; sys.path.insert(0, "src"); from lib.common.constants import VERSION; print(VERSION)')"
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             tag="${{ github.ref_name }}"
           else

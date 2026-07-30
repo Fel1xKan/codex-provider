@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from contextlib import suppress
 from pathlib import Path
 
-from codex_provider_lib.constants import PRIVATE_DIR_MODE, SECRET_FILE_MODE
+from lib.common.constants import PRIVATE_DIR_MODE, SECRET_FILE_MODE
 
 
 def load_recent_providers(path: Path) -> list[str]:

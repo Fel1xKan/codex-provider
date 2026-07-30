@@ -2,8 +2,8 @@
 
 
 a = Analysis(
-    ['opencode_provider.py'],
-    pathex=[],
+    ['src/cli/opencode_provider.py'],
+    pathex=['src'],
     binaries=[],
     datas=[],
     hiddenimports=[],

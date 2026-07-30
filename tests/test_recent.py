@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from codex_provider_lib.recent import (
+from lib.common.recent import (
     forget_recent_provider,
     load_recent_providers,
     record_recent_provider,

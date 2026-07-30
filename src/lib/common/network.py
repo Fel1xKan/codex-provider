@@ -1,0 +1,143 @@
+from __future__ import annotations
+
+import json
+import ssl
+import sys
+import urllib.error
+import urllib.request
+from typing import Any
+from urllib.parse import urlparse
+
+from lib.common.constants import MAX_HTTP_BODY_BYTES
+from lib.common.errors import SwitchError
+
+
+def get_request_module() -> Any:
+    for mod_name in ("opencode_provider", "codex_provider", "agy_provider"):
+        mod = sys.modules.get(mod_name)
+        if mod and hasattr(mod, "urllib") and hasattr(mod.urllib, "request"):
+            return mod.urllib.request
+    return urllib.request
+
+
+def normalize_base_url(url: str) -> str:
+    url = url.strip()
+    if "://" in url and not url.startswith(("http://", "https://")):
+        raise SwitchError(f"invalid scheme: {url}")
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise SwitchError(f"invalid base_url scheme/host: {url}")
+    if parsed.username or parsed.password:
+        raise SwitchError("base_url must not contain credentials")
+    if parsed.query or parsed.fragment:
+        raise SwitchError("base_url must not contain query parameters or fragments")
+    url = url.rstrip("/")
+    if not parsed.path or parsed.path in ("", "/"):
+        url = f"{url}/v1"
+    return url
+
+
+def models_url(base_url: str) -> str:
+    url = base_url.strip().rstrip("/")
+    parsed = urlparse(url)
+    if not parsed.path or parsed.path == "":
+        url = f"{url}/v1"
+    return f"{url}/models"
+
+
+def summarize_response_error(body: bytes, api_key: str = "") -> str:
+    try:
+        data = json.loads(body.decode("utf-8"))
+        if isinstance(data, dict):
+            err = data.get("error")
+            if isinstance(err, dict):
+                msg = err.get("message")
+                if isinstance(msg, str):
+                    if api_key and api_key in msg:
+                        msg = msg.replace(api_key, "[REDACTED]")
+                    return msg
+    except Exception:
+        pass
+    text = body.decode("utf-8", errors="replace")
+    if api_key and api_key in text:
+        text = text.replace(api_key, "[REDACTED]")
+    return text[:200]
+
+
+def run_models_test(
+    provider: str,
+    base_url: str,
+    api_key: str,
+    timeout: float,
+    current_provider: str | None = None,
+) -> int:
+    models_endpoint = models_url(base_url)
+
+    req_mod = get_request_module()
+    req = req_mod.Request(
+        models_endpoint,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "codex-provider",
+            "Accept": "application/json",
+        },
+    )
+
+    ctx = ssl.create_default_context()
+
+    print(f"test provider: {provider}")
+    print(f"base_url: {base_url}")
+    print(f"models url: {models_endpoint}")
+
+    try:
+        try:
+            resp_cm = req_mod.urlopen(req, timeout=timeout, context=ctx)
+        except TypeError:
+            resp_cm = req_mod.urlopen(req, timeout=timeout)
+
+        with resp_cm as resp:
+            status = getattr(resp, "status", 200)
+            raw_body = resp.read()
+            if len(raw_body) > MAX_HTTP_BODY_BYTES:
+                print(f"http status: {status}")
+                print("result: failed")
+                print(f"error: response body exceeds {MAX_HTTP_BODY_BYTES} bytes limit")
+                return 1
+
+            try:
+                text = raw_body.decode("utf-8")
+            except UnicodeDecodeError:
+                print(f"http status: {status}")
+                print("result: failed")
+                print("error: response body is not valid JSON / UTF-8")
+                return 1
+
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                print(f"http status: {status}")
+                print("result: failed")
+                print("error: response body is not valid JSON")
+                return 1
+
+            if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+                print(f"http status: {status}")
+                print("result: failed")
+                print("error: response is not OpenAI-compatible (missing data array)")
+                return 1
+
+            models_count = len(data["data"])
+            print(f"http status: {status}")
+            print(f"models returned: {models_count}")
+            print("result: ok")
+            return 0
+    except urllib.error.HTTPError as exc:
+        print(f"http status: {exc.code}")
+        print("result: failed")
+        return 1
+    except Exception as exc:
+        print("result: failed")
+        print(f"error: {exc}")
+        return 1

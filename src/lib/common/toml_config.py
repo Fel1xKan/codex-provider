@@ -7,13 +7,13 @@ from typing import Any
 
 import tomlkit
 
-from codex_provider_lib.constants import (
+from lib.common.constants import (
     PROVIDER_ORDER,
     RUNTIME_PROVIDER_ID,
     SENSITIVE_KEY_PARTS,
 )
-from codex_provider_lib.errors import SwitchError
-from codex_provider_lib.network import normalize_base_url
+from lib.common.errors import SwitchError
+from lib.common.network import normalize_base_url
 
 
 def validate_provider_name(provider: str) -> str:
@@ -27,6 +27,18 @@ def validate_provider_config(provider: str, config: dict[str, Any]) -> None:
     if not isinstance(base_url, str) or not base_url:
         raise SwitchError(f"base_url is missing for provider: {provider}")
     normalize_base_url(base_url)
+
+
+def parse_provider_section(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    providers: dict[str, dict[str, Any]] = {}
+    raw_providers = data.get("model_providers")
+    if isinstance(raw_providers, dict):
+        for name, config in raw_providers.items():
+            if isinstance(name, str) and isinstance(config, dict):
+                validate_provider_name(name)
+                validate_provider_config(name, config)
+                providers[name] = config
+    return providers
 
 
 def redact_sensitive_config(value: Any, key: str = "") -> Any:

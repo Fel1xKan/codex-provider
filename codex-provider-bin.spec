@@ -2,8 +2,8 @@
 
 
 a = Analysis(
-    ['codex_provider.py'],
-    pathex=[],
+    ['src/cli/codex_provider.py'],
+    pathex=['src'],
     binaries=[],
     datas=[],
     hiddenimports=[],

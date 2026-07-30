@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 from conftest import IsolatedPaths
 
-import codex_provider as cp
-from codex_provider_lib import network
-from codex_provider_lib.platform import split_command
+import cli.codex_provider as cp
+from lib.common import network
+from lib.common.platform import split_command
 
 
 class FakeResponse:
@@ -311,7 +311,7 @@ def test_version_matches_project_metadata() -> None:
     )
     assert "version" in project["project"]["dynamic"]
     assert project["tool"]["setuptools"]["dynamic"]["version"]["attr"] == (
-        "codex_provider_lib.constants.VERSION"
+        "lib.common.constants.VERSION"
     )
 
 
