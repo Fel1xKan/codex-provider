@@ -130,6 +130,10 @@ API keys are never printed.
 
 Running `switch` without a provider opens the existing provider picker. In a
 non-interactive environment, provide the provider explicitly.
+Successful `switch` commands update a most-recently-used provider list. The
+`list` output and interactive provider picker show recently used providers
+first, with providers that have not been used yet sorted by name. Running
+`list` or `status` initializes the recency file when it does not exist yet.
 
 `delete` removes the provider configuration but keeps its auth by default in
 both CLIs; pass `--full` to remove the auth too. If the provider was already
@@ -141,6 +145,8 @@ current provider cannot be deleted until another provider is selected.
 `rename` updates the OpenCode provider key, the top-level default model when it
 uses that provider, and the matching OpenCode auth entry in one operation.
 
+Codex provider recency is stored in `~/.codex-provider/recent.json`.
+
 ## OpenCode files
 
 The tool follows the same XDG locations as OpenCode on macOS and Linux:
@@ -150,6 +156,7 @@ The tool follows the same XDG locations as OpenCode on macOS and Linux:
 ~/.config/opencode/opencode.json
 ~/.config/opencode/config.json
 ~/.local/share/opencode/auth.json
+~/.local/state/opencode/opencode-provider-recent.json
 ```
 
 For global config, the first existing filename in the order above is used.

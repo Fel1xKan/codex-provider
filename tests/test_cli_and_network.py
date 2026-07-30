@@ -315,6 +315,54 @@ def test_version_matches_project_metadata() -> None:
     )
 
 
+def test_list_orders_providers_by_recent_switch(
+    initialized_registry: IsolatedPaths, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert cp.main(["switch", "beta"]) == 0
+    capsys.readouterr()
+    assert cp.main(["list"]) == 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+    assert lines[0].startswith("* beta")
+    assert lines[1].startswith("  alpha")
+
+    assert cp.main(["switch", "alpha"]) == 0
+    capsys.readouterr()
+    assert cp.main(["list"]) == 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+    assert lines[0].startswith("* alpha")
+    assert lines[1].startswith("  beta")
+    recent = (initialized_registry.tool_home / "recent.json").read_text(
+        encoding="utf-8"
+    )
+    assert '"alpha"' in recent
+    assert recent.index('"alpha"') < recent.index('"beta"')
+
+
+def test_list_initializes_recent_file(
+    initialized_registry: IsolatedPaths, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cp.RECENT_PATH.unlink()
+    assert cp.main(["list"]) == 0
+    capsys.readouterr()
+    assert cp.RECENT_PATH.exists()
+    assert cp.load_recent_providers(cp.RECENT_PATH) == []
+
+
+def test_switch_current_provider_records_recent_use(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    assert cp.main(["switch", "alpha"]) == 0
+    assert cp.load_recent_providers(cp.RECENT_PATH) == ["alpha"]
+
+
+def test_switch_dry_run_does_not_record_recent_use(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    before = (cp.RECENT_PATH.read_bytes(), cp.RECENT_PATH.stat().st_mtime_ns)
+    assert cp.main(["switch", "beta", "--dry-run"]) == 0
+    assert (cp.RECENT_PATH.read_bytes(), cp.RECENT_PATH.stat().st_mtime_ns) == before
+
+
 def test_auth_edit_validation_does_not_expose_invalid_contents(
     initialized_registry: IsolatedPaths,
     monkeypatch: pytest.MonkeyPatch,

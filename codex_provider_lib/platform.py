@@ -112,7 +112,7 @@ def select_provider_interactive(current: str, providers: list[str]) -> str | Non
             "no provider specified and stdin/stdout is not a TTY; pass a provider name"
         )
 
-    names = sorted(providers)
+    names = list(providers)
     if os.name == "nt":
         return select_provider_windows(current, names)
 

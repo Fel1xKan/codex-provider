@@ -31,6 +31,7 @@ def isolated_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> IsolatedP
     monkeypatch.setattr(cp, "TOOL_HOME", paths.tool_home)
     monkeypatch.setattr(cp, "TOOL_CONFIG_PATH", paths.tool_config)
     monkeypatch.setattr(cp, "AUTH_STORE_DIR", paths.auth_store)
+    monkeypatch.setattr(cp, "RECENT_PATH", paths.tool_home / "recent.json")
     monkeypatch.setattr(cp, "DEFAULT_CODEX_DIR", paths.codex_dir)
     monkeypatch.setattr(cp, "_lock_depth", 0)
     monkeypatch.setattr(cp, "_lock_file", None)

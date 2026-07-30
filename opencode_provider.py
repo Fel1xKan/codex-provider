@@ -40,6 +40,14 @@ from codex_provider_lib.cli import (
 )
 from codex_provider_lib.network import normalize_base_url, run_models_test
 from codex_provider_lib.platform import run_editor, select_provider_interactive
+from codex_provider_lib.recent import (
+    ensure_recent_providers,
+    forget_recent_provider,
+    load_recent_providers,
+    record_recent_provider,
+    rename_recent_provider,
+    sort_providers_by_recent,
+)
 
 if os.name == "nt":
     import msvcrt
@@ -60,6 +68,7 @@ STATE_DIR = (
 AUTH_PATH = DATA_DIR / "auth.json"
 MODEL_STATE_PATH = STATE_DIR / "model.json"
 LOCK_PATH = STATE_DIR / "opencode-provider.lock"
+RECENT_PATH = STATE_DIR / "opencode-provider-recent.json"
 CONFIG_NAMES = ("opencode.jsonc", "opencode.json", "config.json")
 PROVIDER_PATTERN = re.compile(r"^[^/\s]+$")
 
@@ -478,7 +487,9 @@ def provider_is_enabled(state: ConfigState, provider: str) -> bool:
 def print_list() -> int:
     state = load_state()
     auth_provider_ids = load_auth_provider_ids()
-    for provider in sorted(state.providers):
+    for provider in sort_providers_by_recent(
+        state.providers, ensure_recent_providers(RECENT_PATH)
+    ):
         marker = "*" if provider == state.current_provider else " "
         models = provider_models(state, provider)
         auth = provider_has_auth(provider, state.providers[provider], auth_provider_ids)
@@ -943,6 +954,7 @@ def rename_provider(old: str, new: str, dry_run: bool) -> int:
                 except SwitchError:
                     atomic_write_config(state.path, updated, state.text)
                     raise
+            rename_recent_provider(RECENT_PATH, old, new)
     action = "would rename" if dry_run else "renamed"
     print(f"{action} provider: {old} -> {new}")
     return 0
@@ -1229,6 +1241,8 @@ def switch_provider(provider: str, requested_model: str | None, dry_run: bool) -
         target = f"{provider}/{model}"
         configured_model = state.data.get("model")
         if configured_model == target:
+            if not dry_run:
+                record_recent_provider(RECENT_PATH, provider)
             print(f"already using default model: {target}")
             return 0
         updated = patch_default_model(state.text, target)
@@ -1237,6 +1251,7 @@ def switch_provider(provider: str, requested_model: str | None, dry_run: bool) -
             raise SwitchError("updated config did not contain the requested model")
         if not dry_run:
             atomic_write_config(state.path, state.text, updated)
+            record_recent_provider(RECENT_PATH, provider)
 
     action = "would switch" if dry_run else "switched"
     effective_model = (
@@ -1300,6 +1315,7 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
                 except SwitchError:
                     atomic_write_config(state.path, updated, state.text)
                     raise
+            forget_recent_provider(RECENT_PATH, provider)
 
     action = "would delete" if dry_run else "deleted"
     print(f"{action} provider: {provider}")
@@ -1417,7 +1433,10 @@ def main(argv: list[str] | None = None) -> int:
             if provider is None:
                 state = load_state()
                 provider = select_provider_interactive(
-                    state.current_provider or "", list(state.providers)
+                    state.current_provider or "",
+                    sort_providers_by_recent(
+                        state.providers, load_recent_providers(RECENT_PATH)
+                    ),
                 )
                 if provider is None:
                     print("switch cancelled")

@@ -24,6 +24,7 @@ def opencode_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(op, "AUTH_PATH", data_dir / "auth.json")
     monkeypatch.setattr(op, "MODEL_STATE_PATH", state_dir / "model.json")
     monkeypatch.setattr(op, "LOCK_PATH", state_dir / "opencode-provider.lock")
+    monkeypatch.setattr(op, "RECENT_PATH", state_dir / "opencode-provider-recent.json")
     return config_dir
 
 
@@ -170,6 +171,50 @@ def test_switch_replaces_existing_model_without_reformatting(
     updated = config.read_text(encoding="utf-8")
     assert "// Default route." in updated
     assert json5.loads(updated)["model"] == "beta/model-a"
+
+
+def test_list_orders_providers_by_recent_switch(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_config(opencode_paths)
+    assert op.main(["switch", "alpha"]) == 0
+    assert op.main(["switch", "beta", "--model", "model-b"]) == 0
+    capsys.readouterr()
+    assert op.main(["list"]) == 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+    assert lines[0].startswith("* beta")
+    assert lines[1].startswith("  alpha")
+
+    assert op.main(["switch", "alpha"]) == 0
+    capsys.readouterr()
+    assert op.main(["list"]) == 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+    assert lines[0].startswith("* alpha")
+    assert lines[1].startswith("  beta")
+    recent = op.RECENT_PATH.read_text(encoding="utf-8")
+    assert recent.index('"alpha"') < recent.index('"beta"')
+
+
+def test_list_initializes_recent_file(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_config(opencode_paths)
+    assert op.main(["list"]) == 0
+    capsys.readouterr()
+    assert op.RECENT_PATH.exists()
+    assert op.load_recent_providers(op.RECENT_PATH) == []
+
+
+def test_switch_current_provider_records_recent_use(opencode_paths: Path) -> None:
+    write_config(opencode_paths)
+    assert op.main(["switch", "alpha"]) == 0
+    assert op.load_recent_providers(op.RECENT_PATH) == ["alpha"]
+
+
+def test_switch_dry_run_does_not_record_recent_use(opencode_paths: Path) -> None:
+    write_config(opencode_paths)
+    assert op.main(["switch", "beta", "--model", "model-b", "--dry-run"]) == 0
+    assert not op.RECENT_PATH.exists()
 
 
 def test_list_reports_models_auth_and_active_provider(

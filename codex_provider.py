@@ -51,6 +51,14 @@ from codex_provider_lib.platform import (
     run_editor,
     select_provider_interactive,
 )
+from codex_provider_lib.recent import (
+    ensure_recent_providers,
+    forget_recent_provider,
+    load_recent_providers,
+    record_recent_provider,
+    rename_recent_provider,
+    sort_providers_by_recent,
+)
 from codex_provider_lib.toml_config import (
     build_provider_block,
     format_toml_value,
@@ -70,6 +78,7 @@ else:
 TOOL_HOME = Path.home() / ".codex-provider"
 TOOL_CONFIG_PATH = TOOL_HOME / "config.toml"
 AUTH_STORE_DIR = TOOL_HOME / "auth"
+RECENT_PATH = TOOL_HOME / "recent.json"
 DEFAULT_CODEX_DIR = Path.home() / ".codex"
 
 
@@ -725,6 +734,7 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
             if delete_auth and profile.exists():
                 changes.append(FileChange(profile, None, secret=True))
             commit_file_changes(changes)
+            forget_recent_provider(RECENT_PATH, provider)
 
     action = "would delete" if dry_run else "deleted"
     print(f"{action} provider: {provider}")
@@ -799,6 +809,7 @@ def rename_provider(old_provider: str, new_provider: str, dry_run: bool) -> int:
                     )
                 )
             commit_file_changes(changes)
+            rename_recent_provider(RECENT_PATH, old_provider, new_provider)
 
     action = "would rename" if dry_run else "renamed"
     print(f"{action} provider: {old_provider} -> {new_provider}")
@@ -834,7 +845,9 @@ def print_status() -> int:
     print(f"current provider: {current}")
     print(f"runtime auth: {runtime_auth_path()}")
     print("")
-    for provider in sorted(providers.keys()):
+    for provider in sort_providers_by_recent(
+        providers, ensure_recent_providers(RECENT_PATH)
+    ):
         marker = "*" if provider == current else " "
         auth_exists = auth_profile_path(provider).exists()
         print(f"{marker} {provider:<16} auth={'yes' if auth_exists else 'no'}")
@@ -843,7 +856,9 @@ def print_status() -> int:
 
 def print_list() -> int:
     current, providers = ensure_registry_ready()
-    for provider in sorted(providers.keys()):
+    for provider in sort_providers_by_recent(
+        providers, ensure_recent_providers(RECENT_PATH)
+    ):
         marker = "*" if provider == current else " "
         print(f"{marker} {provider}")
     return 0
@@ -1245,7 +1260,9 @@ def doctor(fix: bool) -> int:
     if providers:
         print("")
         print("providers:")
-        for provider in sorted(providers.keys()):
+        for provider in sort_providers_by_recent(
+            providers, ensure_recent_providers(RECENT_PATH)
+        ):
             marker = "*" if provider == active_provider else " "
             profile = auth_profile_path(provider)
             exists = profile.exists()
@@ -1356,7 +1373,10 @@ def doctor(fix: bool) -> int:
 
 def prompt_provider_selection() -> str | None:
     current, providers = ensure_registry_ready()
-    return select_provider_interactive(current, list(providers.keys()))
+    return select_provider_interactive(
+        current,
+        sort_providers_by_recent(providers, load_recent_providers(RECENT_PATH)),
+    )
 
 
 def runtime_config_matches(
@@ -1400,6 +1420,8 @@ def switch_provider(provider: str, dry_run: bool) -> int:
             and runtime_auth.exists()
             and runtime_config_matches(runtime_data, providers[provider])
         ):
+            if not dry_run:
+                record_recent_provider(RECENT_PATH, provider)
             print(f"already using provider: {provider}")
             return 0
         runtime_payload = render_runtime_config(base_text, providers[provider]).encode(
@@ -1439,6 +1461,7 @@ def switch_provider(provider: str, dry_run: bool) -> int:
                 ]
             )
             commit_file_changes(changes)
+            record_recent_provider(RECENT_PATH, provider)
 
     action = "would switch" if dry_run else "switched"
     if current == provider:
