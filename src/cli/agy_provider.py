@@ -42,6 +42,7 @@ GEMINI_DIR = HOME / ".gemini"
 CLI_DIR = GEMINI_DIR / "antigravity-cli"
 CONFIG_DIR = GEMINI_DIR / "config"
 OAUTH_TOKEN_PATH = CLI_DIR / "antigravity-oauth-token"
+STANDALONE_OAUTH_TOKEN_PATH = CLI_DIR / "jetski-standalone-oauth-token"
 CONFIG_PATH = CONFIG_DIR / "config.json"
 SETTINGS_PATH = CLI_DIR / "settings.json"
 
@@ -70,6 +71,7 @@ __all__ = [
     "OAUTH_TOKEN_PATH",
     "RECENT_PATH",
     "SETTINGS_PATH",
+    "STANDALONE_OAUTH_TOKEN_PATH",
     "STATE_DIR",
     "STATE_PATH",
     "StoreState",

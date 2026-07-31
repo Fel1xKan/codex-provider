@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from lib.common.common_store import FileLockManager
 from lib.common.errors import SwitchError
+
+WINCRED_TARGET = "gemini:antigravity"
+WINCRED_USER = "antigravity"
 
 ACCOUNT_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
@@ -46,6 +51,13 @@ def oauth_token_path() -> Path:
     if mod and hasattr(mod, "OAUTH_TOKEN_PATH"):
         return mod.OAUTH_TOKEN_PATH
     return cli_dir() / "antigravity-oauth-token"
+
+
+def standalone_oauth_token_path() -> Path:
+    mod = sys.modules.get("cli.agy_provider") or sys.modules.get("agy_provider")
+    if mod and hasattr(mod, "STANDALONE_OAUTH_TOKEN_PATH"):
+        return mod.STANDALONE_OAUTH_TOKEN_PATH
+    return cli_dir() / "jetski-standalone-oauth-token"
 
 
 def config_path() -> Path:
@@ -194,3 +206,49 @@ def load_store() -> StoreState:
             )
 
     return StoreState(current=current, accounts=accounts)
+
+
+def write_wincred_token(token_data: dict[str, Any]) -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+
+        class CREDENTIAL(ctypes.Structure):
+            _fields_ = [
+                ("Flags", wt.DWORD),
+                ("Type", wt.DWORD),
+                ("TargetName", wt.LPWSTR),
+                ("Comment", wt.LPWSTR),
+                ("LastWritten", wt.FILETIME),
+                ("CredentialBlobSize", wt.DWORD),
+                ("CredentialBlob", ctypes.POINTER(ctypes.c_byte)),
+                ("Persist", wt.DWORD),
+                ("AttributeCount", wt.DWORD),
+                ("Attributes", ctypes.c_void_p),
+                ("TargetAlias", wt.LPWSTR),
+                ("UserName", wt.LPWSTR),
+            ]
+
+        blob = json.dumps(token_data, indent=2).encode("utf-8")
+        blob_buf = ctypes.create_string_buffer(blob, len(blob))
+
+        cred = CREDENTIAL()
+        cred.Type = 1
+        cred.TargetName = WINCRED_TARGET
+        cred.UserName = WINCRED_USER
+        cred.CredentialBlobSize = len(blob)
+        cred.CredentialBlob = ctypes.cast(blob_buf, ctypes.POINTER(ctypes.c_byte))
+        cred.Persist = 2
+
+        advapi32 = ctypes.windll.advapi32
+        if not advapi32.CredWriteW(ctypes.byref(cred), 0):
+            with suppress(OSError):
+                raise SwitchError(
+                    f"CredWrite failed: error {ctypes.get_last_error()}"
+                )
+    except SwitchError:
+        raise
+    except Exception:
+        pass

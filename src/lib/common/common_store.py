@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import fcntl
 import os
 import sys
 from contextlib import suppress
@@ -10,6 +9,11 @@ from typing import Any
 
 from lib.common.constants import DEFAULT_FILE_MODE, SECRET_FILE_MODE
 from lib.common.errors import SwitchError
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 try:
     import msvcrt
@@ -174,8 +178,10 @@ class FileLockManager:
                     lock_file.flush()
                 lock_file.seek(0)
                 msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-            else:
+            elif fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            else:
+                raise SwitchError("file locking is not supported on this platform")
             self._lock_file = lock_file
             self._lock_depth = 1
         except OSError as exc:
@@ -194,7 +200,7 @@ class FileLockManager:
                     if os.name == "nt" and msvcrt:
                         self._lock_file.seek(0)
                         msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-                    else:
+                    elif fcntl is not None:
                         fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
                 except OSError:
                     pass

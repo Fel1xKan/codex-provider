@@ -61,6 +61,13 @@ def login_account(
             Path(temp_dir) / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
         )
         if not token_path.exists():
+            token_path = (
+                Path(temp_dir)
+                / ".gemini"
+                / "antigravity-cli"
+                / "jetski-standalone-oauth-token"
+            )
+        if not token_path.exists():
             token_path = Path(temp_dir) / "antigravity-oauth-token"
 
         if not token_path.exists():
