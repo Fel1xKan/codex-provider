@@ -35,6 +35,7 @@ from lib.agy.store import (
     load_store,
     release_lock,
 )
+from lib.agy.usage import usage_command
 
 HOME = Path.home()
 GEMINI_DIR = HOME / ".gemini"
@@ -95,6 +96,7 @@ __all__ = [
     "shutil",
     "subprocess",
     "switch_account",
+    "usage_command",
 ]
 
 if __name__ == "__main__":

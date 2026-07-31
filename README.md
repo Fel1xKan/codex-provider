@@ -1,9 +1,10 @@
-# codex-provider / opencode-provider
+# codex-provider / opencode-provider / agy-provider
 
-This repository builds two provider managers with the same CLI shape:
+This repository builds three provider managers:
 
 - `codex-provider` manages Codex's TOML runtime config and auth snapshots.
 - `opencode-provider` manages OpenCode's JSON/JSONC provider config and auth.
+- `agy-provider` manages Antigravity CLI account snapshots and authentication.
 
 Both commands share the same `list`, `status`, `auth`, `config`, `doctor`,
 `switch`, `test`, `ping`/`p`, `add`, `delete`, `rename`, `export`, and `import`
@@ -50,6 +51,9 @@ codex-provider list
 codex-provider status
 opencode-provider list
 opencode-provider status
+agy-provider status
+agy-provider usage
+agy-provider usage work-account
 
 codex-provider auth detail ggniao
 codex-provider auth edit ggniao
@@ -96,6 +100,14 @@ codex-provider export backup.json
 opencode-provider import backup.json --dry-run
 opencode-provider import backup.json
 ```
+
+`agy-provider usage [provider]` queries Antigravity's quota summary for the
+selected account, or the current account when no name is given. It shows the
+remaining 5-hour and weekly limits for each model group without switching the
+active account or modifying saved credentials. Expired access tokens are
+refreshed in memory from the account snapshot. The command initializes Code
+Assist with that account first, then uses the returned account project for the
+quota query, matching Antigravity's `/usage` request sequence.
 
 `auth detail` prints field metadata without credential values. `auth edit`
 opens the backend auth file in `$VISUAL` or `$EDITOR` and validates it before

@@ -25,6 +25,7 @@ from lib.agy.commands import (
     switch_account,
 )
 from lib.agy.login import login_account
+from lib.agy.usage import usage_command
 from lib.common.cli import (
     add_auth_parser,
     add_config_parser,
@@ -56,6 +57,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("list", help="List accounts from agy-provider config")
     subparsers.add_parser("status", help="Show the current active account and status")
+
+    usage = subparsers.add_parser(
+        "usage", help="Show Antigravity 5-hour and weekly quota remaining"
+    )
+    usage.add_argument(
+        "provider", nargs="?", help="Account name (defaults to the current account)"
+    )
 
     login = subparsers.add_parser(
         "login",
@@ -128,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
             return print_list()
         if args.command == "status":
             return print_status()
+        if args.command == "usage":
+            return usage_command(args.provider)
 
         if args.command == "switch":
             account = args.provider
