@@ -106,6 +106,8 @@ def default_atomic_write_bytes(
         flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
         if hasattr(os, "O_CLOEXEC"):
             flags |= os.O_CLOEXEC
+        if hasattr(os, "O_BINARY"):
+            flags |= os.O_BINARY
 
         fd = os.open(tmp_path, flags, target_mode)
         try:
