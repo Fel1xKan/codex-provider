@@ -1,0 +1,19 @@
+description: >
+  Switch and validate Codex, OpenCode, and Antigravity providers without hand-editing credentials or global configuration.
+topics:
+  # Tier 1: broad discovery
+  - python
+  - cli
+  - command-line
+  - developer-tools
+  - automation
+  # Tier 2: project capabilities
+  - configuration-management
+  - llm-tools
+  - ai-tools
+  - codex-cli
+  # Tier 3: supported ecosystems
+  - opencode
+  - openai-compatible
+  - antigravity
+homepage: ""

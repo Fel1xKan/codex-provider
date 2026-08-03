@@ -1,249 +1,178 @@
-# codex-provider / opencode-provider / agy-provider
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset=".github/logo-light.svg">
+    <img alt="codex-provider" src=".github/logo-light.svg" width="440">
+  </picture>
+</div>
 
-This repository builds three provider managers:
+<div align="center">
 
-- `codex-provider` manages Codex's TOML runtime config and auth snapshots.
-- `opencode-provider` manages OpenCode's JSON/JSONC provider config and auth.
-- `agy-provider` manages Antigravity CLI account snapshots and authentication.
+[![License: MIT][license-shield]][license-url]
+[![Release][release-shield]][release-url]
+[![CI][ci-shield]][ci-url]
+[![Python 3.11+][python-shield]][python-url]
 
-Both commands share the same `list`, `status`, `auth`, `config`, `doctor`,
-`switch`, `test`, `ping`/`p`, `add`, `delete`, `rename`, `export`, and `import`
-command forms. Their
-backend only differs in the config/auth file format, locations, and the target
-CLI used by `ping`. OpenCode additionally provides `models` discovery and a
-model selector on `switch`.
+</div>
 
-OpenCode keeps all custom provider definitions in its global JSON/JSONC config
-and all `/connect` credentials in a separate auth file. This tool leaves those
-provider definitions and credentials in place. A switch only updates the
-top-level `model` value to `provider/model`, which is OpenCode's native default
-model mechanism.
+<div align="center">
+  <a href="README-CN.md">简体中文</a> &middot;
+  <a href="#quick-start">Quick Start</a> &middot;
+  <a href="#usage">Usage</a> &middot;
+  <a href="docs/command-reference.md">Command Reference</a> &middot;
+  <a href="https://github.com/Fel1xKan/codex-provider/issues/new?labels=bug">Report Bug</a>
+</div>
 
-## Safety properties
+> Switch Codex, OpenCode, and Antigravity providers without hand-editing credentials or global configuration.
 
-- Provider API keys and auth values are never printed.
-- Switches preserve unrelated global config values.
-- JSONC comments and trailing commas are preserved.
-- Config writes are atomic and retain existing POSIX permissions.
-- A provider excluded by `enabled_providers` or `disabled_providers` cannot be
-  selected accidentally.
-- `switch --dry-run` does not modify the config.
+---
 
-## Installation
+## Why codex-provider?
+
+AI coding CLIs store providers, models, and credentials in different formats and
+locations. If you regularly move between official accounts, compatible API
+providers, or Antigravity accounts, manual edits are easy to get wrong and hard
+to audit. This project gives each tool a focused CLI with aligned commands,
+validation, safe writes, and dry-run previews.
+
+## Features
+
+- **Switch without manual edits** - select saved providers or accounts while preserving unrelated global configuration.
+- **Keep secrets out of terminal output** - inspect authentication metadata and redacted configuration without printing credential values.
+- **Verify the entire path** - probe `/models` endpoints or run a minimal command through Codex, OpenCode, or Antigravity.
+- **Manage OpenCode models** - discover remote model IDs, sync new models without deleting metadata, and choose a model while switching.
+- **Manage Antigravity accounts** - log in, import account snapshots, switch accounts, and inspect 5-hour and weekly quota remaining.
+- **Preview and recover changes** - use dry runs for mutating commands and export or import provider data as JSON.
+- **Move quickly between recent providers** - interactive pickers and list output prioritize recently used entries.
+
+## Choose Your CLI
+
+| CLI | Use it for | Native configuration |
+|-----|------------|----------------------|
+| `codex-provider` | Codex-compatible API providers and auth snapshots | `~/.codex` and `~/.codex-provider` |
+| `opencode-provider` | OpenCode providers, credentials, default models, and model discovery | XDG OpenCode config, data, and state directories |
+| `agy-provider` | Antigravity accounts, login snapshots, switching, and quota checks | `~/.gemini/antigravity-cli` and `~/.gemini/agy-provider` |
+
+The Codex and OpenCode CLIs intentionally share command names and behavior for
+their common operations. OpenCode adds `models`; Antigravity adds `login` and
+`usage` because those workflows are account-specific.
+
+## When to Use
+
+Use these CLIs when you maintain multiple providers or accounts and want a
+repeatable way to switch, validate, back up, and troubleshoot them. They are
+especially useful in scripts because mutating commands expose `--dry-run` and
+return non-zero status codes on failure.
+
+This project does not create provider subscriptions, install the target Codex,
+OpenCode, or Antigravity CLIs, or bypass provider authentication. It manages
+configuration and credentials that you already control.
+
+## Quick Start
 
 ```bash
-pipx install .
-opencode-provider --version
+pipx install git+https://github.com/Fel1xKan/codex-provider.git
+codex-provider status
 ```
 
-For development:
+Replace the second command with `opencode-provider status` or
+`agy-provider status` for the tool you use.
+
+## Install
+
+### With pipx
 
 ```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install -r requirements-dev.txt
-./opencode-provider --help
+pipx install git+https://github.com/Fel1xKan/codex-provider.git
 ```
 
-## Commands
+This installs all three commands in isolated Python packaging. Upgrade with:
+
+```bash
+pipx upgrade opencode-provider
+```
+
+### Standalone binaries
+
+Linux and Windows binaries are published with SHA-256 checksum files on the
+[GitHub Releases page][release-url]. Standalone binaries do not require a local
+Python installation.
+
+## Usage
+
+### Switch, inspect, and validate a provider
 
 ```bash
 codex-provider list
+codex-provider switch my-provider --dry-run
+codex-provider switch my-provider
 codex-provider status
-opencode-provider list
-opencode-provider status
-agy-provider status
-agy-provider usage
-agy-provider usage work-account
-
-codex-provider auth detail ggniao
-codex-provider auth edit ggniao
-codex-provider config detail ggniao
 codex-provider doctor
-opencode-provider auth detail foye
-opencode-provider auth edit foye
-opencode-provider config detail foye
-opencode-provider doctor
-
-codex-provider test
-codex-provider test --all
-codex-provider ping
-codex-provider ping --all
-codex-provider ping ggniao --model gpt-5
-
-opencode-provider test
-opencode-provider test --all
-opencode-provider ping
-opencode-provider ping --all
-opencode-provider ping foye --model grok-4.5
-
-opencode-provider models list foye
-opencode-provider models sync foye
-opencode-provider models sync --all
-opencode-provider models sync foye --dry-run
-
-opencode-provider switch
-opencode-provider switch foye
-opencode-provider switch bailian-token-plan-personal --model qwen3-coder-plus
-opencode-provider switch bailian-token-plan-personal \
-  --model bailian-token-plan-personal/qwen3-coder-plus
-opencode-provider switch foye --dry-run
-
-opencode-provider add https://api.dejong21.me --provider dejong
-opencode-provider add https://api.dejong21.me --provider dejong --api-key-stdin
-opencode-provider delete foye
-opencode-provider delete foye --full
-opencode-provider delete foye --dry-run
-opencode-provider rename foye foye-new
-opencode-provider rename foye foye-new --dry-run
-
-codex-provider export backup.json
-opencode-provider import backup.json --dry-run
-opencode-provider import backup.json
+codex-provider test my-provider
 ```
 
-`agy-provider usage [provider]` queries Antigravity's quota summary for the
-selected account, or the current account when no name is given. It shows the
-remaining 5-hour and weekly limits for each model group without switching the
-active account or modifying saved credentials. Expired access tokens are
-refreshed in memory from the account snapshot. The command initializes Code
-Assist with that account first, then uses the returned account project for the
-quota query, matching Antigravity's `/usage` request sequence.
+Omit the provider from `switch` to open an interactive picker. Recent providers
+appear first. `doctor` checks stored configuration and authentication, while
+`test` probes the provider endpoint.
 
-`auth detail` prints field metadata without credential values. `auth edit`
-opens the backend auth file in `$VISUAL` or `$EDITOR` and validates it before
-keeping the edit; use it instead of `config edit` to change an API key.
-`config detail` redacts inline secrets; `config edit` opens and validates the
-backend provider config. `doctor` validates the config,
-provider model declarations, and auth JSON. Both CLIs accept `doctor --fix`;
-OpenCode currently has no legacy files requiring an automatic repair.
-
-`add` obtains the API key from a hidden terminal prompt by default. Use
-`--api-key-stdin` for scripts; API keys passed as positional arguments are
-rejected. OpenCode accepts `--supports-websockets` for CLI compatibility, but
-does not store it because OpenCode has no equivalent provider config field.
-
-`list` reports the custom providers declared in the global OpenCode config,
-their configured model counts, whether credentials are present, and whether
-OpenCode provider filters allow them.
-
-`switch` sets the global config's top-level `model` field. When the target has
-one model, that model is selected automatically. When the current model ID also
-exists on the target, the model ID is retained. Otherwise an interactive
-terminal presents a model menu; in non-interactive use, pass `--model`.
-
-For `codex-provider`, `test` probes the configured provider's `/models` endpoint
-and `ping` invokes `codex exec`. For `opencode-provider`, the same commands
-probe the OpenCode provider endpoint and `ping` invokes `opencode run` with the
-selected `provider/model`. Use `ping --all` to run that CLI-level check for
-every configured provider, continue after failures, and print a summary.
-
-`models list` fetches model IDs from an OpenAI-compatible provider's
-`options.baseURL/models` endpoint without changing config. `models sync` adds
-new IDs to `provider.<id>.models` and keeps existing model metadata unchanged.
-It never removes models. Use `--all` to continue through every configured
-provider and return status 1 if any provider cannot be queried. Credentials are
-read from `options.apiKey` or OpenCode's `~/.local/share/opencode/auth.json`;
-API keys are never printed.
-
-Running `switch` without a provider opens the existing provider picker. In a
-non-interactive environment, provide the provider explicitly.
-Successful `switch` commands update a most-recently-used provider list. The
-`list` output and interactive provider picker show recently used providers
-first, with providers that have not been used yet sorted by name. Running
-`list` or `status` initializes the recency file when it does not exist yet.
-
-`delete` removes the provider configuration but keeps its auth by default in
-both CLIs; pass `--full` to remove the auth too. If the provider was already
-deleted, run `delete <provider> --full` again to remove its orphaned auth.
-Re-adding the same provider replaces retained auth with the newly entered API
-key. OpenCode preserves unrelated JSONC content while deleting a provider. The
-current provider cannot be deleted until another provider is selected.
-
-`rename` updates the OpenCode provider key, the top-level default model when it
-uses that provider, and the matching OpenCode auth entry in one operation.
-
-Codex provider recency is stored in `~/.codex-provider/recent.json`.
-
-## OpenCode files
-
-The tool follows the same XDG locations as OpenCode on macOS and Linux:
-
-```text
-~/.config/opencode/opencode.jsonc
-~/.config/opencode/opencode.json
-~/.config/opencode/config.json
-~/.local/share/opencode/auth.json
-~/.local/state/opencode/opencode-provider-recent.json
-```
-
-For global config, the first existing filename in the order above is used.
-`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_STATE_HOME` are respected.
-
-Only providers explicitly defined under the global config's `provider` object
-are switchable because OpenCode requires a concrete model ID. Built-in
-providers that exist only in `auth.json` are not listed by this tool.
-
-Project-level `opencode.json` files have higher precedence than the global
-config. If a project sets its own top-level `model`, that project setting will
-continue to override a global switch.
-
-## Build
-
-One build invocation produces all three standalone binaries:
+### Use backend-specific capabilities
 
 ```bash
-python build.py
-./build.sh
-./dist/codex-provider --help
-./dist/opencode-provider --help
-./dist/agy-provider --help
+opencode-provider models list my-provider
+opencode-provider models sync my-provider --dry-run
+agy-provider login work-account
+agy-provider usage work-account
 ```
 
-On Windows:
+OpenCode model sync only adds new IDs and retains existing metadata.
+Antigravity `usage` reports 5-hour and weekly quota without switching accounts.
+The [command reference](docs/command-reference.md) covers end-to-end `ping`,
+bulk checks, provider lifecycle operations, and JSON backup or restore.
 
-```bat
-py -3 build.py
-build.cmd
-dist\opencode-provider.exe --help
-dist\codex-provider.exe --help
-dist\agy-provider.exe --help
-```
+## Safety
 
-Use `--target codex`, `--target opencode`, or `--target agy` to build only one
-target. `build.py` verifies every binary version and writes a matching `.sha256`
-file.
+- API keys and authentication values are not printed by inspection commands.
+- Configuration writes are atomic and retain existing POSIX permissions.
+- OpenCode JSONC comments, trailing commas, and unrelated global values are preserved.
+- Provider filters are respected, so disabled providers cannot be selected accidentally.
+- `switch`, `add`, `delete`, `rename`, `import`, and supported account operations provide dry-run previews.
+- API keys passed as positional command arguments are rejected; use a hidden prompt or `--api-key-stdin`.
 
-## Release
+## Command Reference
 
-GitHub Actions builds Linux and Windows standalone binaries and publishes a
-GitHub Release when you push a version tag matching
-`src/lib/common/constants.py` `VERSION`:
+The three CLIs expose aligned provider-management commands, with focused
+extensions for OpenCode model discovery and Antigravity account workflows. The
+reference also documents file locations, switch behavior, secret handling, and
+exit semantics.
 
-```bash
-# VERSION is currently 0.5.0
-git tag v0.5.0
-git push origin v0.5.0
-```
+→ [Read the complete command reference](docs/command-reference.md)
 
-You can also run the **Release** workflow manually from the Actions tab.
-Assets are named like:
+## Prerequisites
 
-```text
-codex-provider-0.5.0-linux-x86_64
-codex-provider-0.5.0-windows-x86_64.exe
-opencode-provider-0.5.0-linux-x86_64
-opencode-provider-0.5.0-windows-x86_64.exe
-agy-provider-0.5.0-linux-x86_64
-agy-provider-0.5.0-windows-x86_64.exe
-```
+| Requirement | When needed |
+|-------------|-------------|
+| Python 3.11+ and `pipx` | Installing from source |
+| Codex, OpenCode, or Antigravity CLI | Running that tool's native `ping` command |
+| Network access | Provider tests, model discovery, login, and quota checks |
 
-Each binary ships with a matching `.sha256` checksum file.
+## Contributing
 
-## Validation
+The repository includes mirrored CLI-parity tests, isolated filesystem tests,
+linting, and cross-platform PyInstaller builds.
 
-```bash
-python -m ruff check .
-python -m ruff format --check .
-python -m pytest
-python build.py
-```
+→ [Read the contributing, testing, build, and release guide](CONTRIBUTING.md)
+
+## License
+
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+[license-shield]: https://img.shields.io/badge/License-MIT-green.svg
+[license-url]: LICENSE
+[release-shield]: https://img.shields.io/github/v/release/Fel1xKan/codex-provider
+[release-url]: https://github.com/Fel1xKan/codex-provider/releases
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/Fel1xKan/codex-provider/ci.yml?branch=master
+[ci-url]: https://github.com/Fel1xKan/codex-provider/actions/workflows/ci.yml
+[python-shield]: https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white
+[python-url]: https://www.python.org/downloads/
