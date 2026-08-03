@@ -120,9 +120,7 @@ def import_command(file_path: str | None, dry_run: bool) -> int:
             st.state_dir().mkdir(parents=True, exist_ok=True)
             _save_state_file(store.current or current or "", accounts_data)
 
-        if current and (
-            current in accounts_to_import or current in store.accounts
-        ):
+        if current and (current in accounts_to_import or current in store.accounts):
             if dry_run:
                 print(f"would switch account: {current}")
             else:

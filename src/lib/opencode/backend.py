@@ -179,10 +179,12 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "export":
             import lib.opencode.transfer as transfer
+
             return transfer.export_command(args.file)
 
         if args.command == "import":
             import lib.opencode.transfer as transfer
+
             return transfer.import_command(args.file, args.dry_run)
 
         return 0

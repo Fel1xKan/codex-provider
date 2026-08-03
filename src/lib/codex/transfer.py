@@ -132,8 +132,7 @@ def import_command(file_path: str | None, dry_run: bool) -> int:
 
         active_provider = data.get("active_provider")
         if active_provider and (
-            active_provider in providers_to_import
-            or active_provider in state.providers
+            active_provider in providers_to_import or active_provider in state.providers
         ):
             if dry_run:
                 print(f"would switch default provider: {active_provider}")

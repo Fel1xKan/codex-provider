@@ -217,22 +217,24 @@ file.
 
 GitHub Actions builds Linux and Windows standalone binaries and publishes a
 GitHub Release when you push a version tag matching
-`codex_provider_lib/constants.py` `VERSION`:
+`src/lib/common/constants.py` `VERSION`:
 
 ```bash
-# VERSION is currently 0.4.0
-git tag v0.4.0
-git push origin v0.4.0
+# VERSION is currently 0.5.0
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
 You can also run the **Release** workflow manually from the Actions tab.
 Assets are named like:
 
 ```text
-codex-provider-0.4.0-linux-x86_64
-codex-provider-0.4.0-windows-x86_64.exe
-opencode-provider-0.4.0-linux-x86_64
-opencode-provider-0.4.0-windows-x86_64.exe
+codex-provider-0.5.0-linux-x86_64
+codex-provider-0.5.0-windows-x86_64.exe
+opencode-provider-0.5.0-linux-x86_64
+opencode-provider-0.5.0-windows-x86_64.exe
+agy-provider-0.5.0-linux-x86_64
+agy-provider-0.5.0-windows-x86_64.exe
 ```
 
 Each binary ships with a matching `.sha256` checksum file.

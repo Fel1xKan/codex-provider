@@ -245,9 +245,7 @@ def write_wincred_token(token_data: dict[str, Any]) -> None:
         advapi32 = ctypes.windll.advapi32
         if not advapi32.CredWriteW(ctypes.byref(cred), 0):
             with suppress(OSError):
-                raise SwitchError(
-                    f"CredWrite failed: error {ctypes.get_last_error()}"
-                )
+                raise SwitchError(f"CredWrite failed: error {ctypes.get_last_error()}")
     except SwitchError:
         raise
     except Exception:

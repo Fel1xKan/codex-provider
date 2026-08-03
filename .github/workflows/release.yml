@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -43,7 +45,7 @@ jobs:
           else
             ext=""
           fi
-          for name in codex-provider opencode-provider; do
+          for name in codex-provider opencode-provider agy-provider; do
             src="dist/${name}${ext}"
             dest="release/${name}-${version}-${platform}${ext}"
             cp "$src" "$dest"
@@ -85,7 +87,9 @@ jobs:
         run: |
           set -euo pipefail
           version="$(python -c 'import sys; sys.path.insert(0, "src"); from lib.common.constants import VERSION; print(VERSION)')"
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            tag="${{ github.event.release.tag_name }}"
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
             tag="${{ github.ref_name }}"
           else
             tag="v${version}"

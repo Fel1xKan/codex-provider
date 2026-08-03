@@ -50,4 +50,8 @@ jobs:
             dist/opencode-provider.exe
             dist/opencode-provider.sha256
             dist/opencode-provider.exe.sha256
+            dist/agy-provider
+            dist/agy-provider.exe
+            dist/agy-provider.sha256
+            dist/agy-provider.exe.sha256
           if-no-files-found: error

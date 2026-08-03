@@ -66,9 +66,7 @@ def switch_account(account_name: str, dry_run: bool = False) -> int:
             raise SwitchError(f"account not found: {account_name}")
         acc = store.accounts[account_name]
         if not dry_run:
-            token_payload = (
-                json.dumps(acc.token_data, indent=2).encode("utf-8") + b"\n"
-            )
+            token_payload = json.dumps(acc.token_data, indent=2).encode("utf-8") + b"\n"
             st.oauth_token_path().parent.mkdir(parents=True, exist_ok=True)
             atomic_write_bytes(
                 st.oauth_token_path(),

@@ -845,4 +845,3 @@ def test_opencode_export_and_import(
     assert "* alpha" in status_out
     assert "beta" in status_out
     assert "default provider: alpha" in status_out
-
