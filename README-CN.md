@@ -23,7 +23,7 @@
   <a href="https://github.com/Fel1xKan/codex-provider/issues/new?labels=bug">报告问题</a>
 </div>
 
-> 无需手动修改凭据或全局配置，即可切换 Codex、OpenCode 和 Antigravity 的提供商与账号。
+> 无需手动修改凭据或全局配置，即可切换 Codex、OpenCode、Antigravity 和 Cursor 的账号与模型。
 
 ---
 
@@ -40,6 +40,7 @@ OpenAI 兼容 API 提供商或多个 Antigravity 账号之间切换，手动编�
 - **验证完整调用链**：既能探测 `/models` 接口，也能通过 Codex、OpenCode 或 Antigravity 执行最小命令。
 - **管理 OpenCode 模型**：发现远端模型 ID、只同步新增模型，并在切换提供商时选择默认模型。
 - **管理 Antigravity 账号**：登录、导入账号快照、切换账号，并查看 5 小时和每周配额余量。
+- **管理 Cursor 账号和模型**：快照当前登录的 Cursor 账号，直接改写 Cursor SQLite 数据库中的认证行，并可在所有 Composer 场景间切换模型。
 - **预览和恢复变更**：修改类命令支持预演，并可用 JSON 导出或导入提供商数据。
 - **快速返回最近使用项**：交互式选择器和列表会优先显示最近使用的提供商或账号。
 
@@ -50,16 +51,17 @@ OpenAI 兼容 API 提供商或多个 Antigravity 账号之间切换，手动编�
 | `codex-provider` | Codex 兼容 API 提供商和认证快照 | `~/.codex` 与 `~/.codex-provider` |
 | `opencode-provider` | OpenCode 提供商、凭据、默认模型与模型发现 | OpenCode 的 XDG 配置、数据和状态目录 |
 | `agy-provider` | Antigravity 账号、登录快照、切换和配额查询 | `~/.gemini/antigravity-cli` 与 `~/.gemini/agy-provider` |
+| `cursor-provider` | 存储在 Cursor SQLite 数据库中的账号与模型选择 | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` 与 `~/.cursor-provider` |
 
 Codex 与 OpenCode CLI 的公共操作会保持命令名称和行为一致。OpenCode 额外提供 `models`，
-Antigravity 额外提供 `login` 和 `usage`，用于各自特有的工作流。
+Antigravity 额外提供 `login` 和 `usage`，Cursor 额外提供 `model`，用于各自特有的工作流。
 
 ## 适用场景
 
 当你维护多个提供商或账号，并希望用可重复的方式完成切换、验证、备份和故障排查时，
 可以使用这些 CLI。修改类命令支持 `--dry-run`，失败时返回非零状态码，因此也适合脚本调用。
 
-本项目不会创建提供商订阅，不会安装目标 Codex、OpenCode 或 Antigravity CLI，也不会绕过
+本项目不会创建提供商订阅，不会安装目标 Codex、OpenCode、Antigravity 或 Cursor 工具，也不会绕过
 提供商认证。它只管理你已有并有权使用的配置和凭据。
 
 ## 快速开始
@@ -69,8 +71,8 @@ pipx install git+https://github.com/Fel1xKan/codex-provider.git
 codex-provider status
 ```
 
-如果你使用的是另外两个工具，将第二条命令替换为 `opencode-provider status` 或
-`agy-provider status`。
+如果你使用的是另外三个工具，将第二条命令替换为 `opencode-provider status`、
+`agy-provider status` 或 `cursor-provider status`。
 
 ## 安装
 
@@ -80,7 +82,7 @@ codex-provider status
 pipx install git+https://github.com/Fel1xKan/codex-provider.git
 ```
 
-该命令会在隔离的 Python 环境中安装全部三个 CLI。升级命令为：
+该命令会在隔离的 Python 环境中安装全部四个 CLI。升级命令为：
 
 ```bash
 pipx upgrade opencode-provider
@@ -88,7 +90,8 @@ pipx upgrade opencode-provider
 
 ### 独立二进制文件
 
-[GitHub Releases 页面][release-url]提供 Linux 和 Windows 二进制文件以及对应的 SHA-256
+[GitHub Releases 页面][release-url]提供 Linux (x86_64)、Windows (x86_64) 和
+macOS (Apple Silicon) 二进制文件以及对应的 SHA-256
 校验文件。独立二进制文件不需要本地 Python 环境。
 
 ## 使用方法
@@ -114,11 +117,19 @@ opencode-provider models list my-provider
 opencode-provider models sync my-provider --dry-run
 agy-provider login work-account
 agy-provider usage work-account
+cursor-provider add work --from-current
+cursor-provider switch work
+cursor-provider provider add deepseek --from-current
+cursor-provider models sync deepseek
+cursor-provider models set deepseek-v4-flash
 ```
 
 OpenCode 模型同步只添加新 ID，并保留现有元数据。Antigravity `usage` 会在不切换账号的
-情况下显示 5 小时和每周配额。端到端 `ping`、批量检查、提供商生命周期操作，以及 JSON
-备份和恢复方式见[命令参考](docs/command-reference.md)。
+情况下显示 5 小时和每周配额。Cursor `switch` 会改写 Cursor SQLite 数据库中的认证行，
+`models set` 会把一个模型 ID 应用到所有 Composer 场景。Cursor `provider` 命令管理
+Cursor 数据库中的自定义 OpenAI 兼容提供商（如 DeepSeek），`models sync` 会把提供商
+的远端模型列表导入为用户添加的模型。端到端 `ping`、批量检查、
+提供商生命周期操作，以及 JSON 备份和恢复方式见[命令参考](docs/command-reference.md)。
 
 ## 安全保证
 
@@ -127,12 +138,13 @@ OpenCode 模型同步只添加新 ID，并保留现有元数据。Antigravity `u
 - OpenCode 的 JSONC 注释、尾逗号和无关全局配置会被保留。
 - 工具会遵守提供商过滤规则，避免误选已禁用的提供商。
 - `switch`、`add`、`delete`、`rename`、`import` 以及支持的账号操作提供预演模式。
+- Cursor 只改写 `state.vscdb` 中的认证和模型行，聊天历史和 workspace 状态保持不变。
 - 工具拒绝把 API 密钥作为位置参数传入；请使用隐藏输入或 `--api-key-stdin`。
 
 ## 命令参考
 
-三个 CLI 提供一致的提供商管理命令，并分别扩展 OpenCode 模型发现和 Antigravity 账号工作流。
-参考文档还包含文件位置、切换行为、秘密处理和退出码语义。
+四个 CLI 提供一致的提供商管理命令，并分别扩展 OpenCode 模型发现、Antigravity 账号工作流
+和 Cursor 账号与模型切换。参考文档还包含文件位置、切换行为、秘密处理和退出码语义。
 
 → [查看完整命令参考（英文）](docs/command-reference.md)
 
@@ -141,7 +153,7 @@ OpenCode 模型同步只添加新 ID，并保留现有元数据。Antigravity `u
 | 要求 | 何时需要 |
 |------|----------|
 | Python 3.11+ 与 `pipx` | 从源码安装 |
-| Codex、OpenCode 或 Antigravity CLI | 执行对应工具的原生 `ping` 命令 |
+| Codex、OpenCode、Antigravity 或 Cursor | 执行对应工具的原生 `ping` 命令，或切换其账号和模型 |
 | 网络连接 | 提供商测试、模型发现、登录和配额查询 |
 
 ## 参与贡献

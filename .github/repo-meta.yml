@@ -1,5 +1,5 @@
 description: >
-  Switch and validate Codex, OpenCode, and Antigravity providers without hand-editing credentials or global configuration.
+  Switch and validate Codex, OpenCode, Antigravity, and Cursor providers without hand-editing credentials or global configuration.
 topics:
   # Tier 1: broad discovery
   - python
@@ -16,4 +16,5 @@ topics:
   - opencode
   - openai-compatible
   - antigravity
+  - cursor
 homepage: ""

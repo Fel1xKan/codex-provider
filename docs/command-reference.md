@@ -1,27 +1,30 @@
 # Command Reference
 
-This document covers `codex-provider`, `opencode-provider`, and `agy-provider`
-version 0.5.0. Run `<command> --help` in your installed version for the exact
-parser surface.
+This document covers `codex-provider`, `opencode-provider`, `agy-provider`, and
+`cursor-provider` version 0.5.0. Run `<command> --help` in your installed version
+for the exact parser surface.
 
 ## Command Matrix
 
-| Command | Codex | OpenCode | Antigravity | Purpose |
-|---------|:-----:|:--------:|:-----------:|---------|
-| `list` | Yes | Yes | Yes | List configured providers or accounts |
-| `status` | Yes | Yes | Yes | Show the active provider or account |
-| `auth detail` / `auth edit` | Yes | Yes | Yes | Inspect auth metadata or edit credentials |
-| `config detail` / `config edit` | Yes | Yes | Yes | Inspect or edit provider configuration |
-| `doctor [--fix]` | Yes | Yes | Yes | Validate configuration and authentication |
-| `test [--all]` | Yes | Yes | Yes | Test provider connectivity |
-| `ping` / `p` | Yes | Yes | Yes | Run a minimal command through the target CLI |
-| `switch [name] [--dry-run]` | Yes | Yes | Yes | Switch the active provider or account |
-| `add` | Yes | Yes | Yes | Add a provider or import an account |
-| `delete [--full] [--dry-run]` | Yes | Yes | Yes | Remove configuration, optionally including auth |
-| `rename [--dry-run]` | Yes | Yes | Yes | Rename a provider or account |
-| `export` / `import` | Yes | Yes | Yes | Back up or restore configuration and auth |
-| `models list` / `models sync` | No | Yes | No | Discover and synchronize OpenCode models |
-| `login` / `usage` | No | No | Yes | Authenticate an account or inspect quota |
+| Command | Codex | OpenCode | Antigravity | Cursor | Purpose |
+|---------|:-----:|:--------:|:-----------:|:------:|---------|
+| `list` | Yes | Yes | Yes | Yes | List configured providers or accounts |
+| `status` | Yes | Yes | Yes | Yes | Show the active provider or account |
+| `auth detail` / `auth edit` | Yes | Yes | Yes | Yes | Inspect auth metadata or edit credentials |
+| `config detail` / `config edit` | Yes | Yes | Yes | Yes | Inspect or edit provider configuration |
+| `doctor [--fix]` | Yes | Yes | Yes | Yes | Validate configuration and authentication |
+| `test [--all]` | Yes | Yes | Yes | Yes | Test provider connectivity |
+| `ping` / `p` | Yes | Yes | Yes | Yes | Run a minimal command through the target CLI |
+| `switch [name] [--dry-run]` | Yes | Yes | Yes | Yes | Switch the active provider or account |
+| `add` | Yes | Yes | Yes | Yes | Add a provider or import an account |
+| `delete [--full] [--dry-run]` | Yes | Yes | Yes | Yes | Remove configuration, optionally including auth |
+| `rename [--dry-run]` | Yes | Yes | Yes | Yes | Rename a provider or account |
+| `export` / `import` | Yes | Yes | Yes | Yes | Back up or restore configuration and auth |
+| `models list` / `models sync` | No | Yes | No | No | Discover and synchronize OpenCode models |
+| `models list` / `models set` | No | No | No | Yes | List or switch the Cursor model selection |
+| `models sync` | No | No | No | Yes | Import models from a custom Cursor provider |
+| `provider add` / `switch` / `delete` | No | No | No | Yes | Manage custom OpenAI-compatible Cursor providers |
+| `login` / `usage` | No | No | Yes | No | Authenticate an account or inspect quota |
 
 Codex and OpenCode share their parsers for common commands. Backend-specific
 differences exist only where the target configuration format requires them.
@@ -217,6 +220,82 @@ from standard input. `import --dry-run` validates and previews changes without
 writing files. Exported data can contain credentials and must be protected as a
 secret.
 
+## Cursor Accounts and Models
+
+Cursor stores the signed-in account and the model selection in its SQLite
+`state.vscdb` database, so switching only rewrites a few rows.
+
+```bash
+cursor-provider add work --from-current
+cursor-provider add work --from-current --dry-run
+cursor-provider list
+cursor-provider status
+cursor-provider switch work
+cursor-provider switch work --dry-run
+cursor-provider models list
+cursor-provider models set claude-sonnet-4-6
+cursor-provider models set claude-sonnet-4-6 --dry-run
+```
+`add --from-current` snapshots the account currently signed in to Cursor.
+`switch` writes the saved `cursorAuth/*` tokens and the reactive account fields
+into `state.vscdb`; chat history and workspace state are shared and never
+touched. `delete --full` also clears the auth rows in Cursor, logging the app
+out.
+
+`models list` prints the model catalog cached in the Cursor database plus the
+current selection per surface. `models set` validates the id against the catalog
+and applies it to every surface (`composer`, `cmd-k`, `background-composer`,
+`composer-ensemble`, `plan-execution`, `spec`, `deep-search`, `quick-agent`) and
+updates `modelLastUsedAt`.
+
+### Custom providers and model sync
+
+Cursor supports custom OpenAI-compatible providers (for example DeepSeek)
+through Settings > Models. The base URL is stored as `openAIBaseUrl` in the
+Cursor database and the API key in the encrypted `secret://cursorAuth/openAIKey`
+row. `cursor-provider` can capture and restore both.
+
+```bash
+cursor-provider provider add deepseek --from-current
+cursor-provider provider add moon --base-url https://api.moon.com --api-key-stdin
+cursor-provider provider list
+cursor-provider provider switch deepseek --dry-run
+cursor-provider provider switch deepseek
+cursor-provider provider delete deepseek --full
+cursor-provider models sync deepseek
+cursor-provider models sync deepseek --dry-run
+```
+
+- `provider add --from-current` snapshots the provider currently configured in
+  Cursor (base URL plus the API key row).
+- `provider add --base-url` stores a new base URL and prompts for the API key
+  with a hidden prompt; pass `--api-key-stdin` to pipe it in instead (identical
+  behavior to `codex-provider add`). On Windows the key is re-encrypted into
+  Cursor's secret format using the DPAPI-wrapped key in `Local State`; on macOS
+  and Linux the tool reads Cursor's encryption key from the login Keychain or
+  Secret Service keyring (the first terminal run asks for Keychain access). If
+  the platform key cannot be read, keys can still be captured from Cursor with
+  `--from-current`.
+- `provider switch` rewrites `openAIBaseUrl` and the secret row, then `models
+  sync` fetches `GET {base_url}/models` and adds missing ids to the Cursor
+  model catalog as user-added entries (existing entries are preserved; models
+  are never removed).
+- `list` prints three sections: saved accounts, custom providers (with the
+  active provider marked), and user-added models with their provider origin.
+- `provider delete --full` clears the base URL and key row in Cursor.
+
+Custom API keys only affect chat models; Tab completion continues to use
+Cursor's built-in models.
+
+Cursor keeps the database and its in-memory state in sync while running; quit
+Cursor before `switch`, `models set`, `provider switch`, or `delete --full` so
+the change is not overwritten. These commands warn when a Cursor process is
+detected.
+
+`test` and `ping` validate the saved access token locally: the JWT is decoded,
+its expiry is checked, and the account identity is printed. They return status 1
+for an expired token.
+
 ## Antigravity Accounts
 
 ### Login and import
@@ -284,6 +363,22 @@ and Linux.
 ~/.gemini/config/config.json
 ~/.gemini/agy-provider/auth.json
 ~/.gemini/agy-provider/state/
+```
+
+### Cursor
+
+```text
+~/.cursor-provider/auth.json
+~/.cursor-provider/state/state.json
+~/.cursor-provider/state/recent.json
+```
+
+The Cursor database written by this CLI is:
+
+```text
+%APPDATA%\Cursor\User\globalStorage\state.vscdb   (Windows)
+~/Library/Application Support/Cursor/User/globalStorage/state.vscdb   (macOS)
+~/.config/Cursor/User/globalStorage/state.vscdb   (Linux)
 ```
 
 ## Safety and Exit Semantics

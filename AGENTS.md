@@ -2,13 +2,12 @@
 
 ## Project Structure & Module Organization
 
-This repository contains two Python CLIs for managing Codex and OpenCode provider configuration and authentication.
+This repository contains four Python CLIs for managing Codex, OpenCode, Antigravity, and Cursor provider configuration and authentication.
 
-- `src/cli/`: CLI entrypoints (`codex_provider.py`, `opencode_provider.py`, `agy_provider.py`).
-- `src/lib/`: modularized packages (`common/`, `codex/`, `opencode/`, `agy/`).
-- `codex-provider`, `opencode-provider`, `agy-provider`: shell launchers for the Python entrypoints.
-- `README.md`: user-facing command reference and examples.
-- `codex-provider-bin.spec`, `opencode-provider.spec`, `agy-provider.spec`: PyInstaller specs for the standalone binaries.
+- `src/cli/`: CLI entrypoints (`codex_provider.py`, `opencode_provider.py`, `agy_provider.py`, `cursor_provider.py`).
+- `src/lib/`: modularized packages (`common/`, `codex/`, `opencode/`, `agy/`, `cursor/`).
+- `codex-provider`, `opencode-provider`, `agy-provider`, `cursor-provider`: shell launchers for the Python entrypoints.
+- `codex-provider-bin.spec`, `opencode-provider.spec`, `agy-provider.spec`, `cursor-provider.spec`: PyInstaller specs for the standalone binaries.
 - `build/` and `dist/`: generated artifacts from packaging; treat them as outputs, not source.
 
 Keep backend-specific code near its provider module under `src/lib/`. Put genuinely shared behavior in `src/lib/common/`.

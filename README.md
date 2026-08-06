@@ -23,7 +23,7 @@
   <a href="https://github.com/Fel1xKan/codex-provider/issues/new?labels=bug">Report Bug</a>
 </div>
 
-> Switch Codex, OpenCode, and Antigravity providers without hand-editing credentials or global configuration.
+> Switch Codex, OpenCode, Antigravity, and Cursor accounts and models without hand-editing credentials or global configuration.
 
 ---
 
@@ -42,6 +42,7 @@ validation, safe writes, and dry-run previews.
 - **Verify the entire path** - probe `/models` endpoints or run a minimal command through Codex, OpenCode, or Antigravity.
 - **Manage OpenCode models** - discover remote model IDs, sync new models without deleting metadata, and choose a model while switching.
 - **Manage Antigravity accounts** - log in, import account snapshots, switch accounts, and inspect 5-hour and weekly quota remaining.
+- **Manage Cursor accounts and models** - snapshot signed-in Cursor accounts, swap auth rows in the Cursor SQLite database, and switch models across every Composer surface.
 - **Preview and recover changes** - use dry runs for mutating commands and export or import provider data as JSON.
 - **Move quickly between recent providers** - interactive pickers and list output prioritize recently used entries.
 
@@ -52,10 +53,11 @@ validation, safe writes, and dry-run previews.
 | `codex-provider` | Codex-compatible API providers and auth snapshots | `~/.codex` and `~/.codex-provider` |
 | `opencode-provider` | OpenCode providers, credentials, default models, and model discovery | XDG OpenCode config, data, and state directories |
 | `agy-provider` | Antigravity accounts, login snapshots, switching, and quota checks | `~/.gemini/antigravity-cli` and `~/.gemini/agy-provider` |
+| `cursor-provider` | Cursor accounts and model selection stored in the Cursor SQLite database | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` and `~/.cursor-provider` |
 
 The Codex and OpenCode CLIs intentionally share command names and behavior for
 their common operations. OpenCode adds `models`; Antigravity adds `login` and
-`usage` because those workflows are account-specific.
+`usage`; Cursor adds `model` because those workflows are backend-specific.
 
 ## When to Use
 
@@ -65,8 +67,8 @@ especially useful in scripts because mutating commands expose `--dry-run` and
 return non-zero status codes on failure.
 
 This project does not create provider subscriptions, install the target Codex,
-OpenCode, or Antigravity CLIs, or bypass provider authentication. It manages
-configuration and credentials that you already control.
+OpenCode, Antigravity, or Cursor tools, or bypass provider authentication. It
+manages configuration and credentials that you already control.
 
 ## Quick Start
 
@@ -75,8 +77,8 @@ pipx install git+https://github.com/Fel1xKan/codex-provider.git
 codex-provider status
 ```
 
-Replace the second command with `opencode-provider status` or
-`agy-provider status` for the tool you use.
+Replace the second command with `opencode-provider status`,
+`agy-provider status`, or `cursor-provider status` for the tool you use.
 
 ## Install
 
@@ -86,7 +88,7 @@ Replace the second command with `opencode-provider status` or
 pipx install git+https://github.com/Fel1xKan/codex-provider.git
 ```
 
-This installs all three commands in isolated Python packaging. Upgrade with:
+This installs all four commands in isolated Python packaging. Upgrade with:
 
 ```bash
 pipx upgrade opencode-provider
@@ -94,7 +96,8 @@ pipx upgrade opencode-provider
 
 ### Standalone binaries
 
-Linux and Windows binaries are published with SHA-256 checksum files on the
+Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon) binaries are
+published with SHA-256 checksum files on the
 [GitHub Releases page][release-url]. Standalone binaries do not require a local
 Python installation.
 
@@ -122,11 +125,21 @@ opencode-provider models list my-provider
 opencode-provider models sync my-provider --dry-run
 agy-provider login work-account
 agy-provider usage work-account
+cursor-provider add work --from-current
+cursor-provider switch work
+cursor-provider provider add deepseek --from-current
+cursor-provider models sync deepseek
+cursor-provider models set deepseek-v4-flash
 ```
 
 OpenCode model sync only adds new IDs and retains existing metadata.
 Antigravity `usage` reports 5-hour and weekly quota without switching accounts.
-The [command reference](docs/command-reference.md) covers end-to-end `ping`,
+Cursor `switch` rewrites the auth rows in the Cursor SQLite database, and
+`models set` applies one model id to every Composer surface. Cursor `provider`
+commands manage custom OpenAI-compatible providers (for example DeepSeek) in
+Cursor's database, and `models sync` imports the provider's remote model list as
+user-added models. The [command reference](docs/command-reference.md) covers
+end-to-end `ping`,
 bulk checks, provider lifecycle operations, and JSON backup or restore.
 
 ## Safety
@@ -136,14 +149,15 @@ bulk checks, provider lifecycle operations, and JSON backup or restore.
 - OpenCode JSONC comments, trailing commas, and unrelated global values are preserved.
 - Provider filters are respected, so disabled providers cannot be selected accidentally.
 - `switch`, `add`, `delete`, `rename`, `import`, and supported account operations provide dry-run previews.
+- Cursor writes target only the auth and model rows in `state.vscdb`; chat history and workspace state are preserved.
 - API keys passed as positional command arguments are rejected; use a hidden prompt or `--api-key-stdin`.
 
 ## Command Reference
 
-The three CLIs expose aligned provider-management commands, with focused
-extensions for OpenCode model discovery and Antigravity account workflows. The
-reference also documents file locations, switch behavior, secret handling, and
-exit semantics.
+The four CLIs expose aligned provider-management commands, with focused
+extensions for OpenCode model discovery, Antigravity account workflows, and
+Cursor account and model switching. The reference also documents file locations,
+switch behavior, secret handling, and exit semantics.
 
 → [Read the complete command reference](docs/command-reference.md)
 
@@ -152,7 +166,7 @@ exit semantics.
 | Requirement | When needed |
 |-------------|-------------|
 | Python 3.11+ and `pipx` | Installing from source |
-| Codex, OpenCode, or Antigravity CLI | Running that tool's native `ping` command |
+| Codex, OpenCode, Antigravity, or Cursor | Running that tool's native `ping` command, or switching its accounts and models |
 | Network access | Provider tests, model discovery, login, and quota checks |
 
 ## Contributing

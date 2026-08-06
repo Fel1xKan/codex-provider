@@ -21,6 +21,8 @@ jobs:
             platform: linux-x86_64
           - os: windows-latest
             platform: windows-x86_64
+          - os: macos-latest
+            platform: macos-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +47,7 @@ jobs:
           else
             ext=""
           fi
-          for name in codex-provider opencode-provider agy-provider; do
+          for name in codex-provider opencode-provider agy-provider cursor-provider; do
             src="dist/${name}${ext}"
             dest="release/${name}-${version}-${platform}${ext}"
             cp "$src" "$dest"

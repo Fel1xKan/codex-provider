@@ -92,14 +92,15 @@ dist\opencode-provider.exe --help
 dist\agy-provider.exe --help
 ```
 
-Use `--target codex`, `--target opencode`, or `--target agy` with `build.py` to
-build one target. Do not edit generated files in `build/` or `dist/` manually.
+Use `--target codex`, `--target opencode`, `--target agy`, or `--target cursor`
+with `build.py` to build one target. Do not edit generated files in `build/` or
+`dist/` manually.
 
 ## Release Process
 
 The package version is defined in `src/lib/common/constants.py`. GitHub Actions
-builds Linux and Windows binaries and publishes a release when a matching
-version tag is pushed.
+builds Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon) binaries and
+publishes a release when a matching version tag is pushed.
 
 ```bash
 git tag v0.5.0

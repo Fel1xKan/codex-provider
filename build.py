@@ -30,6 +30,10 @@ BUILD_TARGETS = {
         ROOT_DIR / "agy-provider.spec",
         "agy-provider.exe" if os.name == "nt" else "agy-provider",
     ),
+    "cursor": (
+        ROOT_DIR / "cursor-provider.spec",
+        "cursor-provider.exe" if os.name == "nt" else "cursor-provider",
+    ),
 }
 
 

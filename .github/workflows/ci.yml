@@ -23,6 +23,7 @@ jobs:
       - run: python -m ruff format --check .
       - run: python -m pytest
       - run: codex-provider --help
+      - run: cursor-provider --help
 
   build:
     strategy:
@@ -54,4 +55,8 @@ jobs:
             dist/agy-provider.exe
             dist/agy-provider.sha256
             dist/agy-provider.exe.sha256
+            dist/cursor-provider
+            dist/cursor-provider.exe
+            dist/cursor-provider.sha256
+            dist/cursor-provider.exe.sha256
           if-no-files-found: error
