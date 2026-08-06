@@ -103,8 +103,8 @@ builds Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon) binaries and
 publishes a release when a matching version tag is pushed.
 
 ```bash
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 The Release workflow can also be run manually. A release fails if its tag does
