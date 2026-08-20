@@ -191,7 +191,7 @@ def doctor_command(fix: bool) -> int:
     return 0
 
 
-def test_provider(provider: str | None, timeout: float, **kwargs: Any) -> int:
+def test_provider(provider: str | None, timeout: float) -> int:
     state = st.load_state()
     target = provider or state.current_provider
     if not target:
@@ -205,9 +205,14 @@ def test_provider(provider: str | None, timeout: float, **kwargs: Any) -> int:
         raise SwitchError(f"provider '{target}' has no options.baseURL configured")
     auth_keys = st.load_auth_keys().get(target, [])
     api_key = auth_keys[0] if auth_keys else ""
-    kwargs.setdefault("program", "opencode-provider")
+    anthropic = config.get("npm") == "@ai-sdk/anthropic"
     return run_models_test(
-        target, base_url, api_key, timeout, state.current_provider, **kwargs
+        target,
+        base_url,
+        api_key,
+        timeout,
+        state.current_provider,
+        anthropic=anthropic,
     )
 
 
@@ -223,8 +228,14 @@ def test_all_providers(timeout: float) -> int:
             continue
         keys = auth_keys.get(provider, [])
         api_key = keys[0] if keys else ""
+        anthropic = config.get("npm") == "@ai-sdk/anthropic"
         rc = run_models_test(
-            provider, base_url, api_key, timeout, state.current_provider
+            provider,
+            base_url,
+            api_key,
+            timeout,
+            state.current_provider,
+            anthropic=anthropic,
         )
         if rc != 0:
             failures += 1

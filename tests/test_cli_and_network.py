@@ -277,6 +277,57 @@ def test_models_test_limits_response_body(
     assert "response body exceeds" in capsys.readouterr().out
 
 
+def test_models_test_sends_anthropic_headers_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = {}
+
+    def fake_urlopen(request, timeout):
+        seen["headers"] = dict(request.header_items())
+        return FakeResponse(json.dumps({"data": [{"id": "claude-x"}]}).encode())
+
+    monkeypatch.setattr(network.urllib.request, "urlopen", fake_urlopen)
+
+    result = network.run_models_test(
+        "direct",
+        "https://example.com/v1",
+        "placeholder-key",
+        1,
+        None,
+        anthropic=True,
+    )
+
+    assert result == 0
+    headers = {k.lower(): v for k, v in seen["headers"].items()}
+    assert headers.get("x-api-key") == "placeholder-key"
+    assert headers.get("anthropic-version") == "2023-06-01"
+
+
+def test_models_test_omits_anthropic_headers_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = {}
+
+    def fake_urlopen(request, timeout):
+        seen["headers"] = dict(request.header_items())
+        return FakeResponse(json.dumps({"data": [{"id": "gpt-x"}]}).encode())
+
+    monkeypatch.setattr(network.urllib.request, "urlopen", fake_urlopen)
+
+    result = network.run_models_test(
+        "direct",
+        "https://example.com/v1",
+        "placeholder-key",
+        1,
+        None,
+    )
+
+    assert result == 0
+    headers = {k.lower(): v for k, v in seen["headers"].items()}
+    assert "x-api-key" not in headers
+    assert "anthropic-version" not in headers
+
+
 def test_error_summary_redacts_api_key() -> None:
     secret = "placeholder-secret-key"
     payload = json.dumps({"error": {"message": f"bad key: {secret}"}}).encode()

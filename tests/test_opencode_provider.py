@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 from pathlib import Path
+from urllib.error import HTTPError
 
 import json5
 import pytest
@@ -324,6 +326,223 @@ def test_models_sync_adds_first_model_to_empty_models_object(
     assert updated["provider"]["alpha"]["models"] == {"first-model": {}}
 
 
+def test_models_sync_sends_provider_user_agent(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write_config(opencode_paths)
+    seen = {}
+
+    def fake_urlopen(request, timeout):
+        seen["ua"] = request.get_header("User-agent")
+        return ModelsResponse(
+            json.dumps({"data": [{"id": "gpt-5"}]}).encode()
+        )
+
+    monkeypatch.setattr(op.urllib.request, "urlopen", fake_urlopen)
+
+    assert op.main(["models", "sync", "alpha"]) == 0
+
+    assert seen["ua"] == "codex-provider"
+    updated = json5.loads(config.read_text())
+    assert list(updated["provider"]["alpha"]["models"]) == ["gpt-5"]
+
+
+def test_models_sync_anthropic_endpoint_sends_anthropic_headers(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write_config(opencode_paths)
+    data = json.loads(config.read_text())
+    data["provider"]["claude"] = {
+        "name": "Claude",
+        "npm": "@ai-sdk/anthropic",
+        "options": {
+            "baseURL": "https://api.anthropic.com/v1",
+            "apiKey": "placeholder-secret",
+        },
+        "models": {},
+    }
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    seen = {}
+
+    def fake_urlopen(request, timeout):
+        seen["headers"] = dict(request.header_items())
+        return ModelsResponse(
+            json.dumps(
+                {
+                    "data": [
+                        {
+                            "type": "model",
+                            "id": "claude-3-7-sonnet-20250219",
+                            "display_name": "Claude 3.7 Sonnet",
+                        },
+                        {"type": "model", "id": "claude-3-5-haiku-20241022"},
+                    ],
+                    "has_more": False,
+                }
+            ).encode()
+        )
+
+    monkeypatch.setattr(op.urllib.request, "urlopen", fake_urlopen)
+
+    assert op.main(["models", "sync", "claude"]) == 0
+
+    headers = {k.lower(): v for k, v in seen["headers"].items()}
+    assert headers.get("x-api-key") == "placeholder-secret"
+    assert headers.get("anthropic-version") == "2023-06-01"
+    updated = json5.loads(config.read_text())
+    assert list(updated["provider"]["claude"]["models"]) == [
+        "claude-3-5-haiku-20241022",
+        "claude-3-7-sonnet-20250219",
+    ]
+
+
+def test_models_sync_fails_without_writing_fallback_models(
+    opencode_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = write_config(opencode_paths)
+    original = config.read_text()
+
+    def fake_urlopen(request, timeout):
+        raise HTTPError(
+            request.full_url,
+            403,
+            "Forbidden",
+            {},
+            io.BytesIO(b"error code: 1010\n"),
+        )
+
+    monkeypatch.setattr(op.urllib.request, "urlopen", fake_urlopen)
+
+    assert op.main(["models", "sync", "alpha"]) == 1
+
+    assert config.read_text() == original
+    err = capsys.readouterr().err
+    assert "failed to fetch models" in err
+    assert "HTTP 403" in err
+    assert "error code: 1010" in err
+
+
+def test_models_sync_all_syncs_every_provider(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write_config(opencode_paths)
+    data = json.loads(config.read_text())
+    data["provider"]["beta"]["options"] = {
+        "baseURL": "https://beta.example.com/v1"
+    }
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    def fake_urlopen(request, timeout):
+        model_id = "alpha-model" if "alpha" in request.full_url else "beta-model"
+        return ModelsResponse(
+            json.dumps({"data": [{"id": model_id}]}).encode()
+        )
+
+    monkeypatch.setattr(op.urllib.request, "urlopen", fake_urlopen)
+
+    assert op.main(["models", "sync", "--all"]) == 0
+
+    updated = json5.loads(config.read_text())
+    assert list(updated["provider"]["alpha"]["models"]) == ["alpha-model"]
+    assert list(updated["provider"]["beta"]["models"]) == ["beta-model"]
+
+
+def test_models_sync_all_continues_after_failure(
+    opencode_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = write_config(opencode_paths)
+    data = json.loads(config.read_text())
+    data["provider"]["beta"]["options"] = {
+        "baseURL": "https://beta.example.com/v1"
+    }
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    calls = {"n": 0}
+
+    def fake_urlopen(request, timeout):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise HTTPError(
+                request.full_url,
+                403,
+                "Forbidden",
+                {},
+                io.BytesIO(b"error code: 1010\n"),
+            )
+        return ModelsResponse(
+            json.dumps({"data": [{"id": "beta-model"}]}).encode()
+        )
+
+    monkeypatch.setattr(op.urllib.request, "urlopen", fake_urlopen)
+
+    assert op.main(["models", "sync", "--all"]) == 1
+
+    err = capsys.readouterr().err
+    assert "HTTP 403" in err
+    updated = json5.loads(config.read_text())
+    assert list(updated["provider"]["alpha"]["models"]) == ["gpt-5"]
+    assert list(updated["provider"]["beta"]["models"]) == ["beta-model"]
+
+
+def test_models_sync_all_rejects_provider(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_config(opencode_paths)
+
+    assert op.main(["models", "sync", "alpha", "--all"]) == 1
+    assert "--all cannot be combined" in capsys.readouterr().err
+
+
+def test_models_sync_all_dry_run_does_not_write(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write_config(opencode_paths)
+    data = json.loads(config.read_text())
+    data["provider"]["beta"]["options"] = {
+        "baseURL": "https://beta.example.com/v1"
+    }
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    original = config.read_text()
+    monkeypatch.setattr(
+        op.urllib.request,
+        "urlopen",
+        lambda request, timeout: ModelsResponse(
+            json.dumps({"data": [{"id": "alpha-model"}]}).encode()
+        ),
+    )
+
+    assert op.main(["models", "sync", "--all", "--dry-run"]) == 0
+    assert config.read_text() == original
+
+
+def test_models_list_surfaces_fetch_error(
+    opencode_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_config(opencode_paths)
+
+    def fake_urlopen(request, timeout):
+        raise HTTPError(
+            request.full_url,
+            503,
+            "Unavailable",
+            {},
+            io.BytesIO(b""),
+        )
+
+    monkeypatch.setattr(op.urllib.request, "urlopen", fake_urlopen)
+
+    assert op.main(["models", "list", "alpha"]) == 1
+
+    err = capsys.readouterr().err
+    assert "failed to fetch models" in err
+    assert "HTTP 503" in err
+
+
 def test_models_list_uses_auth_json_without_printing_secret(
     opencode_paths: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -383,7 +602,7 @@ def test_test_command_matches_codex_provider_shape(
     assert calls[0][1] == "https://alpha.example.com/v1"
     assert calls[0][2] == "placeholder-secret"
     assert calls[0][3] == 5.0
-    assert calls[0][5]["program"] == "opencode-provider"
+    assert calls[0][5] == {"anthropic": False}
 
 
 def test_ping_command_matches_codex_provider_shape(

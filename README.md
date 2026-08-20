@@ -132,8 +132,12 @@ cursor-provider models sync deepseek
 cursor-provider models set deepseek-v4-flash
 ```
 
-OpenCode model sync only adds new IDs and retains existing metadata.
-Antigravity `usage` reports 5-hour and weekly quota without switching accounts.
+`models sync` replaces `provider.<id>.models` with the provider's current
+model IDs, keeping metadata for IDs that still exist and dropping IDs the
+provider no longer returns; use `--all` to sync every configured provider.
+Anthropic-compatible providers (`npm` is `@ai-sdk/anthropic`) are queried with
+Anthropic headers. Antigravity `usage` reports 5-hour and weekly quota without
+switching accounts.
 Cursor `switch` rewrites the auth rows in the Cursor SQLite database, and
 `models set` applies one model id to every Composer surface. Cursor `provider`
 commands manage custom OpenAI-compatible providers (for example DeepSeek) in

@@ -72,17 +72,22 @@ def run_models_test(
     api_key: str,
     timeout: float,
     current_provider: str | None = None,
+    anthropic: bool = False,
 ) -> int:
     models_endpoint = models_url(base_url)
 
     req_mod = get_request_module()
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "User-Agent": "codex-provider",
+        "Accept": "application/json",
+    }
+    if anthropic:
+        headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
     req = req_mod.Request(
         models_endpoint,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "User-Agent": "codex-provider",
-            "Accept": "application/json",
-        },
+        headers=headers,
     )
 
     ctx = ssl.create_default_context()

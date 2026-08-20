@@ -153,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.models_command,
                 args.provider,
                 getattr(args, "dry_run", False),
+                getattr(args, "all", False),
             )
 
         if args.command == "test":
