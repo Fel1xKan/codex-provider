@@ -1,3 +1,4 @@
+cryptography>=42,<47
 json5==0.12.1
 tomlkit==0.15.0
 pyinstaller==6.21.0

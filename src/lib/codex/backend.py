@@ -85,7 +85,9 @@ class CodexBackend(BaseBackend):
     def status(self) -> int:
         return adm.print_status()
 
-    def switch(self, target: str, model: str | None, dry_run: bool) -> int:
+    def switch(
+        self, target: str, model: str | None, dry_run: bool, force: bool = False
+    ) -> int:
         return switch_provider(target, dry_run)
 
     def add(self, args: Any) -> int:
@@ -112,7 +114,9 @@ class CodexBackend(BaseBackend):
             args.dry_run,
         )
 
-    def delete(self, provider: str, full: bool, dry_run: bool) -> int:
+    def delete(
+        self, provider: str, full: bool, dry_run: bool, force: bool = False
+    ) -> int:
         return edit.delete_provider(provider, full, dry_run)
 
     def rename(self, old: str, new: str, dry_run: bool) -> int:

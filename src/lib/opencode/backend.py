@@ -89,6 +89,14 @@ class OpenCodeBackend(BaseBackend):
             ),
         ),
     )
+    extra_handlers = {
+        "models": lambda args: models_command(
+            args.models_command,
+            args.provider,
+            getattr(args, "dry_run", False),
+            getattr(args, "all", False),
+        ),
+    }
 
     def recent_entries(self) -> list[str]:
         state = load_state()
@@ -105,7 +113,9 @@ class OpenCodeBackend(BaseBackend):
     def status(self) -> int:
         return cmd.print_status()
 
-    def switch(self, target: str, model: str | None, dry_run: bool) -> int:
+    def switch(
+        self, target: str, model: str | None, dry_run: bool, force: bool = False
+    ) -> int:
         return cmd.switch_provider(target, model, dry_run)
 
     def add(self, args: Any) -> int:
@@ -124,7 +134,9 @@ class OpenCodeBackend(BaseBackend):
             args.dry_run,
         )
 
-    def delete(self, provider: str, full: bool, dry_run: bool) -> int:
+    def delete(
+        self, provider: str, full: bool, dry_run: bool, force: bool = False
+    ) -> int:
         return edit.delete_provider(provider, full, dry_run)
 
     def rename(self, old: str, new: str, dry_run: bool) -> int:

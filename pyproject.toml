@@ -9,6 +9,7 @@ description = "Default provider and model switcher for OpenCode"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "cryptography>=42,<47",
   "json5>=0.12,<1",
   "tomlkit>=0.13,<1",
 ]

@@ -65,7 +65,12 @@ def handle_switch(backend: Any, args: Any) -> int:
         if target is None:
             print("switch cancelled")
             return 0
-    return backend.switch(target, getattr(args, "model", None), args.dry_run)
+    return backend.switch(
+        target,
+        getattr(args, "model", None),
+        args.dry_run,
+        getattr(args, "force", False),
+    )
 
 
 def _handle_list(backend: Any, args: Any) -> int:
@@ -85,7 +90,12 @@ def _handle_add(backend: Any, args: Any) -> int:
 
 
 def _handle_delete(backend: Any, args: Any) -> int:
-    return backend.delete(args.provider, args.full, args.dry_run)
+    return backend.delete(
+        args.provider,
+        args.full,
+        args.dry_run,
+        getattr(args, "force", False),
+    )
 
 
 def _handle_rename(backend: Any, args: Any) -> int:
@@ -131,15 +141,6 @@ def _handle_import(backend: Any, args: Any) -> int:
     return backend.import_(args.file, args.dry_run)
 
 
-def _handle_models(backend: Any, args: Any) -> int:
-    return backend.models(
-        args.models_command,
-        args.provider,
-        getattr(args, "dry_run", False),
-        getattr(args, "all", False),
-    )
-
-
 HANDLERS: dict[str, Any] = {
     "list": _handle_list,
     "status": _handle_status,
@@ -154,7 +155,6 @@ HANDLERS: dict[str, Any] = {
     "ping": _handle_ping,
     "export": _handle_export,
     "import": _handle_import,
-    "models": _handle_models,
 }
 
 

@@ -327,14 +327,14 @@ def test_rename_and_delete(
         con.close()
 
 
-def test_auth_detail_never_prints_tokens(
+def test_auth_show_never_prints_tokens(
     cursor_paths: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     auth_data = seed_auth_data(cp.DB_PATH, "user@example.com")
     assert cp.main(["add", "my_acc", "--from-current"]) == 0
 
     capsys.readouterr()
-    assert cp.main(["auth", "detail", "my_acc"]) == 0
+    assert cp.main(["auth", "show", "my_acc"]) == 0
     out = capsys.readouterr().out
     assert "Account: my_acc" in out
     assert "Email: user@example.com" in out
@@ -344,14 +344,14 @@ def test_auth_detail_never_prints_tokens(
     assert auth_data["refreshToken"] not in out
 
 
-def test_config_detail_redacts_tokens(
+def test_config_show_redacts_tokens(
     cursor_paths: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     auth_data = seed_auth_data(cp.DB_PATH, "user@example.com")
     assert cp.main(["add", "my_acc", "--from-current"]) == 0
 
     capsys.readouterr()
-    assert cp.main(["config", "detail", "my_acc"]) == 0
+    assert cp.main(["config", "show", "my_acc"]) == 0
     out = capsys.readouterr().out
     assert "[REDACTED]" in out
     assert auth_data["accessToken"] not in out

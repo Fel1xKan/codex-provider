@@ -124,7 +124,9 @@ class AgyBackend(BaseBackend):
     def status(self) -> int:
         return print_status()
 
-    def switch(self, target: str, model: str | None, dry_run: bool) -> int:
+    def switch(
+        self, target: str, model: str | None, dry_run: bool, force: bool = False
+    ) -> int:
         return switch_account(target, dry_run)
 
     def add(self, args: Any) -> int:
@@ -139,7 +141,9 @@ class AgyBackend(BaseBackend):
             dry_run=args.dry_run,
         )
 
-    def delete(self, provider: str, full: bool, dry_run: bool) -> int:
+    def delete(
+        self, provider: str, full: bool, dry_run: bool, force: bool = False
+    ) -> int:
         return delete_account(provider, full, dry_run)
 
     def rename(self, old: str, new: str, dry_run: bool) -> int:

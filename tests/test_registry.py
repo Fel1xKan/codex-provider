@@ -4,6 +4,7 @@ import argparse
 
 import cli.agy_provider as agy
 import cli.codex_provider as codex
+import cli.cursor_provider as cursor
 import cli.opencode_provider as op
 from lib.common.backend import BaseBackend
 from lib.common.cli import generic_main
@@ -21,7 +22,12 @@ def parser_commands(
 
 def test_every_cli_exposes_shared_registry_commands() -> None:
     shared = {spec.name for spec in COMMON_COMMANDS if spec.capability is None}
-    for parser in (codex.build_parser(), op.build_parser(), agy.build_parser()):
+    for parser in (
+        codex.build_parser(),
+        op.build_parser(),
+        agy.build_parser(),
+        cursor.build_parser(),
+    ):
         assert shared <= set(parser_commands(parser))
 
 
@@ -29,6 +35,7 @@ def test_capability_commands_only_on_declaring_backends() -> None:
     codex_commands = set(parser_commands(codex.build_parser()))
     opencode_commands = set(parser_commands(op.build_parser()))
     agy_commands = set(parser_commands(agy.build_parser()))
+    cursor_commands = set(parser_commands(cursor.build_parser()))
 
     assert "models" not in codex_commands
     assert "models" not in agy_commands
@@ -37,6 +44,8 @@ def test_capability_commands_only_on_declaring_backends() -> None:
     assert "usage" not in opencode_commands
     assert "usage" in agy_commands
     assert "login" in agy_commands
+    assert "models" in cursor_commands
+    assert "provider" in cursor_commands
 
 
 class StubBackend(BaseBackend):

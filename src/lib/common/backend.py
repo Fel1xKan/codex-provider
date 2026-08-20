@@ -48,13 +48,17 @@ class BaseBackend:
     def status(self) -> int:
         raise NotImplementedError
 
-    def switch(self, target: str, model: str | None, dry_run: bool) -> int:
+    def switch(
+        self, target: str, model: str | None, dry_run: bool, force: bool = False
+    ) -> int:
         raise NotImplementedError
 
     def add(self, args: Any) -> int:
         raise NotImplementedError
 
-    def delete(self, provider: str, full: bool, dry_run: bool) -> int:
+    def delete(
+        self, provider: str, full: bool, dry_run: bool, force: bool = False
+    ) -> int:
         raise NotImplementedError
 
     def rename(self, old: str, new: str, dry_run: bool) -> int:

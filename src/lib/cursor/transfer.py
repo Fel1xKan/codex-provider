@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
-import sys
 from contextlib import nullcontext
-from pathlib import Path
 
 import lib.cursor.store as st
-from lib.common.common_store import SECRET_FILE_MODE, atomic_write_bytes
 from lib.common.errors import SwitchError
+from lib.common.transfer import (
+    read_import_data,
+    validate_export,
+    write_export,
+)
 
 
 def export_command(file_path: str | None) -> int:
@@ -20,47 +22,16 @@ def export_command(file_path: str | None) -> int:
     }
 
     payload = json.dumps(export_data, indent=2, ensure_ascii=False) + "\n"
-    if not file_path or file_path == "-":
-        sys.stdout.write(payload)
-    else:
-        path = Path(file_path).expanduser()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_bytes(
-            path, payload.encode("utf-8"), secret=True, mode=SECRET_FILE_MODE
-        )
-        print(f"exported cursor configuration and auth to {path}")
+    write_export(payload, file_path, "cursor")
     return 0
 
 
 def import_command(file_path: str | None, dry_run: bool) -> int:
-    if not file_path or file_path == "-":
-        try:
-            raw_data = sys.stdin.read()
-        except KeyboardInterrupt:
-            return 1
-    else:
-        path = Path(file_path).expanduser()
-        if not path.exists():
-            raise SwitchError(f"import file not found: {path}")
-        raw_data = path.read_text(encoding="utf-8")
-
     try:
-        data = json.loads(raw_data)
-    except Exception as exc:
-        raise SwitchError(f"invalid JSON: {exc}") from exc
-
-    if not isinstance(data, dict):
-        raise SwitchError("imported data must be a JSON object")
-
-    if data.get("type") != "cursor-provider":
-        raise SwitchError(
-            f"invalid export file type: expected cursor-provider, "
-            f"found {data.get('type')}"
-        )
-
-    version = data.get("version")
-    if version != 1:
-        raise SwitchError(f"unsupported version: {version}")
+        data = read_import_data(file_path)
+    except KeyboardInterrupt:
+        return 1
+    validate_export(data, "cursor-provider")
 
     accounts_to_import = data.get("accounts")
     if not isinstance(accounts_to_import, dict):

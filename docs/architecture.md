@@ -1,6 +1,6 @@
 # 架构与扩展指南
 
-三个 CLI（`codex-provider` / `opencode-provider` / `agy-provider`）共享同一套命令定义与执行框架，后端只负责各自配置格式、凭据模型和 switch 语义的适配。
+四个 CLI（`codex-provider` / `opencode-provider` / `agy-provider` / `cursor-provider`）共享同一套命令定义与执行框架，后端只负责各自配置格式、凭据模型和 switch 语义的适配。
 
 ## 命令定义：单一来源
 
@@ -30,7 +30,7 @@
 | 配置格式 | 各 `lib/<provider>/store.py`、`patch.py` | TOML / JSONC / agy store |
 | 凭据模型 | 各 `lib/<provider>/admin.py` | auth profile / auth.json / OAuth |
 | switch 语义 | 各 `lib/<provider>/switch.py`、`commands.py` | 注入 runtime provider / 改 model 字段 / 切 account |
-| 专属命令 | `models`（opencode）、`usage`/`login`（agy） | 由能力门控声明 |
+| 专属命令 | `models`（opencode/cursor）、`provider`（cursor）、`usage`/`login`（agy） | 由能力门控声明 |
 
 ## 接入新 agent
 

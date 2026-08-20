@@ -10,8 +10,8 @@ for the exact parser surface.
 |---------|:-----:|:--------:|:-----------:|:------:|---------|
 | `list` | Yes | Yes | Yes | Yes | List configured providers or accounts |
 | `status` | Yes | Yes | Yes | Yes | Show the active provider or account |
-| `auth detail` / `auth edit` | Yes | Yes | Yes | Yes | Inspect auth metadata or edit credentials |
-| `config detail` / `config edit` | Yes | Yes | Yes | Yes | Inspect or edit provider configuration |
+| `auth show` / `auth edit` | Yes | Yes | Yes | Yes | Inspect auth metadata or edit credentials |
+| `config show` / `config edit` | Yes | Yes | Yes | Yes | Inspect or edit provider configuration |
 | `doctor [--fix]` | Yes | Yes | Yes | Yes | Validate configuration and authentication |
 | `test [--all]` | Yes | Yes | Yes | Yes | Test provider connectivity |
 | `ping` / `p` | Yes | Yes | Yes | Yes | Run a minimal command through the target CLI |
@@ -51,23 +51,23 @@ For OpenCode, only providers explicitly declared in the global config's
 ## Authentication and Configuration
 
 ```bash
-codex-provider auth detail my-provider
+codex-provider auth show my-provider
 codex-provider auth edit my-provider
-codex-provider config detail my-provider
+codex-provider config show my-provider
 codex-provider config edit my-provider
 
-opencode-provider auth detail my-provider
+opencode-provider auth show my-provider
 opencode-provider auth edit my-provider
-opencode-provider config detail my-provider
+opencode-provider config show my-provider
 opencode-provider config edit my-provider
 ```
 
 The provider argument is optional and defaults to the current provider when the
 backend has one.
 
-- `auth detail` prints field metadata without credential values.
+- `auth show` prints field metadata without credential values.
 - `auth edit` opens the backend auth file in `$VISUAL` or `$EDITOR`, then validates the result before keeping it.
-- `config detail` redacts inline secrets.
+- `config show` redacts inline secrets.
 - `config edit` opens and validates provider configuration. Use `auth edit` to change an API key.
 - `doctor` validates config, provider models, and auth JSON. `doctor --fix` applies repairs supported by that backend.
 
