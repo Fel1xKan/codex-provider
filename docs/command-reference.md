@@ -1,7 +1,7 @@
 # Command Reference
 
 This document covers `codex-provider`, `opencode-provider`, `agy-provider`, and
-`cursor-provider` version 0.6.0. Run `<command> --help` in your installed version
+`cursor-provider` version 1.0.0. Run `<command> --help` in your installed version
 for the exact parser surface.
 
 ## Command Matrix
