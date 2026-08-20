@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 from lib.common.errors import SwitchError
 from lib.common.platform import select_provider_interactive
-from lib.common.registry import build_parser_for
+from lib.common.registry import COMMON_COMMANDS, build_parser_for
 
 
 def read_api_key(api_key_stdin: bool, prompt: str = "API key: ") -> str:
@@ -93,18 +93,21 @@ def _handle_rename(backend: Any, args: Any) -> int:
 
 
 def _handle_auth(backend: Any, args: Any) -> int:
-    if args.auth_command == "detail":
-        return backend.auth_detail(args.provider)
-    if args.auth_command == "edit":
-        return backend.auth_edit(args.provider)
-    return 0
+    return _dispatch_subcommand(backend, "auth", args)
 
 
 def _handle_config(backend: Any, args: Any) -> int:
-    if args.config_command == "detail":
-        return backend.config_detail(args.provider)
-    if args.config_command == "edit":
-        return backend.config_edit(args.provider)
+    return _dispatch_subcommand(backend, "config", args)
+
+
+def _dispatch_subcommand(backend: Any, command_name: str, args: Any) -> int:
+    spec = next((item for item in COMMON_COMMANDS if item.name == command_name), None)
+    if spec is None or not spec.subcommands:
+        return 0
+    value = getattr(args, spec.subcommands[0].dest, None)
+    for sub in spec.subcommands:
+        if sub.name == value:
+            return getattr(backend, sub.handler)(args.provider)
     return 0
 
 

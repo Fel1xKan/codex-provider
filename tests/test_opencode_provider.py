@@ -886,7 +886,7 @@ def test_command_matrix_matches_codex_with_models_extension() -> None:
     )
 
 
-def test_auth_detail_never_prints_credentials(
+def test_auth_show_never_prints_credentials(
     opencode_paths: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     write_config(opencode_paths)
@@ -903,7 +903,7 @@ def test_auth_detail_never_prints_credentials(
         encoding="utf-8",
     )
 
-    assert op.main(["auth", "detail", "alpha"]) == 0
+    assert op.main(["auth", "show", "alpha"]) == 0
 
     output = capsys.readouterr().out
     assert "provider: alpha" in output
@@ -913,12 +913,12 @@ def test_auth_detail_never_prints_credentials(
     assert "placeholder-refresh-secret" not in output
 
 
-def test_config_detail_redacts_inline_api_key(
+def test_config_show_redacts_inline_api_key(
     opencode_paths: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     write_config(opencode_paths)
 
-    assert op.main(["config", "detail", "alpha"]) == 0
+    assert op.main(["config", "show", "alpha"]) == 0
 
     output = capsys.readouterr().out
     assert '"alpha"' in output
@@ -926,7 +926,7 @@ def test_config_detail_redacts_inline_api_key(
     assert "placeholder-secret" not in output
 
 
-def test_config_detail_redacts_common_secret_key_spellings(
+def test_config_show_redacts_common_secret_key_spellings(
     opencode_paths: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     config = write_config(opencode_paths)
@@ -940,7 +940,7 @@ def test_config_detail_redacts_common_secret_key_spellings(
     )
     config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
-    assert op.main(["config", "detail", "alpha"]) == 0
+    assert op.main(["config", "show", "alpha"]) == 0
 
     output = capsys.readouterr().out
     assert output.count("[REDACTED]") == 4

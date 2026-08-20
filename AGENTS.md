@@ -34,11 +34,11 @@ Run commands from the repository root:
 - `./.venv/bin/python -m PyInstaller --clean -y codex-provider-bin.spec` and the corresponding `opencode-provider.spec` command: rebuild both standalone binaries into `dist/`.
 - `./dist/codex-provider --help` and `./dist/opencode-provider --help`: confirm both packaged binaries start and expose the expected commands.
 
-In addition to the full suite, validate the exact commands touched by your change, especially `auth detail`, `auth edit`, `config detail`, `config edit`, `switch`, and `doctor` in both CLIs.
+In addition to the full suite, validate the exact commands touched by your change, especially `auth show`, `auth edit`, `config show`, `config edit`, `switch`, and `doctor` in both CLIs.
 
 ## Coding Style & Naming Conventions
 
-Use Python 3, 4-space indentation, and ASCII by default. Match the existing style: small helper functions, explicit exceptions, and `snake_case` names for functions and variables. Keep CLI wording stable and explicit; prefer names like `auth detail` over overloaded shortcuts.
+Use Python 3, 4-space indentation, and ASCII by default. Match the existing style: small helper functions, explicit exceptions, and `snake_case` names for functions and variables. Keep CLI wording stable and explicit; prefer names like `auth show` over overloaded shortcuts.
 
 Do not edit generated files in `build/` or `dist/` by hand.
 
@@ -48,4 +48,4 @@ Favor command-level verification with isolated state. When testing commands that
 
 ## Commit & Pull Request Guidelines
 
-History is currently minimal, so use short imperative commit messages such as `Add config detail command` or `Rebuild binary after CLI changes`. Pull requests should include a concise behavior summary, the commands used for validation, and any filesystem side effects. Include terminal screenshots only when output formatting is the change being reviewed.
+History is currently minimal, so use short imperative commit messages such as `Add config show command` or `Rebuild binary after CLI changes`. Pull requests should include a concise behavior summary, the commands used for validation, and any filesystem side effects. Include terminal screenshots only when output formatting is the change being reviewed.

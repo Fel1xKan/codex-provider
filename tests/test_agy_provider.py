@@ -343,7 +343,7 @@ def test_agy_rename_and_delete(
     assert "new_name" not in capsys.readouterr().out
 
 
-def test_agy_auth_detail(agy_paths: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_agy_auth_show(agy_paths: Path, capsys: pytest.CaptureFixture[str]) -> None:
     id_tok = "h.eyJlbWFpbCI6ICJ1c2VyQGV4YW1wbGUuY29tIiwgIm5hbWUiOiAiVGVzdCBVc2VyIn0=.s"
     token_data = {
         "token": "tok_secret",
@@ -355,7 +355,7 @@ def test_agy_auth_detail(agy_paths: Path, capsys: pytest.CaptureFixture[str]) ->
     assert agy.main(["add", "my_acc", "--from-current"]) == 0
 
     capsys.readouterr()
-    assert agy.main(["auth", "detail", "my_acc"]) == 0
+    assert agy.main(["auth", "show", "my_acc"]) == 0
     out = capsys.readouterr().out
     assert "Account: my_acc" in out
     assert "Email: user@example.com" in out

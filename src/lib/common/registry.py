@@ -25,6 +25,7 @@ class ArgSpec:
 class SubcommandSpec:
     name: str
     dest: str
+    handler: str = ""
     args: tuple[ArgSpec, ...] = ()
     help: str = ""
 
@@ -171,8 +172,9 @@ COMMON_COMMANDS: tuple[CommandSpec, ...] = (
         summary="Inspect or edit provider authentication data",
         subcommands=(
             SubcommandSpec(
-                "detail",
+                "show",
                 dest="auth_command",
+                handler="auth_detail",
                 help="Show auth metadata without printing credential values",
                 args=(
                     _pos(
@@ -185,6 +187,7 @@ COMMON_COMMANDS: tuple[CommandSpec, ...] = (
             SubcommandSpec(
                 "edit",
                 dest="auth_command",
+                handler="auth_edit",
                 help=(
                     "Open provider authentication data, including API keys, "
                     "in the editor"
@@ -205,8 +208,9 @@ COMMON_COMMANDS: tuple[CommandSpec, ...] = (
         summary="Inspect or edit provider configuration; API keys use auth",
         subcommands=(
             SubcommandSpec(
-                "detail",
+                "show",
                 dest="config_command",
+                handler="config_detail",
                 help="Show a provider config block",
                 args=(
                     _pos(
@@ -219,6 +223,7 @@ COMMON_COMMANDS: tuple[CommandSpec, ...] = (
             SubcommandSpec(
                 "edit",
                 dest="config_command",
+                handler="config_edit",
                 help=("Open provider configuration; use auth edit to change API keys"),
                 args=(
                     _pos(

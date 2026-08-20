@@ -6,6 +6,7 @@ import cli.agy_provider as agy
 import cli.codex_provider as codex
 import cli.opencode_provider as op
 from lib.common.backend import BaseBackend
+from lib.common.cli import generic_main
 from lib.common.registry import COMMON_COMMANDS, build_parser_for
 
 
@@ -51,3 +52,26 @@ def test_new_backend_gets_full_command_surface_from_registry() -> None:
         expected.add(spec.name)
         expected.update(spec.aliases)
     assert set(parser_commands(parser)) == expected
+
+
+class RecordingBackend(StubBackend):
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str | None]] = []
+
+    def auth_detail(self, provider: str | None) -> int:
+        self.calls.append(("auth_detail", provider))
+        return 0
+
+    def config_detail(self, provider: str | None) -> int:
+        self.calls.append(("config_detail", provider))
+        return 0
+
+
+def test_subcommand_dispatch_resolves_through_registry() -> None:
+    backend = RecordingBackend()
+
+    assert generic_main(backend, ["auth", "show", "alpha"]) == 0
+    assert backend.calls == [("auth_detail", "alpha")]
+
+    assert generic_main(backend, ["config", "show", "alpha"]) == 0
+    assert backend.calls[-1] == ("config_detail", "alpha")

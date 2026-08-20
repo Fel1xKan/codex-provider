@@ -11,7 +11,7 @@ from conftest import IsolatedPaths
 import cli.codex_provider as cp
 
 
-def test_auth_detail_never_prints_values(
+def test_auth_show_never_prints_values(
     initialized_registry: IsolatedPaths, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert cp.show_auth(None) == 0
@@ -20,7 +20,7 @@ def test_auth_detail_never_prints_values(
     assert "placeholder-alpha-key" not in output
 
 
-def test_config_detail_redacts_sensitive_custom_values(
+def test_config_show_redacts_sensitive_custom_values(
     initialized_registry: IsolatedPaths, capsys: pytest.CaptureFixture[str]
 ) -> None:
     config = initialized_registry.tool_config.read_text(encoding="utf-8")
