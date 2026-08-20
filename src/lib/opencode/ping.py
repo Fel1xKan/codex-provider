@@ -67,36 +67,3 @@ def ping_provider(
         return 1
     print("ping result: ok")
     return 0
-
-
-def ping_all_providers(timeout: float, model: str | None, prompt: str) -> int:
-    state = load_state()
-    if not state.providers:
-        raise SwitchError("no providers configured")
-
-    results: list[tuple[str, int]] = []
-    for index, provider in enumerate(sorted(state.providers)):
-        if index:
-            print("")
-        try:
-            mod = sys.modules.get("cli.opencode_provider") or sys.modules.get(
-                "opencode_provider"
-            )
-            ping_fn = (
-                getattr(mod, "ping_provider", ping_provider) if mod else ping_provider
-            )
-            result = ping_fn(provider, timeout, model, prompt)
-        except SwitchError as exc:
-            print(f"pinging provider '{provider}' with prompt: {prompt}...")
-            print("ping result: failed")
-            print(f"error: {exc}")
-            result = 1
-        results.append((provider, result))
-
-    available = sum(result == 0 for _, result in results)
-    print("")
-    print("provider ping summary:")
-    for provider, result in results:
-        print(f"- {provider}: {'ok' if result == 0 else 'failed'}")
-    print(f"available: {available}/{len(results)}")
-    return 0 if available == len(results) else 1

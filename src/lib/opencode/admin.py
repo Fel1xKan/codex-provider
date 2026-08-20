@@ -216,32 +216,6 @@ def test_provider(provider: str | None, timeout: float) -> int:
     )
 
 
-def test_all_providers(timeout: float) -> int:
-    state = st.load_state()
-    auth_keys = st.load_auth_keys()
-    failures = 0
-    for provider in sorted(state.providers):
-        config = state.providers[provider]
-        options = config.get("options", {})
-        base_url = options.get("baseURL") if isinstance(options, dict) else None
-        if not isinstance(base_url, str):
-            continue
-        keys = auth_keys.get(provider, [])
-        api_key = keys[0] if keys else ""
-        anthropic = config.get("npm") == "@ai-sdk/anthropic"
-        rc = run_models_test(
-            provider,
-            base_url,
-            api_key,
-            timeout,
-            state.current_provider,
-            anthropic=anthropic,
-        )
-        if rc != 0:
-            failures += 1
-    return 0 if failures == 0 else 1
-
-
 def test_direct(base_url: str, api_key: str, timeout: float) -> int:
     return run_models_test(
         base_url, base_url, api_key, timeout, st.load_state().current_provider

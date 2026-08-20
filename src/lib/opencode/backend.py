@@ -7,7 +7,7 @@ from typing import Any
 import lib.opencode.admin as adm
 import lib.opencode.commands as cmd
 import lib.opencode.edit as edit
-from lib.common.backend import BaseBackend
+from lib.common.backend import BaseBackend, TestTarget
 from lib.common.cli import (
     generic_main,
 )
@@ -26,11 +26,9 @@ from lib.common.registry import (
     build_parser_for,
 )
 from lib.opencode.models import models_command
-from lib.opencode.ping import (
-    ping_all_providers,
-    ping_provider,
-)
+from lib.opencode.ping import ping_provider
 from lib.opencode.store import (
+    load_auth_keys,
     load_state,
     recent_path,
 )
@@ -150,8 +148,34 @@ class OpenCodeBackend(BaseBackend):
     def test_provider(self, provider: str | None, timeout: float) -> int:
         return adm.test_provider(provider, timeout)
 
-    def test_all_providers(self, timeout: float) -> int:
-        return adm.test_all_providers(timeout)
+    def test_targets(self) -> list[TestTarget]:
+        state = load_state()
+        if not state.providers:
+            raise SwitchError("no providers configured")
+        auth_keys = load_auth_keys()
+        targets: list[TestTarget] = []
+        for provider in sorted(state.providers):
+            config = state.providers[provider]
+            options = config.get("options", {})
+            base_url = options.get("baseURL") if isinstance(options, dict) else None
+            if not isinstance(base_url, str):
+                continue
+            keys = auth_keys.get(provider, [])
+            api_key = keys[0] if keys else ""
+            anthropic = config.get("npm") == "@ai-sdk/anthropic"
+            targets.append(TestTarget(provider, base_url, api_key, anthropic=anthropic))
+        return targets
+
+    def run_models_test(self, target: TestTarget, timeout: float) -> int:
+        state = load_state()
+        return adm.run_models_test(
+            target.name,
+            target.base_url,
+            target.api_key,
+            timeout,
+            state.current_provider,
+            anthropic=target.anthropic,
+        )
 
     def test_direct(self, base_url: str, api_key: str, timeout: float) -> int:
         return adm.test_direct(base_url, api_key, timeout)
@@ -163,10 +187,19 @@ class OpenCodeBackend(BaseBackend):
         model: str | None,
         prompt: str,
     ) -> int:
+        mod = sys.modules.get("cli.opencode_provider") or sys.modules.get(
+            "opencode_provider"
+        )
+        fn = getattr(mod, "ping_provider", None) if mod else None
+        if fn is not None and fn is not ping_provider:
+            return fn(provider, timeout, model, prompt)
         return ping_provider(provider, timeout, model, prompt)
 
-    def ping_all_providers(self, timeout: float, model: str | None, prompt: str) -> int:
-        return ping_all_providers(timeout, model, prompt)
+    def ping_entries(self) -> list[str]:
+        return sorted(load_state().providers)
+
+    def ping_error_lines(self, name: str, prompt: str) -> list[str]:
+        return [f"pinging provider '{name}' with prompt: {prompt}..."]
 
     def export(self, file_path: str | None) -> int:
         import lib.opencode.transfer as transfer

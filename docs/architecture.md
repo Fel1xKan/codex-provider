@@ -25,6 +25,8 @@
 | 执行分发 | `common/cli.py` | `generic_main`、switch/test/ping 共享 handler |
 | 网络与协议 | `common/network.py` | `fetch_provider_models`、`run_models_test`、`WireProtocol` |
 | 变更提交 | `common/common_store.py` | `FileChange` + `apply_changes`（快照、原子写、回滚） |
+| 传输骨架 | `common/transfer.py` | 导入读取/类型校验、导出原子写入 |
+| 批量流程 | `common/backend.py` | `test --all` / `ping --all` 遍历汇总（`TestTarget`、`ping_entries`） |
 | 配置格式 | 各 `lib/<provider>/store.py`、`patch.py` | TOML / JSONC / agy store |
 | 凭据模型 | 各 `lib/<provider>/admin.py` | auth profile / auth.json / OAuth |
 | switch 语义 | 各 `lib/<provider>/switch.py`、`commands.py` | 注入 runtime provider / 改 model 字段 / 切 account |

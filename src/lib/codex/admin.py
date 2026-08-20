@@ -195,55 +195,6 @@ def test_provider(provider: str | None, timeout: float) -> int:
     )
 
 
-def test_all_providers(timeout: float) -> int:
-    state = st.ensure_provider_state(read_only=True)
-    if not state.providers:
-        raise SwitchError("no providers configured")
-    results: list[tuple[str, int]] = []
-    for index, provider in enumerate(sorted(state.providers)):
-        if index:
-            print("")
-        config = state.providers[provider]
-        base_url = config.get("base_url", "")
-        profile = st.auth_profile_path(provider, create=False)
-        if not profile.exists():
-            print(f"test provider: {provider}")
-            print(f"base_url: {base_url}")
-            print("result: failed")
-            print(
-                f"error: auth profile is missing for provider '{provider}': {profile}"
-            )
-            results.append((provider, 1))
-            continue
-        try:
-            auth_data = load_auth_json(profile)
-            api_key = auth_data.get("OPENAI_API_KEY", "")
-        except Exception as exc:
-            print(f"test provider: {provider}")
-            print(f"base_url: {base_url}")
-            print("result: failed")
-            print(f"error: {exc}")
-            results.append((provider, 1))
-            continue
-
-        rc = get_run_models_test()(
-            provider,
-            base_url,
-            api_key,
-            timeout,
-            state.active_provider,
-        )
-        results.append((provider, rc))
-
-    available = sum(rc == 0 for _, rc in results)
-    print("")
-    print("provider test summary:")
-    for provider, rc in results:
-        print(f"- {provider}: {'ok' if rc == 0 else 'failed'}")
-    print(f"available: {available}/{len(results)}")
-    return 0 if available == len(results) else 1
-
-
 def test_direct_base_url(base_url: str, api_key: str, timeout: float) -> int:
     state = st.ensure_provider_state(read_only=True)
     return get_run_models_test()(

@@ -9,12 +9,13 @@ import lib.codex.edit as edit
 import lib.codex.store as st
 from lib.codex.doctor import (
     doctor,
+    load_auth_json,
 )
 from lib.codex.doctor import (
     run_codex_ping as default_run_codex_ping,
 )
 from lib.codex.switch import switch_provider
-from lib.common.backend import BaseBackend
+from lib.common.backend import BaseBackend, TestTarget
 from lib.common.cli import (
     generic_main,
 )
@@ -59,34 +60,6 @@ def ping_provider(
         return ping_fn(state.active_provider, timeout, model, prompt)
     with adm.temporary_provider(provider):
         return ping_fn(provider, timeout, model, prompt)
-
-
-def ping_all_providers(timeout: float, model: str | None, prompt: str) -> int:
-    state = st.load_provider_state()
-    if not state.providers:
-        raise SwitchError("no providers configured")
-
-    results: list[tuple[str, int]] = []
-    for index, provider in enumerate(sorted(state.providers)):
-        if index:
-            print("")
-        try:
-            result = ping_provider(provider, timeout, model, prompt)
-        except SwitchError as exc:
-            print(f"current provider: {state.active_provider}")
-            print(f"ping provider: {provider}")
-            print("ping result: failed")
-            print(f"error: {exc}")
-            result = 1
-        results.append((provider, result))
-
-    available = sum(result == 0 for _, result in results)
-    print("")
-    print("provider ping summary:")
-    for provider, result in results:
-        print(f"- {provider}: {'ok' if result == 0 else 'failed'}")
-    print(f"available: {available}/{len(results)}")
-    return 0 if available == len(results) else 1
 
 
 class CodexBackend(BaseBackend):
@@ -163,8 +136,46 @@ class CodexBackend(BaseBackend):
     def test_provider(self, provider: str | None, timeout: float) -> int:
         return adm.test_provider(provider, timeout)
 
-    def test_all_providers(self, timeout: float) -> int:
-        return adm.test_all_providers(timeout)
+    def test_targets(self) -> list[TestTarget]:
+        state = st.ensure_provider_state(read_only=True)
+        if not state.providers:
+            raise SwitchError("no providers configured")
+        targets: list[TestTarget] = []
+        for provider in sorted(state.providers):
+            config = state.providers[provider]
+            base_url = config.get("base_url", "")
+            profile = st.auth_profile_path(provider, create=False)
+            if not profile.exists():
+                targets.append(
+                    TestTarget(
+                        provider,
+                        base_url,
+                        "",
+                        error=(
+                            "auth profile is missing for provider "
+                            f"'{provider}': {profile}"
+                        ),
+                    )
+                )
+                continue
+            try:
+                auth_data = load_auth_json(profile)
+                api_key = auth_data.get("OPENAI_API_KEY", "")
+            except Exception as exc:
+                targets.append(TestTarget(provider, base_url, "", error=str(exc)))
+                continue
+            targets.append(TestTarget(provider, base_url, api_key))
+        return targets
+
+    def run_models_test(self, target: TestTarget, timeout: float) -> int:
+        state = st.ensure_provider_state(read_only=True)
+        return adm.get_run_models_test()(
+            target.name,
+            target.base_url,
+            target.api_key,
+            timeout,
+            state.active_provider,
+        )
 
     def test_direct(self, base_url: str, api_key: str, timeout: float) -> int:
         return adm.test_direct_base_url(base_url, api_key, timeout)
@@ -178,8 +189,13 @@ class CodexBackend(BaseBackend):
     ) -> int:
         return ping_provider(provider, timeout, model, prompt)
 
-    def ping_all_providers(self, timeout: float, model: str | None, prompt: str) -> int:
-        return ping_all_providers(timeout, model, prompt)
+    def ping_entries(self) -> list[str]:
+        state = st.load_provider_state()
+        return sorted(state.providers)
+
+    def ping_error_lines(self, name: str, prompt: str) -> list[str]:
+        state = st.load_provider_state()
+        return [f"current provider: {state.active_provider}", f"ping provider: {name}"]
 
     def export(self, file_path: str | None) -> int:
         import lib.codex.transfer as transfer
