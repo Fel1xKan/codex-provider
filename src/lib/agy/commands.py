@@ -6,8 +6,9 @@ from typing import Any
 
 import lib.agy.store as st
 from lib.common.common_store import (
+    FileChange,
+    apply_changes,
     atomic_write_bytes,
-    fsync_directory,
 )
 from lib.common.constants import SECRET_FILE_MODE
 from lib.common.errors import SwitchError
@@ -67,21 +68,6 @@ def switch_account(account_name: str, dry_run: bool = False) -> int:
         acc = store.accounts[account_name]
         if not dry_run:
             token_payload = json.dumps(acc.token_data, indent=2).encode("utf-8") + b"\n"
-            st.oauth_token_path().parent.mkdir(parents=True, exist_ok=True)
-            atomic_write_bytes(
-                st.oauth_token_path(),
-                token_payload,
-                secret=True,
-                mode=SECRET_FILE_MODE,
-            )
-            atomic_write_bytes(
-                st.standalone_oauth_token_path(),
-                token_payload,
-                secret=True,
-                mode=SECRET_FILE_MODE,
-            )
-            fsync_directory(st.oauth_token_path().parent)
-            st.write_wincred_token(acc.token_data)
             accounts_data = {
                 name: {
                     "email": a.email,
@@ -91,7 +77,24 @@ def switch_account(account_name: str, dry_run: bool = False) -> int:
                 }
                 for name, a in store.accounts.items()
             }
-            _save_state_file(account_name, accounts_data)
+            state_payload = (
+                json.dumps(
+                    {"current": account_name, "accounts": accounts_data},
+                    indent=2,
+                )
+                + "\n"
+            ).encode("utf-8")
+            changes = [
+                FileChange(st.oauth_token_path(), token_payload, secret=True),
+                FileChange(
+                    st.standalone_oauth_token_path(),
+                    token_payload,
+                    secret=True,
+                ),
+                FileChange(st.state_path(), state_payload, secret=True),
+            ]
+            apply_changes(changes)
+            st.write_wincred_token(acc.token_data)
             record_recent_provider(st.recent_path(), account_name)
     finally:
         st.release_lock()

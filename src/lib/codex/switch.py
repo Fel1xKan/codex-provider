@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
 from contextlib import nullcontext, suppress
 from pathlib import Path
 from typing import Any
@@ -9,11 +8,8 @@ from typing import Any
 import lib.codex.store as st
 from lib.common.common_store import (
     FileChange,
-    FileSnapshot,
+    apply_changes,
     atomic_write_bytes,
-    fsync_directory,
-    restore_file_snapshot,
-    snapshot_file,
 )
 from lib.common.constants import RUNTIME_PROVIDER_ID, SECRET_FILE_MODE
 from lib.common.errors import SwitchError
@@ -24,29 +20,7 @@ from lib.common.toml_config import (
     validate_provider_name,
 )
 
-
-def commit_file_changes(changes: Sequence[FileChange]) -> None:
-    snapshots = [(change, snapshot_file(change.path)) for change in changes]
-    committed: list[tuple[Any, FileSnapshot]] = []
-
-    for change, before in snapshots:
-        committed.append((change.path, before))
-        try:
-            if change.payload is None:
-                change.path.unlink(missing_ok=True)
-                if change.path.parent.exists():
-                    fsync_directory(change.path.parent)
-            else:
-                atomic_write_bytes(
-                    change.path,
-                    change.payload,
-                    secret=change.secret,
-                    mode=SECRET_FILE_MODE if change.secret else None,
-                )
-        except Exception as exc:
-            for path, before in reversed(committed):
-                restore_file_snapshot(path, before)
-            raise SwitchError(f"unable to commit state changes: {exc}") from exc
+commit_file_changes = apply_changes
 
 
 def render_tool_state(

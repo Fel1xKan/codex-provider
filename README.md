@@ -25,6 +25,10 @@
 
 > Switch Codex, OpenCode, Antigravity, and Cursor accounts and models without hand-editing credentials or global configuration.
 
+The four CLIs are built on a shared command registry and backend adapter
+framework; see [docs/architecture.md](docs/architecture.md) for the command
+definition model and how to onboard a new agent provider.
+
 ---
 
 ## Why codex-provider?

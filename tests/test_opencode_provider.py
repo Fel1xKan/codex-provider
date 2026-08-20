@@ -334,9 +334,7 @@ def test_models_sync_sends_provider_user_agent(
 
     def fake_urlopen(request, timeout):
         seen["ua"] = request.get_header("User-agent")
-        return ModelsResponse(
-            json.dumps({"data": [{"id": "gpt-5"}]}).encode()
-        )
+        return ModelsResponse(json.dumps({"data": [{"id": "gpt-5"}]}).encode())
 
     monkeypatch.setattr(op.urllib.request, "urlopen", fake_urlopen)
 
@@ -429,16 +427,12 @@ def test_models_sync_all_syncs_every_provider(
 ) -> None:
     config = write_config(opencode_paths)
     data = json.loads(config.read_text())
-    data["provider"]["beta"]["options"] = {
-        "baseURL": "https://beta.example.com/v1"
-    }
+    data["provider"]["beta"]["options"] = {"baseURL": "https://beta.example.com/v1"}
     config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
     def fake_urlopen(request, timeout):
         model_id = "alpha-model" if "alpha" in request.full_url else "beta-model"
-        return ModelsResponse(
-            json.dumps({"data": [{"id": model_id}]}).encode()
-        )
+        return ModelsResponse(json.dumps({"data": [{"id": model_id}]}).encode())
 
     monkeypatch.setattr(op.urllib.request, "urlopen", fake_urlopen)
 
@@ -456,9 +450,7 @@ def test_models_sync_all_continues_after_failure(
 ) -> None:
     config = write_config(opencode_paths)
     data = json.loads(config.read_text())
-    data["provider"]["beta"]["options"] = {
-        "baseURL": "https://beta.example.com/v1"
-    }
+    data["provider"]["beta"]["options"] = {"baseURL": "https://beta.example.com/v1"}
     config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     calls = {"n": 0}
 
@@ -472,9 +464,7 @@ def test_models_sync_all_continues_after_failure(
                 {},
                 io.BytesIO(b"error code: 1010\n"),
             )
-        return ModelsResponse(
-            json.dumps({"data": [{"id": "beta-model"}]}).encode()
-        )
+        return ModelsResponse(json.dumps({"data": [{"id": "beta-model"}]}).encode())
 
     monkeypatch.setattr(op.urllib.request, "urlopen", fake_urlopen)
 
@@ -501,9 +491,7 @@ def test_models_sync_all_dry_run_does_not_write(
 ) -> None:
     config = write_config(opencode_paths)
     data = json.loads(config.read_text())
-    data["provider"]["beta"]["options"] = {
-        "baseURL": "https://beta.example.com/v1"
-    }
+    data["provider"]["beta"]["options"] = {"baseURL": "https://beta.example.com/v1"}
     config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     original = config.read_text()
     monkeypatch.setattr(

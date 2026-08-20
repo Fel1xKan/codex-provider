@@ -1,228 +1,13 @@
 from __future__ import annotations
 
-import argparse
 import getpass
 import sys
-from collections.abc import Callable
+from typing import Any
 from urllib.parse import urlparse
 
 from lib.common.errors import SwitchError
-
-ProviderTest = Callable[[str | None, float], int]
-AllProvidersTest = Callable[[float], int]
-DirectTest = Callable[[str, str, float], int]
-ProviderPing = Callable[[str | None, float, str | None, str], int]
-AllProvidersPing = Callable[[float, str | None, str], int]
-
-
-def add_auth_parser(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser(
-        "auth", help="Inspect or edit provider authentication data"
-    )
-    commands = parser.add_subparsers(dest="auth_command", required=True)
-    detail = commands.add_parser(
-        "detail", help="Show auth metadata without printing credential values"
-    )
-    detail.add_argument(
-        "provider", nargs="?", help="Provider name; defaults to the current scope"
-    )
-    edit = commands.add_parser(
-        "edit",
-        help="Open provider authentication data, including API keys, in the editor",
-    )
-    edit.add_argument(
-        "provider", nargs="?", help="Provider name; defaults to the current scope"
-    )
-
-
-def add_config_parser(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser(
-        "config", help="Inspect or edit provider configuration; API keys use auth"
-    )
-    commands = parser.add_subparsers(dest="config_command", required=True)
-    detail = commands.add_parser("detail", help="Show a provider config block")
-    detail.add_argument(
-        "provider", nargs="?", help="Provider name; defaults to the current provider"
-    )
-    edit = commands.add_parser(
-        "edit",
-        help="Open provider configuration; use auth edit to change API keys",
-    )
-    edit.add_argument(
-        "provider",
-        nargs="?",
-        help="Provider name to validate; defaults to the current provider",
-    )
-
-
-def add_doctor_parser(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser(
-        "doctor", help="Validate provider configuration and authentication data"
-    )
-    parser.add_argument(
-        "--fix", action="store_true", help="Apply supported automatic repairs"
-    )
-
-
-def add_switch_parser(
-    subparsers: argparse._SubParsersAction, *, include_model: bool = False
-) -> None:
-    parser = subparsers.add_parser("switch", help="Switch the active provider")
-    parser.add_argument(
-        "provider",
-        nargs="?",
-        help="Provider name; opens an interactive picker when omitted",
-    )
-    if include_model:
-        parser.add_argument(
-            "-m", "--model", help="Model ID or provider/model; prompts when ambiguous"
-        )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
-
-def add_provider_parsers(subparsers: argparse._SubParsersAction) -> None:
-    add = subparsers.add_parser("add", help="Add a provider config and auth entry")
-    add.add_argument("base_url", help="Provider base_url")
-    add.add_argument("legacy_api_key", nargs="?", help=argparse.SUPPRESS)
-    add.add_argument(
-        "--api-key-stdin",
-        action="store_true",
-        help="Read API key from stdin instead of a hidden interactive prompt",
-    )
-    add.add_argument(
-        "--provider", help="Provider name; defaults to the base_url domain"
-    )
-    add.add_argument(
-        "--name", dest="display_name", help="Display name stored in provider config"
-    )
-    add.add_argument(
-        "--wire-api", default="responses", help="wire_api value, default: responses"
-    )
-    add.add_argument(
-        "--supports-websockets",
-        choices=["true", "false"],
-        help="Set supports_websockets explicitly when supported by the backend",
-    )
-    add.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
-    delete = subparsers.add_parser("delete", help="Delete a provider config")
-    delete.add_argument("provider", help="Provider name to delete")
-    delete.add_argument(
-        "--full", action="store_true", help="Also remove provider authentication data"
-    )
-    delete.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
-    rename = subparsers.add_parser("rename", help="Rename a provider")
-    rename.add_argument("old_provider", help="Existing provider name")
-    rename.add_argument("new_provider", help="New provider name")
-    rename.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
-
-def add_test_parser(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser(
-        "test", help="Test a provider or direct base_url with /models"
-    )
-    parser.add_argument(
-        "args",
-        nargs="*",
-        metavar="provider|base_url",
-        help="No args/current provider, provider name, or direct base_url",
-    )
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Test every configured provider and print an availability summary",
-    )
-    parser.add_argument(
-        "--api-key-stdin",
-        action="store_true",
-        help="Read API key from stdin for direct base_url tests",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=float,
-        default=30.0,
-        help="HTTP timeout in seconds, default: 30",
-    )
-
-
-def add_ping_parser(subparsers: argparse._SubParsersAction, program: str) -> None:
-    parser = subparsers.add_parser(
-        "ping",
-        aliases=["p"],
-        help=f"Test providers with a minimal {program} command",
-    )
-    parser.add_argument(
-        "provider", nargs="?", help="Provider name; defaults to current provider"
-    )
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Ping every configured provider and print an availability summary",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=float,
-        default=120.0,
-        help=f"{program} command timeout in seconds, default: 120",
-    )
-    parser.add_argument("-m", "--model", help="Override model for this ping")
-    parser.add_argument(
-        "--prompt", default="say hi", help='Prompt for the ping, default: "say hi"'
-    )
-
-
-def add_export_parser(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser(
-        "export",
-        help="Export configuration and authentication data to a JSON file or stdout",
-    )
-    parser.add_argument(
-        "file",
-        nargs="?",
-        help="Output file path; prints to stdout if omitted or '-'",
-    )
-
-
-def add_import_parser(subparsers: argparse._SubParsersAction) -> None:
-    parser = subparsers.add_parser(
-        "import",
-        help="Import configuration and authentication data from a JSON file or stdin",
-    )
-    parser.add_argument(
-        "file",
-        nargs="?",
-        help="Input file path; reads from stdin if omitted or '-'",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview changes without writing files",
-    )
-
-
-def dispatch_ping(
-    provider: str | None,
-    ping_all: bool,
-    timeout: float,
-    model: str | None,
-    prompt: str,
-    ping_provider: ProviderPing,
-    ping_all_providers: AllProvidersPing,
-) -> int:
-    if ping_all:
-        if provider is not None:
-            raise SwitchError("--all cannot be combined with a provider")
-        return ping_all_providers(timeout, model, prompt)
-    return ping_provider(provider, timeout, model, prompt)
+from lib.common.platform import select_provider_interactive
+from lib.common.registry import build_parser_for
 
 
 def read_api_key(api_key_stdin: bool, prompt: str = "API key: ") -> str:
@@ -237,34 +22,157 @@ def read_api_key(api_key_stdin: bool, prompt: str = "API key: ") -> str:
     return api_key
 
 
-def dispatch_test(
-    args: list[str],
-    api_key_stdin: bool,
-    timeout: float,
-    test_all: bool,
-    test_provider: ProviderTest,
-    test_all_providers: AllProvidersTest,
-    test_direct: DirectTest,
-) -> int:
-    if test_all:
-        if args:
+def dispatch_test(backend: Any, args: Any) -> int:
+    if args.all:
+        if args.args:
             raise SwitchError("--all cannot be combined with a provider or base_url")
-        if api_key_stdin:
+        if args.api_key_stdin:
             raise SwitchError("--all cannot be combined with --api-key-stdin")
-        return test_all_providers(timeout)
-    if not args:
-        if api_key_stdin:
+        return backend.test_all_providers(args.timeout)
+    if not args.args:
+        if args.api_key_stdin:
             raise SwitchError("--api-key-stdin requires a base_url")
-        return test_provider(None, timeout)
-    if len(args) == 1:
-        target = args[0]
+        return backend.test_provider(None, args.timeout)
+    if len(args.args) == 1:
+        target = args.args[0]
         parsed = urlparse(target)
         if parsed.scheme and parsed.hostname:
-            return test_direct(target, read_api_key(api_key_stdin), timeout)
-        if api_key_stdin:
+            return backend.test_direct(
+                target, read_api_key(args.api_key_stdin), args.timeout
+            )
+        if args.api_key_stdin:
             raise SwitchError("--api-key-stdin requires a direct base_url")
-        return test_provider(target, timeout)
+        return backend.test_provider(target, args.timeout)
     raise SwitchError(
         "test accepts either [provider] or <base-url>; API keys must not be "
         "passed as command arguments"
     )
+
+
+def dispatch_ping(backend: Any, args: Any) -> int:
+    if args.all:
+        if args.provider is not None:
+            raise SwitchError("--all cannot be combined with a provider")
+        return backend.ping_all_providers(args.timeout, args.model, args.prompt)
+    return backend.ping_provider(args.provider, args.timeout, args.model, args.prompt)
+
+
+def handle_switch(backend: Any, args: Any) -> int:
+    target = args.provider
+    if target is None:
+        recent = backend.recent_entries()
+        target = select_provider_interactive(backend.current_entry() or "", recent)
+        if target is None:
+            print("switch cancelled")
+            return 0
+    return backend.switch(target, getattr(args, "model", None), args.dry_run)
+
+
+def _handle_list(backend: Any, args: Any) -> int:
+    return backend.list()
+
+
+def _handle_status(backend: Any, args: Any) -> int:
+    return backend.status()
+
+
+def _handle_switch_cmd(backend: Any, args: Any) -> int:
+    return handle_switch(backend, args)
+
+
+def _handle_add(backend: Any, args: Any) -> int:
+    return backend.add(args)
+
+
+def _handle_delete(backend: Any, args: Any) -> int:
+    return backend.delete(args.provider, args.full, args.dry_run)
+
+
+def _handle_rename(backend: Any, args: Any) -> int:
+    return backend.rename(args.old_provider, args.new_provider, args.dry_run)
+
+
+def _handle_auth(backend: Any, args: Any) -> int:
+    if args.auth_command == "detail":
+        return backend.auth_detail(args.provider)
+    if args.auth_command == "edit":
+        return backend.auth_edit(args.provider)
+    return 0
+
+
+def _handle_config(backend: Any, args: Any) -> int:
+    if args.config_command == "detail":
+        return backend.config_detail(args.provider)
+    if args.config_command == "edit":
+        return backend.config_edit(args.provider)
+    return 0
+
+
+def _handle_doctor(backend: Any, args: Any) -> int:
+    return backend.doctor(args.fix)
+
+
+def _handle_test(backend: Any, args: Any) -> int:
+    return dispatch_test(backend, args)
+
+
+def _handle_ping(backend: Any, args: Any) -> int:
+    return dispatch_ping(backend, args)
+
+
+def _handle_export(backend: Any, args: Any) -> int:
+    return backend.export(args.file)
+
+
+def _handle_import(backend: Any, args: Any) -> int:
+    return backend.import_(args.file, args.dry_run)
+
+
+def _handle_models(backend: Any, args: Any) -> int:
+    return backend.models(
+        args.models_command,
+        args.provider,
+        getattr(args, "dry_run", False),
+        getattr(args, "all", False),
+    )
+
+
+HANDLERS: dict[str, Any] = {
+    "list": _handle_list,
+    "status": _handle_status,
+    "switch": _handle_switch_cmd,
+    "add": _handle_add,
+    "delete": _handle_delete,
+    "rename": _handle_rename,
+    "auth": _handle_auth,
+    "config": _handle_config,
+    "doctor": _handle_doctor,
+    "test": _handle_test,
+    "ping": _handle_ping,
+    "export": _handle_export,
+    "import": _handle_import,
+    "models": _handle_models,
+}
+
+
+def generic_main(backend: Any, argv: list[str] | None = None) -> int:
+    parser = build_parser_for(backend)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        return e.code if isinstance(e.code, int) else 1
+
+    try:
+        handler = HANDLERS.get(args.command)
+        if handler is not None:
+            return handler(backend, args)
+        extra = backend.extra_handlers
+        if args.command in extra:
+            return extra[args.command](args)
+        return 0
+    except SwitchError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"unexpected error: {e}", file=sys.stderr)
+        return 1

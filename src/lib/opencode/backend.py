@@ -2,37 +2,30 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import Any
 
 import lib.opencode.admin as adm
 import lib.opencode.commands as cmd
 import lib.opencode.edit as edit
+from lib.common.backend import BaseBackend
 from lib.common.cli import (
-    add_auth_parser,
-    add_config_parser,
-    add_doctor_parser,
-    add_export_parser,
-    add_import_parser,
-    add_ping_parser,
-    add_provider_parsers,
-    add_switch_parser,
-    add_test_parser,
-    dispatch_ping,
-    dispatch_test,
+    generic_main,
 )
 from lib.common.cli import (
     read_api_key as read_common_api_key,
 )
-from lib.common.constants import VERSION
 from lib.common.errors import SwitchError
-from lib.common.platform import select_provider_interactive
 from lib.common.recent import (
-    load_recent_providers,
+    ensure_recent_providers,
     sort_providers_by_recent,
 )
-from lib.opencode.models import (
-    add_models_parser,
-    models_command,
+from lib.common.registry import (
+    ArgSpec,
+    CommandSpec,
+    SubcommandSpec,
+    build_parser_for,
 )
+from lib.opencode.models import models_command
 from lib.opencode.ping import (
     ping_all_providers,
     ping_provider,
@@ -57,141 +50,150 @@ def read_api_key(api_key_stdin: bool, prompt: str = "API key: ") -> str:
     return read_common_api_key(api_key_stdin, prompt)
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="opencode-provider",
-        description="Switch the default provider in OpenCode global config.",
+class OpenCodeBackend(BaseBackend):
+    prog = "opencode-provider"
+    description = "Switch the default provider in OpenCode global config."
+    switch_include_model = True
+    command_help = {
+        "list": "List providers from OpenCode config",
+        "status": "Show current provider and configuration",
+    }
+    extra_commands = (
+        CommandSpec(
+            "models",
+            handler="models",
+            summary="Manage provider models",
+            subcommands=(
+                SubcommandSpec(
+                    "list",
+                    dest="models_command",
+                    help="List models for a provider",
+                    args=(ArgSpec(("provider",), nargs="?", help="Provider name"),),
+                ),
+                SubcommandSpec(
+                    "sync",
+                    dest="models_command",
+                    help="Sync models from provider API",
+                    args=(
+                        ArgSpec(("provider",), nargs="?", help="Provider name"),
+                        ArgSpec(
+                            ("--dry-run",),
+                            action="store_true",
+                            help="Perform a dry run",
+                        ),
+                        ArgSpec(
+                            ("--all",),
+                            action="store_true",
+                            help="Sync models for every configured provider",
+                        ),
+                    ),
+                ),
+            ),
+        ),
     )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
-    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("list", help="List providers from OpenCode config")
-    subparsers.add_parser("status", help="Show current provider and configuration")
+    def recent_entries(self) -> list[str]:
+        state = load_state()
+        return sort_providers_by_recent(
+            state.providers, ensure_recent_providers(recent_path())
+        )
 
-    add_auth_parser(subparsers)
-    add_config_parser(subparsers)
-    add_doctor_parser(subparsers)
-    add_models_parser(subparsers)
-    add_test_parser(subparsers)
-    add_ping_parser(subparsers, "opencode")
-    add_switch_parser(subparsers, include_model=True)
-    add_provider_parsers(subparsers)
-    add_export_parser(subparsers)
-    add_import_parser(subparsers)
+    def current_entry(self) -> str | None:
+        return load_state().current_provider
 
-    return parser
+    def list(self) -> int:
+        return cmd.print_list()
+
+    def status(self) -> int:
+        return cmd.print_status()
+
+    def switch(self, target: str, model: str | None, dry_run: bool) -> int:
+        return cmd.switch_provider(target, model, dry_run)
+
+    def add(self, args: Any) -> int:
+        if args.legacy_api_key is not None:
+            raise SwitchError(
+                "add accepts either [provider] or <base-url>; API keys must not be "
+                "passed as a command argument"
+            )
+        api_key = read_api_key(args.api_key_stdin)
+        return edit.add_provider(
+            args.base_url,
+            api_key,
+            args.provider,
+            args.display_name,
+            args.wire_api,
+            args.dry_run,
+        )
+
+    def delete(self, provider: str, full: bool, dry_run: bool) -> int:
+        return edit.delete_provider(provider, full, dry_run)
+
+    def rename(self, old: str, new: str, dry_run: bool) -> int:
+        return edit.rename_provider(old, new, dry_run)
+
+    def auth_detail(self, provider: str | None) -> int:
+        return adm.show_auth(provider)
+
+    def auth_edit(self, provider: str | None) -> int:
+        return adm.edit_auth(provider)
+
+    def config_detail(self, provider: str | None) -> int:
+        return adm.show_config(provider)
+
+    def config_edit(self, provider: str | None) -> int:
+        return adm.edit_config(provider)
+
+    def doctor(self, fix: bool) -> int:
+        return adm.doctor_command(fix)
+
+    def test_provider(self, provider: str | None, timeout: float) -> int:
+        return adm.test_provider(provider, timeout)
+
+    def test_all_providers(self, timeout: float) -> int:
+        return adm.test_all_providers(timeout)
+
+    def test_direct(self, base_url: str, api_key: str, timeout: float) -> int:
+        return adm.test_direct(base_url, api_key, timeout)
+
+    def ping_provider(
+        self,
+        provider: str | None,
+        timeout: float,
+        model: str | None,
+        prompt: str,
+    ) -> int:
+        return ping_provider(provider, timeout, model, prompt)
+
+    def ping_all_providers(self, timeout: float, model: str | None, prompt: str) -> int:
+        return ping_all_providers(timeout, model, prompt)
+
+    def export(self, file_path: str | None) -> int:
+        import lib.opencode.transfer as transfer
+
+        return transfer.export_command(file_path)
+
+    def import_(self, file_path: str | None, dry_run: bool) -> int:
+        import lib.opencode.transfer as transfer
+
+        return transfer.import_command(file_path, dry_run)
+
+    def models(
+        self,
+        command: str,
+        provider: str | None,
+        dry_run: bool,
+        all_providers: bool,
+    ) -> int:
+        return models_command(command, provider, dry_run, all_providers)
+
+
+BACKEND = OpenCodeBackend()
+
+
+def build_parser() -> argparse.ArgumentParser:
+    return build_parser_for(BACKEND)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as e:
-        return e.code if isinstance(e.code, int) else 1
-
-    try:
-        if args.command == "list":
-            return cmd.print_list()
-        if args.command == "status":
-            return cmd.print_status()
-
-        if args.command == "switch":
-            provider = args.provider
-            if provider is None:
-                state = load_state()
-                recent = load_recent_providers(recent_path())
-                sorted_provs = sort_providers_by_recent(state.providers, recent)
-                provider = select_provider_interactive(
-                    state.current_provider or "", sorted_provs
-                )
-                if provider is None:
-                    print("switch cancelled")
-                    return 0
-            return cmd.switch_provider(provider, args.model, args.dry_run)
-
-        if args.command == "add":
-            if args.legacy_api_key is not None:
-                raise SwitchError(
-                    "add accepts either [provider] or <base-url>; API keys must not be "
-                    "passed as a command argument"
-                )
-            api_key = read_api_key(args.api_key_stdin)
-            return edit.add_provider(
-                args.base_url,
-                api_key,
-                args.provider,
-                args.display_name,
-                args.wire_api,
-                args.dry_run,
-            )
-
-        if args.command == "delete":
-            return edit.delete_provider(args.provider, args.full, args.dry_run)
-
-        if args.command == "rename":
-            return edit.rename_provider(
-                args.old_provider, args.new_provider, args.dry_run
-            )
-
-        if args.command == "auth":
-            if args.auth_command == "detail":
-                return adm.show_auth(args.provider)
-            if args.auth_command == "edit":
-                return adm.edit_auth(args.provider)
-
-        if args.command == "config":
-            if args.config_command == "detail":
-                return adm.show_config(args.provider)
-            if args.config_command == "edit":
-                return adm.edit_config(args.provider)
-
-        if args.command == "doctor":
-            return adm.doctor_command(args.fix)
-
-        if args.command == "models":
-            return models_command(
-                args.models_command,
-                args.provider,
-                getattr(args, "dry_run", False),
-                getattr(args, "all", False),
-            )
-
-        if args.command == "test":
-            return dispatch_test(
-                args.args,
-                args.api_key_stdin,
-                args.timeout,
-                args.all,
-                adm.test_provider,
-                adm.test_all_providers,
-                adm.test_direct,
-            )
-
-        if args.command in ("ping", "p"):
-            return dispatch_ping(
-                args.provider,
-                args.all,
-                args.timeout,
-                args.model,
-                args.prompt,
-                ping_provider,
-                ping_all_providers,
-            )
-
-        if args.command == "export":
-            import lib.opencode.transfer as transfer
-
-            return transfer.export_command(args.file)
-
-        if args.command == "import":
-            import lib.opencode.transfer as transfer
-
-            return transfer.import_command(args.file, args.dry_run)
-
-        return 0
-    except SwitchError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-    except Exception as e:
-        print(f"unexpected error: {e}", file=sys.stderr)
-        return 1
+    return generic_main(BACKEND, argv)

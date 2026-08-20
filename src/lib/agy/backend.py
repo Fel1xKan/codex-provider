@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-import sys
+from typing import Any
 
 import lib.agy.store as st
 from lib.agy.admin import (
@@ -26,200 +26,178 @@ from lib.agy.commands import (
 )
 from lib.agy.login import login_account
 from lib.agy.usage import usage_command
-from lib.common.cli import (
-    add_auth_parser,
-    add_config_parser,
-    add_doctor_parser,
-    add_export_parser,
-    add_import_parser,
-    add_ping_parser,
-    add_switch_parser,
-    add_test_parser,
-    dispatch_ping,
-    dispatch_test,
-)
-from lib.common.constants import VERSION
-from lib.common.errors import SwitchError
-from lib.common.platform import select_provider_interactive
+from lib.common.backend import BaseBackend
+from lib.common.cli import generic_main
 from lib.common.recent import (
-    load_recent_providers,
+    ensure_recent_providers,
     sort_providers_by_recent,
 )
+from lib.common.registry import (
+    ArgSpec,
+    CommandSpec,
+    build_parser_for,
+)
+
+
+class AgyBackend(BaseBackend):
+    prog = "agy-provider"
+    description = "Switch account configurations for Antigravity (agy) CLI."
+    command_help = {
+        "list": "List accounts from agy-provider config",
+        "status": "Show the current active account and status",
+        "add": "Add or import an account configuration",
+        "delete": "Delete an account",
+        "rename": "Rename an account",
+    }
+    command_args = {
+        "add": (
+            ArgSpec(("account",), nargs="?", help="Account name"),
+            ArgSpec(("base_url",), nargs="?", hidden=True),
+            ArgSpec(("legacy_api_key",), nargs="?", hidden=True),
+            ArgSpec(
+                ("--api-key-stdin",),
+                action="store_true",
+                help="Read token JSON from stdin instead of interactive prompt",
+            ),
+            ArgSpec(("--from-dir",), help="Import token from an account directory"),
+            ArgSpec(
+                ("--from-current",),
+                action="store_true",
+                help="Import active token",
+            ),
+            ArgSpec(
+                ("--login",),
+                action="store_true",
+                help="Initiate interactive login session",
+            ),
+            ArgSpec(
+                ("--dry-run",),
+                action="store_true",
+                help="Preview changes without writing files",
+            ),
+        ),
+    }
+    extra_commands = (
+        CommandSpec(
+            "usage",
+            handler="usage",
+            summary="Show Antigravity 5-hour and weekly quota remaining",
+            args=(
+                ArgSpec(
+                    ("provider",),
+                    nargs="?",
+                    help="Account name (defaults to the current account)",
+                ),
+            ),
+        ),
+        CommandSpec(
+            "login",
+            handler="login",
+            summary="Initiate interactive AGY login session and save as account",
+            args=(
+                ArgSpec(("account",), nargs="?", help="Account name to save as"),
+                ArgSpec(
+                    ("--dry-run",),
+                    action="store_true",
+                    help="Preview changes without writing files",
+                ),
+            ),
+        ),
+    )
+    extra_handlers = {
+        "usage": lambda args: usage_command(args.provider),
+        "login": lambda args: login_account(args.account, args.dry_run),
+    }
+
+    def recent_entries(self) -> list[str]:
+        store = st.load_store()
+        return sort_providers_by_recent(
+            store.accounts, ensure_recent_providers(st.recent_path())
+        )
+
+    def current_entry(self) -> str | None:
+        return st.load_store().current or None
+
+    def list(self) -> int:
+        return print_list()
+
+    def status(self) -> int:
+        return print_status()
+
+    def switch(self, target: str, model: str | None, dry_run: bool) -> int:
+        return switch_account(target, dry_run)
+
+    def add(self, args: Any) -> int:
+        if getattr(args, "login", False):
+            return login_account(args.account or args.base_url, args.dry_run)
+        target_acc = args.account or args.base_url
+        return add_account(
+            name=target_acc,
+            from_current=args.from_current,
+            from_dir=args.from_dir,
+            from_file=None,
+            dry_run=args.dry_run,
+        )
+
+    def delete(self, provider: str, full: bool, dry_run: bool) -> int:
+        return delete_account(provider, full, dry_run)
+
+    def rename(self, old: str, new: str, dry_run: bool) -> int:
+        return rename_account(old, new, dry_run)
+
+    def auth_detail(self, provider: str | None) -> int:
+        return auth_detail(provider)
+
+    def auth_edit(self, provider: str | None) -> int:
+        return auth_edit(provider)
+
+    def config_detail(self, provider: str | None) -> int:
+        return config_detail(provider)
+
+    def config_edit(self, provider: str | None) -> int:
+        return config_edit(provider)
+
+    def doctor(self, fix: bool) -> int:
+        return doctor_command(fix)
+
+    def test_provider(self, provider: str | None, timeout: float) -> int:
+        return test_account(provider, timeout)
+
+    def test_all_providers(self, timeout: float) -> int:
+        return test_all_accounts(timeout)
+
+    def test_direct(self, base_url: str, api_key: str, timeout: float) -> int:
+        return test_direct_url(base_url, timeout)
+
+    def ping_provider(
+        self,
+        provider: str | None,
+        timeout: float,
+        model: str | None,
+        prompt: str,
+    ) -> int:
+        return ping_account(provider, timeout, model, prompt)
+
+    def ping_all_providers(self, timeout: float, model: str | None, prompt: str) -> int:
+        return ping_all_accounts(timeout, model, prompt)
+
+    def export(self, file_path: str | None) -> int:
+        import lib.agy.transfer as transfer
+
+        return transfer.export_command(file_path)
+
+    def import_(self, file_path: str | None, dry_run: bool) -> int:
+        import lib.agy.transfer as transfer
+
+        return transfer.import_command(file_path, dry_run)
+
+
+BACKEND = AgyBackend()
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="agy-provider",
-        description="Switch account configurations for Antigravity (agy) CLI.",
-    )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    subparsers.add_parser("list", help="List accounts from agy-provider config")
-    subparsers.add_parser("status", help="Show the current active account and status")
-
-    usage = subparsers.add_parser(
-        "usage", help="Show Antigravity 5-hour and weekly quota remaining"
-    )
-    usage.add_argument(
-        "provider", nargs="?", help="Account name (defaults to the current account)"
-    )
-
-    login = subparsers.add_parser(
-        "login",
-        help="Initiate interactive AGY login session and save as account",
-    )
-    login.add_argument("account", nargs="?", help="Account name to save as")
-    login.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
-    add_auth_parser(subparsers)
-    add_config_parser(subparsers)
-    add_doctor_parser(subparsers)
-    add_switch_parser(subparsers, include_model=False)
-
-    add = subparsers.add_parser("add", help="Add or import an account configuration")
-    add.add_argument("account", nargs="?", help="Account name")
-    add.add_argument("base_url", nargs="?", help=argparse.SUPPRESS)
-    add.add_argument("legacy_api_key", nargs="?", help=argparse.SUPPRESS)
-    add.add_argument(
-        "--api-key-stdin",
-        action="store_true",
-        help="Read token JSON from stdin instead of interactive prompt",
-    )
-    add.add_argument("--from-dir", help="Import token from an account directory")
-    add.add_argument("--from-current", action="store_true", help="Import active token")
-    add.add_argument(
-        "--login", action="store_true", help="Initiate interactive login session"
-    )
-    add.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
-    delete = subparsers.add_parser("delete", help="Delete an account")
-    delete.add_argument("provider", help="Account name to delete")
-    delete.add_argument(
-        "--full", action="store_true", help="Also remove account authentication data"
-    )
-    delete.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
-    rename = subparsers.add_parser("rename", help="Rename an account")
-    rename.add_argument("old_provider", help="Existing account name")
-    rename.add_argument("new_provider", help="New account name")
-    rename.add_argument(
-        "--dry-run", action="store_true", help="Preview changes without writing files"
-    )
-
-    add_test_parser(subparsers)
-    add_ping_parser(subparsers, "agy")
-    add_export_parser(subparsers)
-    add_import_parser(subparsers)
-
-    return parser
+    return build_parser_for(BACKEND)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as e:
-        return e.code if isinstance(e.code, int) else 1
-
-    try:
-        if args.command == "login":
-            return login_account(args.account, args.dry_run)
-
-        if args.command == "list":
-            return print_list()
-        if args.command == "status":
-            return print_status()
-        if args.command == "usage":
-            return usage_command(args.provider)
-
-        if args.command == "switch":
-            account = args.provider
-            if account is None:
-                store = st.load_store()
-                recent = load_recent_providers(st.recent_path())
-                sorted_accs = sort_providers_by_recent(store.accounts, recent)
-                account = select_provider_interactive(store.current or "", sorted_accs)
-                if account is None:
-                    print("switch cancelled")
-                    return 0
-            return switch_account(account, args.dry_run)
-
-        if args.command == "add":
-            if getattr(args, "login", False):
-                return login_account(args.account or args.base_url, args.dry_run)
-            target_acc = args.account or args.base_url
-            return add_account(
-                name=target_acc,
-                from_current=args.from_current,
-                from_dir=args.from_dir,
-                from_file=None,
-                dry_run=args.dry_run,
-            )
-
-        if args.command == "delete":
-            return delete_account(args.provider, args.full, args.dry_run)
-
-        if args.command == "rename":
-            return rename_account(args.old_provider, args.new_provider, args.dry_run)
-
-        if args.command == "auth":
-            if args.auth_command == "detail":
-                return auth_detail(args.provider)
-            if args.auth_command == "edit":
-                return auth_edit(args.provider)
-
-        if args.command == "config":
-            if args.config_command == "detail":
-                return config_detail(args.provider)
-            if args.config_command == "edit":
-                return config_edit(args.provider)
-
-        if args.command == "doctor":
-            return doctor_command(args.fix)
-
-        if args.command == "test":
-            return dispatch_test(
-                args.args,
-                args.api_key_stdin,
-                args.timeout,
-                args.all,
-                test_account,
-                test_all_accounts,
-                test_direct_url,
-            )
-
-        if args.command in ("ping", "p"):
-            return dispatch_ping(
-                args.provider,
-                args.all,
-                args.timeout,
-                args.model,
-                args.prompt,
-                ping_account,
-                ping_all_accounts,
-            )
-
-        if args.command == "export":
-            import lib.agy.transfer as transfer
-
-            return transfer.export_command(args.file)
-
-        if args.command == "import":
-            import lib.agy.transfer as transfer
-
-            return transfer.import_command(args.file, args.dry_run)
-
-        return 0
-    except SwitchError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-    except Exception as e:
-        print(f"unexpected error: {e}", file=sys.stderr)
-        return 1
+    return generic_main(BACKEND, argv)

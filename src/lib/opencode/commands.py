@@ -7,13 +7,13 @@ from typing import Any
 import json5
 
 import lib.opencode.store as st
+from lib.common.common_store import FileChange, apply_changes
 from lib.common.errors import SwitchError
 from lib.common.recent import (
     ensure_recent_providers,
     record_recent_provider,
     sort_providers_by_recent,
 )
-from lib.opencode.admin import atomic_write_config
 from lib.opencode.patch import patch_default_model
 
 
@@ -129,7 +129,7 @@ def switch_provider(provider: str, requested_model: str | None, dry_run: bool) -
         if updated_data.get("model") != target:
             raise SwitchError("updated config did not contain the requested model")
         if not dry_run:
-            atomic_write_config(state.path, state.text, updated)
+            apply_changes([FileChange(state.path, updated.encode("utf-8"))])
             record_recent_provider(st.recent_path(), provider)
 
     action = "would switch" if dry_run else "switched"

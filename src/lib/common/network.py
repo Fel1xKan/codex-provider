@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import json
 import ssl
 import sys
@@ -10,6 +11,11 @@ from urllib.parse import urlparse
 
 from lib.common.constants import MAX_HTTP_BODY_BYTES
 from lib.common.errors import SwitchError
+
+
+class WireProtocol(enum.Enum):
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
 
 
 def get_request_module() -> Any:
@@ -66,6 +72,60 @@ def summarize_response_error(body: bytes, api_key: str = "") -> str:
     return text[:200]
 
 
+def _request_headers(api_key: str, protocol: WireProtocol) -> dict[str, str]:
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "User-Agent": "codex-provider",
+        "Accept": "application/json",
+    }
+    if protocol is WireProtocol.ANTHROPIC:
+        headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
+    return headers
+
+
+def fetch_provider_models(
+    base_url: str,
+    api_key: str,
+    protocol: WireProtocol = WireProtocol.OPENAI,
+) -> list[str]:
+    base_url = normalize_base_url(base_url)
+    models_url = f"{base_url}/models"
+    req_mod = get_request_module()
+    req = req_mod.Request(
+        models_url,
+        headers=_request_headers(api_key, protocol),
+    )
+    try:
+        with req_mod.urlopen(req, timeout=10) as resp:
+            raw_body = resp.read()
+            data = json.loads(raw_body.decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read()
+        summary = summarize_response_error(body, api_key)
+        detail = f": {summary}" if summary else ""
+        raise SwitchError(
+            f"failed to fetch models from {models_url}: HTTP {exc.code}{detail}"
+        ) from exc
+    except Exception as exc:
+        raise SwitchError(f"failed to fetch models from {models_url}: {exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+        raise SwitchError(
+            f"invalid models response from {models_url}: "
+            "expected an object with a data list"
+        )
+    models = [
+        m["id"]
+        for m in data["data"]
+        if isinstance(m, dict) and isinstance(m.get("id"), str)
+    ]
+    if not models:
+        raise SwitchError(
+            f"invalid models response from {models_url}: no model ids found"
+        )
+    return sorted(models)
+
+
 def run_models_test(
     provider: str,
     base_url: str,
@@ -77,17 +137,10 @@ def run_models_test(
     models_endpoint = models_url(base_url)
 
     req_mod = get_request_module()
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "User-Agent": "codex-provider",
-        "Accept": "application/json",
-    }
-    if anthropic:
-        headers["x-api-key"] = api_key
-        headers["anthropic-version"] = "2023-06-01"
+    protocol = WireProtocol.ANTHROPIC if anthropic else WireProtocol.OPENAI
     req = req_mod.Request(
         models_endpoint,
-        headers=headers,
+        headers=_request_headers(api_key, protocol),
     )
 
     ctx = ssl.create_default_context()
