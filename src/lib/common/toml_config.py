@@ -101,11 +101,12 @@ def render_runtime_config(base_text: str, config: dict[str, Any]) -> str:
     except tomlkit.exceptions.ParseError as exc:
         raise SwitchError(f"invalid runtime TOML: {exc}") from exc
     document["model_provider"] = RUNTIME_PROVIDER_ID
-    if "model_providers" in document:
-        del document["model_providers"]
     providers_table = tomlkit.table()
     providers_table.add(RUNTIME_PROVIDER_ID, build_provider_table(config))
-    document.add("model_providers", providers_table)
+    # In-place assignment replaces the existing table at its original position.
+    # The previous delete-then-add left the removed table's whitespace behind,
+    # accumulating a blank line in config.toml on every other switch.
+    document["model_providers"] = providers_table
     rendered = tomlkit.dumps(document)
     try:
         tomllib.loads(rendered)

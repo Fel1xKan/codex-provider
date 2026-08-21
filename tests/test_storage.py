@@ -273,6 +273,32 @@ def test_render_runtime_supports_valid_toml_and_preserves_comments() -> None:
     assert "# active provider" in rendered
 
 
+def test_render_runtime_does_not_accumulate_blank_lines() -> None:
+    base = (
+        "model = 'deepseek-v4-flash'\n\n"
+        "[features]\n"
+        "enabled = true\n\n"
+        "[model_providers.codex-provider]\n"
+        'base_url = "https://old.example.com/v1"\n'
+        'wire_api = "responses"\n'
+    )
+    cfg = {
+        "base_url": "https://new.example.com/v1",
+        "name": "provider",
+        "requires_openai_auth": True,
+        "wire_api": "responses",
+    }
+    rendered = base
+    baseline_blank_count: int | None = None
+    for _ in range(5):
+        rendered = cp.render_runtime_config(rendered, cfg)
+        head = rendered[: rendered.index("[model_providers.codex-provider]")]
+        blank_count = head.count("\n\n")
+        if baseline_blank_count is None:
+            baseline_blank_count = blank_count
+        assert blank_count <= baseline_blank_count
+
+
 def test_render_tool_config_preserves_unchanged_provider_comments() -> None:
     base = (
         "# registry comment\n"
