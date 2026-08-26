@@ -299,6 +299,104 @@ def test_render_runtime_does_not_accumulate_blank_lines() -> None:
         assert blank_count <= baseline_blank_count
 
 
+def test_render_runtime_sets_model_catalog_json_from_provider_field() -> None:
+    base = (
+        "model = 'gpt-5.5'\n"
+        'model_catalog_json = "~/.codex/models.json"\n'
+        "model_provider = 'codex-provider'\n\n"
+        "[model_providers.codex-provider]\n"
+        'base_url = "https://old.example.com/v1"\n'
+    )
+    rendered = cp.render_runtime_config(
+        base,
+        {
+            "base_url": "https://deepseek.example.com/v1",
+            "wire_api": "responses",
+            "provider_model_catalog_json": "~/.codex/models-deepseek.json",
+        },
+    )
+    data = tomllib.loads(rendered)
+    assert data["model_catalog_json"] == "~/.codex/models-deepseek.json"
+    # The control field must not leak into the provider block Codex reads.
+    assert "provider_model_catalog_json" not in data["model_providers"][
+        cp.RUNTIME_PROVIDER_ID
+    ]
+
+
+def test_render_runtime_removes_model_catalog_json_when_provider_has_none() -> None:
+    base = (
+        "model = 'gpt-5.5'\n"
+        'model_catalog_json = "~/.codex/models.json"\n'
+        "model_provider = 'codex-provider'\n\n"
+        "[model_providers.codex-provider]\n"
+        'base_url = "https://old.example.com/v1"\n'
+    )
+    rendered = cp.render_runtime_config(
+        base,
+        {
+            "base_url": "https://aihub.example.com/v1",
+            "wire_api": "responses",
+        },
+    )
+    data = tomllib.loads(rendered)
+    assert "model_catalog_json" not in data
+
+
+def test_switch_updates_model_catalog_json_per_provider(
+    isolated_paths: IsolatedPaths,
+) -> None:
+    cp.ensure_tool_config()
+
+    # Provider with a custom model catalog (e.g. cistern-cosmo / opencode2).
+    assert (
+        cp.add_provider(
+            provider="deepseek",
+            base_url="https://deepseek.example.com",
+            api_key="placeholder-deepseek",
+            display_name="DeepSeek",
+            wire_api="responses",
+            supports_websockets=None,
+            dry_run=False,
+            model_catalog_json="~/.codex/models-deepseek.json",
+        )
+        == 0
+    )
+    # Provider that relies on Codex's built-in catalog (e.g. aihub).
+    assert (
+        cp.add_provider(
+            provider="aihub",
+            base_url="https://aihub.example.com",
+            api_key="placeholder-aihub",
+            display_name="Aihub",
+            wire_api="responses",
+            supports_websockets=None,
+            dry_run=False,
+        )
+        == 0
+    )
+
+    isolated_paths.codex_dir.mkdir(parents=True, exist_ok=True)
+    runtime_config = isolated_paths.codex_dir / "config.toml"
+    runtime_config.write_text(
+        "model = 'gpt-5.5'\n"
+        'model_catalog_json = "~/.codex/models.json"\n'
+        "model_provider = 'aihub'\n\n"
+        "[model_providers.aihub]\n"
+        'base_url = "https://aihub.example.com/v1"\n',
+        encoding="utf-8",
+    )
+
+    # Switch to the provider with a catalog: top-level value follows it.
+    assert cp.switch_provider("deepseek", dry_run=False) == 0
+    _, data, _ = cp.load_runtime_config()
+    assert data["model_catalog_json"] == "~/.codex/models-deepseek.json"
+
+    # Switch to the provider without a catalog: top-level value is removed.
+    assert cp.switch_provider("aihub", dry_run=False) == 0
+    _, data, _ = cp.load_runtime_config()
+    assert "model_catalog_json" not in data
+
+
 def test_render_tool_config_preserves_unchanged_provider_comments() -> None:
     base = (
         "# registry comment\n"

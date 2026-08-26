@@ -15,6 +15,13 @@ from lib.common.constants import (
 from lib.common.errors import SwitchError
 from lib.common.network import normalize_base_url
 
+# Field name used in the per-provider block of the tool config to bind a
+# provider to a custom model catalog JSON file. When present and non-empty,
+# the rendered runtime config gets a top-level `model_catalog_json` pointing at
+# that file. When absent or empty, the runtime config omits `model_catalog_json`
+# so Codex falls back to its built-in model catalog.
+MODEL_CATALOG_FIELD = "provider_model_catalog_json"
+
 
 def validate_provider_name(provider: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", provider):
@@ -101,8 +108,19 @@ def render_runtime_config(base_text: str, config: dict[str, Any]) -> str:
     except tomlkit.exceptions.ParseError as exc:
         raise SwitchError(f"invalid runtime TOML: {exc}") from exc
     document["model_provider"] = RUNTIME_PROVIDER_ID
+    # Strip the codex-provider control field so it never leaks into the
+    # provider block that Codex itself reads. Handle it explicitly instead:
+    # - non-empty value -> write/update top-level model_catalog_json
+    # - absent or empty  -> remove top-level model_catalog_json (builtin catalog)
+    catalog_value = config.get(MODEL_CATALOG_FIELD)
+    provider_config = dict(config)
+    provider_config.pop(MODEL_CATALOG_FIELD, None)
+    if isinstance(catalog_value, str) and catalog_value.strip():
+        document["model_catalog_json"] = catalog_value
+    elif "model_catalog_json" in document:
+        del document["model_catalog_json"]
     providers_table = tomlkit.table()
-    providers_table.add(RUNTIME_PROVIDER_ID, build_provider_table(config))
+    providers_table.add(RUNTIME_PROVIDER_ID, build_provider_table(provider_config))
     # In-place assignment replaces the existing table at its original position.
     # The previous delete-then-add left the removed table's whitespace behind,
     # accumulating a blank line in config.toml on every other switch.

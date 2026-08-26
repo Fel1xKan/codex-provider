@@ -16,6 +16,7 @@ from lib.common.recent import (
     rename_recent_provider,
 )
 from lib.common.toml_config import (
+    MODEL_CATALOG_FIELD,
     render_runtime_config,
     render_tool_config,
     validate_provider_name,
@@ -38,6 +39,7 @@ def add_provider(
     wire_api: str,
     supports_websockets: bool | None,
     dry_run: bool,
+    model_catalog_json: str | None = None,
 ) -> int:
     base_url = normalize_base_url(base_url)
     provider = (
@@ -67,6 +69,8 @@ def add_provider(
         }
         if supports_websockets is not None:
             providers[provider]["supports_websockets"] = supports_websockets
+        if model_catalog_json is not None and model_catalog_json.strip():
+            providers[provider][MODEL_CATALOG_FIELD] = model_catalog_json
 
         profile = st.auth_profile_path(provider, create=not dry_run)
         profile_existed = profile.exists()
