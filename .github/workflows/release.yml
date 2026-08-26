@@ -102,11 +102,16 @@ jobs:
           fi
           tag="v${version}"
           ls -la artifacts
+          # If a release already exists for this tag, delete it before creating a
+          # fresh one. This keeps the release's targetCommitish pointing at the
+          # current commit, which matters when a tag is force-moved to a new
+          # commit: the upload path would otherwise leave the release pointing at
+          # the stale targetCommitish (and can lose the tag association entirely).
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" artifacts/* --clobber
-          else
-            gh release create "$tag" artifacts/* \
-              --title "$tag" \
-              --generate-notes \
-              --latest
+            echo "Deleting existing release '$tag' before recreating against this commit"
+            gh release delete "$tag" --yes
           fi
+          gh release create "$tag" artifacts/* \
+            --title "$tag" \
+            --generate-notes \
+            --latest
