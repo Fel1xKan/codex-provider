@@ -318,9 +318,10 @@ def test_render_runtime_sets_model_catalog_json_from_provider_field() -> None:
     data = tomllib.loads(rendered)
     assert data["model_catalog_json"] == "~/.codex/models-deepseek.json"
     # The control field must not leak into the provider block Codex reads.
-    assert "provider_model_catalog_json" not in data["model_providers"][
-        cp.RUNTIME_PROVIDER_ID
-    ]
+    assert (
+        "provider_model_catalog_json"
+        not in data["model_providers"][cp.RUNTIME_PROVIDER_ID]
+    )
 
 
 def test_render_runtime_removes_model_catalog_json_when_provider_has_none() -> None:
