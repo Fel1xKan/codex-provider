@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Sequence
-from contextlib import suppress
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -84,33 +84,79 @@ def restore_file_snapshot(path: Path, snapshot: FileSnapshot) -> None:
     try:
         path.unlink(missing_ok=True)
         if path.parent.exists():
-            fsync_directory(path.parent)
+            _note_directory(path.parent)
     except OSError as exc:
         raise SwitchError(f"unable to remove {path} during rollback: {exc}") from exc
+
+
+_defer_directory_sync_depth = 0
+_deferred_dirs: set[Path] = set()
+
+
+def _note_directory(path: Path) -> None:
+    if _defer_directory_sync_depth == 0:
+        fsync_directory(path)
+    else:
+        _deferred_dirs.add(path)
+
+
+def mark_directory_dirty(path: Path) -> None:
+    """fsync a directory now, or once when the active batch exits."""
+    _note_directory(path)
+
+
+@contextmanager
+def defer_directory_sync() -> Iterator[None]:
+    """Batch many atomic writes with a single directory fsync per parent dir.
+
+    While this context is active, :func:`default_atomic_write_bytes` records
+    each affected directory instead of fsyncing it immediately. When the
+    outermost context exits, every affected directory is fsynced exactly once.
+    Nested contexts share the same collected directories.
+    """
+    global _defer_directory_sync_depth, _deferred_dirs
+    _defer_directory_sync_depth += 1
+    try:
+        yield
+    finally:
+        _defer_directory_sync_depth -= 1
+        if _defer_directory_sync_depth == 0:
+            dirs = _deferred_dirs
+            _deferred_dirs = set()
+            for directory in dirs:
+                fsync_directory(directory)
 
 
 def apply_changes(changes: Sequence[FileChange]) -> None:
     snapshots = [(change, snapshot_file(change.path)) for change in changes]
     committed: list[tuple[Any, FileSnapshot]] = []
 
-    for change, before in snapshots:
-        committed.append((change.path, before))
-        try:
-            if change.payload is None:
-                change.path.unlink(missing_ok=True)
-                if change.path.parent.exists():
-                    fsync_directory(change.path.parent)
-            else:
-                atomic_write_bytes(
-                    change.path,
-                    change.payload,
-                    secret=change.secret,
-                    mode=SECRET_FILE_MODE if change.secret else None,
-                )
-        except Exception as exc:
+    try:
+        with defer_directory_sync():
+            for change, before in snapshots:
+                committed.append((change.path, before))
+                try:
+                    if change.payload is None:
+                        change.path.unlink(missing_ok=True)
+                        _note_directory(change.path.parent)
+                    else:
+                        atomic_write_bytes(
+                            change.path,
+                            change.payload,
+                            secret=change.secret,
+                            mode=SECRET_FILE_MODE if change.secret else None,
+                        )
+                except Exception as exc:
+                    raise SwitchError(
+                        f"unable to commit state changes: {exc}"
+                    ) from exc
+    except Exception:
+        # Roll back fully inside a fresh batch so a single directory fsync is
+        # still enough to persist every restored entry.
+        with defer_directory_sync():
             for path, before in reversed(committed):
                 restore_file_snapshot(path, before)
-            raise SwitchError(f"unable to commit state changes: {exc}") from exc
+        raise
 
 
 def default_atomic_write_bytes(
@@ -147,7 +193,10 @@ def default_atomic_write_bytes(
         tmp_path = None
         if secret:
             chmod_if_supported(path, SECRET_FILE_MODE)
-        fsync_directory(path.parent)
+        if _defer_directory_sync_depth == 0:
+            fsync_directory(path.parent)
+        else:
+            _deferred_dirs.add(path.parent)
     except OSError as exc:
         raise SwitchError(f"unable to write {path}: {exc}") from exc
     finally:

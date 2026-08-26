@@ -865,3 +865,34 @@ def test_codex_export_and_import(
     assert "* alpha" in status_out
     assert "beta" in status_out
     assert "active provider: alpha" in status_out
+
+
+def test_apply_changes_fsync_each_directory_once(
+    isolated_paths: IsolatedPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lib.common.common_store as store
+
+    called_dirs: list[Path] = []
+    original_fsync = store.fsync_directory
+
+    def counting_fsync(path: Path) -> None:
+        called_dirs.append(path)
+        original_fsync(path)
+
+    monkeypatch.setattr(store, "fsync_directory", counting_fsync)
+
+    target_dir = isolated_paths.tool_home
+    target_dir.mkdir(parents=True)
+    first = target_dir / "first.toml"
+    second = target_dir / "second.json"
+
+    store.apply_changes(
+        [
+            store.FileChange(first, b"first\n", secret=True),
+            store.FileChange(second, b'{"k": 1}\n', secret=True),
+        ]
+    )
+
+    assert first.read_bytes() == b"first\n"
+    assert second.read_bytes() == b'{"k": 1}\n'
+    assert called_dirs.count(target_dir) == 1

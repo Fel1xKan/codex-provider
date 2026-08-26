@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from collections.abc import Iterable
 from contextlib import suppress
 from pathlib import Path
 
-from lib.common.constants import PRIVATE_DIR_MODE, SECRET_FILE_MODE
+from lib.common.common_store import atomic_write_bytes
+from lib.common.constants import PRIVATE_DIR_MODE
 
 
 def load_recent_providers(path: Path) -> list[str]:
@@ -41,22 +40,12 @@ def save_recent_providers(path: Path, recent: list[str]) -> None:
     if path.parent.exists():
         with suppress(OSError):
             path.parent.chmod(PRIVATE_DIR_MODE)
+    atomic_write_bytes(path, serialize_recent_providers(recent), secret=True)
+
+
+def serialize_recent_providers(recent: list[str]) -> bytes:
     payload = json.dumps({"recent": recent}, ensure_ascii=False, indent=2) + "\n"
-    temp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temp:
-            temp_path = Path(temp.name)
-            temp.write(payload.encode("utf-8"))
-            temp.flush()
-            os.fsync(temp.fileno())
-        with suppress(OSError):
-            temp_path.chmod(SECRET_FILE_MODE)
-        os.replace(temp_path, path)
-        temp_path = None
-    finally:
-        if temp_path is not None:
-            with suppress(OSError):
-                temp_path.unlink(missing_ok=True)
+    return payload.encode("utf-8")
 
 
 def record_recent_provider(path: Path, provider: str) -> list[str]:

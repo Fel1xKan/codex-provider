@@ -9,6 +9,7 @@ import lib.cursor.db as db
 import lib.cursor.store as st
 from lib.common.common_store import (
     atomic_write_bytes,
+    defer_directory_sync,
 )
 from lib.common.constants import SECRET_FILE_MODE
 from lib.common.errors import SwitchError
@@ -146,8 +147,9 @@ def switch_account(
         _ensure_cursor_quit(force)
         db.apply_account_auth(acc.auth_data)
         accounts_data = st.accounts_data_dict(store)
-        _save_state_file(account_name, accounts_data)
-        record_recent_provider(st.recent_path(), account_name)
+        with defer_directory_sync():
+            _save_state_file(account_name, accounts_data)
+            record_recent_provider(st.recent_path(), account_name)
     finally:
         st.release_lock()
     print(f"switched account: {account_name}")
@@ -205,8 +207,9 @@ def add_account(
             "auth_data": auth_data,
         }
         if not dry_run:
-            _save_state_file(store.current or name, accounts_data)
-            record_recent_provider(st.recent_path(), name)
+            with defer_directory_sync():
+                _save_state_file(store.current or name, accounts_data)
+                record_recent_provider(st.recent_path(), name)
     finally:
         st.release_lock()
 
@@ -230,8 +233,9 @@ def delete_account(
         accounts_data = st.accounts_data_dict(store)
         accounts_data.pop(name, None)
         if not dry_run:
-            _save_state_file(current, accounts_data)
-            forget_recent_provider(st.recent_path(), name)
+            with defer_directory_sync():
+                _save_state_file(current, accounts_data)
+                forget_recent_provider(st.recent_path(), name)
             if full:
                 _ensure_cursor_quit(force)
                 db.clear_account_auth()
@@ -258,8 +262,9 @@ def rename_account(old_name: str, new_name: str, dry_run: bool = False) -> int:
         accounts_data = st.accounts_data_dict(store)
         accounts_data[new_name] = accounts_data.pop(old_name)
         if not dry_run:
-            _save_state_file(current, accounts_data)
-            rename_recent_provider(st.recent_path(), old_name, new_name)
+            with defer_directory_sync():
+                _save_state_file(current, accounts_data)
+                rename_recent_provider(st.recent_path(), old_name, new_name)
     finally:
         st.release_lock()
     action = "would rename" if dry_run else "renamed"

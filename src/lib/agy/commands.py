@@ -9,14 +9,17 @@ from lib.common.common_store import (
     FileChange,
     apply_changes,
     atomic_write_bytes,
+    defer_directory_sync,
 )
 from lib.common.constants import SECRET_FILE_MODE
 from lib.common.errors import SwitchError
 from lib.common.recent import (
     ensure_recent_providers,
     forget_recent_provider,
+    load_recent_providers,
     record_recent_provider,
     rename_recent_provider,
+    serialize_recent_providers,
     sort_providers_by_recent,
 )
 
@@ -92,10 +95,21 @@ def switch_account(account_name: str, dry_run: bool = False) -> int:
                     secret=True,
                 ),
                 FileChange(st.state_path(), state_payload, secret=True),
+                FileChange(
+                    st.recent_path(),
+                    serialize_recent_providers(
+                        [account_name]
+                        + [
+                            name
+                            for name in load_recent_providers(st.recent_path())
+                            if name != account_name
+                        ]
+                    ),
+                    secret=True,
+                ),
             ]
             apply_changes(changes)
             st.write_wincred_token(acc.token_data)
-            record_recent_provider(st.recent_path(), account_name)
     finally:
         st.release_lock()
     action = "would switch" if dry_run else "switched"
@@ -189,8 +203,9 @@ def add_account(
             "token_data": token_data,
         }
         if not dry_run:
-            _save_state_file(store.current or name, accounts_data)
-            record_recent_provider(st.recent_path(), name)
+            with defer_directory_sync():
+                _save_state_file(store.current or name, accounts_data)
+                record_recent_provider(st.recent_path(), name)
     finally:
         st.release_lock()
 
@@ -220,8 +235,9 @@ def delete_account(name: str, full: bool = False, dry_run: bool = False) -> int:
             if n != name
         }
         if not dry_run:
-            _save_state_file(current, accounts_data)
-            forget_recent_provider(st.recent_path(), name)
+            with defer_directory_sync():
+                _save_state_file(current, accounts_data)
+                forget_recent_provider(st.recent_path(), name)
     finally:
         st.release_lock()
     action = "would delete" if dry_run else "deleted"
@@ -249,10 +265,11 @@ def rename_account(old_name: str, new_name: str, dry_run: bool = False) -> int:
                 "display_name": a.display_name,
                 "auth_method": a.auth_method,
                 "token_data": a.token_data,
-            }
+        }
         if not dry_run:
-            _save_state_file(current, accounts_data)
-            rename_recent_provider(st.recent_path(), old_name, new_name)
+            with defer_directory_sync():
+                _save_state_file(current, accounts_data)
+                rename_recent_provider(st.recent_path(), old_name, new_name)
     finally:
         st.release_lock()
     action = "would rename" if dry_run else "renamed"

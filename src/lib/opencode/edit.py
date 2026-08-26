@@ -8,7 +8,8 @@ from urllib.parse import urlparse
 import lib.opencode.store as st
 from lib.common.common_store import (
     atomic_write_bytes,
-    fsync_directory,
+    defer_directory_sync,
+    mark_directory_dirty,
 )
 from lib.common.constants import SECRET_FILE_MODE
 from lib.common.errors import SwitchError
@@ -81,20 +82,21 @@ def add_provider(
         updated_auth = json.dumps(auth_data, ensure_ascii=False, indent=2) + "\n"
 
         if not dry_run:
-            atomic_write_config(state.path, state.text, updated_config)
-            try:
-                st.data_dir().mkdir(parents=True, exist_ok=True)
-                atomic_write_bytes(
-                    auth_file,
-                    updated_auth.encode("utf-8"),
-                    secret=True,
-                    mode=SECRET_FILE_MODE,
-                )
-                fsync_directory(auth_file.parent)
-            except (OSError, SwitchError):
-                atomic_write_config(state.path, updated_config, state.text)
-                raise
-            record_recent_provider(st.recent_path(), provider)
+            with defer_directory_sync():
+                atomic_write_config(state.path, state.text, updated_config)
+                try:
+                    st.data_dir().mkdir(parents=True, exist_ok=True)
+                    atomic_write_bytes(
+                        auth_file,
+                        updated_auth.encode("utf-8"),
+                        secret=True,
+                        mode=SECRET_FILE_MODE,
+                    )
+                    mark_directory_dirty(auth_file.parent)
+                except (OSError, SwitchError):
+                    atomic_write_config(state.path, updated_config, state.text)
+                    raise
+                record_recent_provider(st.recent_path(), provider)
 
     action = "would add" if dry_run else "added"
     auth_action = "replaced auth entry" if auth_exists else "created auth entry"
@@ -160,14 +162,15 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
                 )
 
         if not dry_run:
-            atomic_write_config(state.path, state.text, updated_config)
-            if auth_changed:
-                try:
-                    atomic_write_config(auth_file, auth_text, updated_auth)
-                except SwitchError:
-                    atomic_write_config(state.path, updated_config, state.text)
-                    raise
-            forget_recent_provider(st.recent_path(), provider)
+            with defer_directory_sync():
+                atomic_write_config(state.path, state.text, updated_config)
+                if auth_changed:
+                    try:
+                        atomic_write_config(auth_file, auth_text, updated_auth)
+                    except SwitchError:
+                        atomic_write_config(state.path, updated_config, state.text)
+                        raise
+                forget_recent_provider(st.recent_path(), provider)
 
     action = "would delete" if dry_run else "deleted"
     print(f"{action} provider: {provider}")
@@ -205,14 +208,15 @@ def rename_provider(old: str, new: str, dry_run: bool) -> int:
             auth_data[new] = auth_data.pop(old)
         updated_auth = json.dumps(auth_data, ensure_ascii=False, indent=2) + "\n"
         if not dry_run:
-            atomic_write_config(state.path, state.text, updated)
-            if auth_changed:
-                try:
-                    atomic_write_config(auth_file, auth_text, updated_auth)
-                except SwitchError:
-                    atomic_write_config(state.path, updated, state.text)
-                    raise
-            rename_recent_provider(st.recent_path(), old, new)
+            with defer_directory_sync():
+                atomic_write_config(state.path, state.text, updated)
+                if auth_changed:
+                    try:
+                        atomic_write_config(auth_file, auth_text, updated_auth)
+                    except SwitchError:
+                        atomic_write_config(state.path, updated, state.text)
+                        raise
+                rename_recent_provider(st.recent_path(), old, new)
     action = "would rename" if dry_run else "renamed"
     print(f"{action} provider: {old} -> {new}")
     return 0

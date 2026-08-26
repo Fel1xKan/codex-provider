@@ -6,7 +6,8 @@ from urllib.parse import urlparse
 import lib.codex.store as st
 from lib.common.common_store import (
     atomic_write_bytes,
-    fsync_directory,
+    defer_directory_sync,
+    mark_directory_dirty,
 )
 from lib.common.constants import RUNTIME_PROVIDER_ID, SECRET_FILE_MODE
 from lib.common.errors import SwitchError
@@ -89,25 +90,26 @@ def add_provider(
         )
 
         if not dry_run:
-            try:
-                atomic_write_bytes(
-                    profile,
-                    auth_payload,
-                    secret=True,
-                    mode=SECRET_FILE_MODE,
-                )
-                atomic_write_bytes(
-                    st.tool_config_path(),
-                    updated.encode("utf-8"),
-                    secret=True,
-                    mode=SECRET_FILE_MODE,
-                )
-            except SwitchError as exc:
-                if not profile_existed:
-                    profile.unlink(missing_ok=True)
-                    if profile.parent.exists():
-                        fsync_directory(profile.parent)
-                raise SwitchError(f"unable to commit state changes: {exc}") from exc
+            with defer_directory_sync():
+                try:
+                    atomic_write_bytes(
+                        profile,
+                        auth_payload,
+                        secret=True,
+                        mode=SECRET_FILE_MODE,
+                    )
+                    atomic_write_bytes(
+                        st.tool_config_path(),
+                        updated.encode("utf-8"),
+                        secret=True,
+                        mode=SECRET_FILE_MODE,
+                    )
+                except SwitchError as exc:
+                    if not profile_existed:
+                        profile.unlink(missing_ok=True)
+                    raise SwitchError(
+                        f"unable to commit state changes: {exc}"
+                    ) from exc
 
     action = "would add" if dry_run else "added"
     auth_action = "replaced auth profile" if profile_existed else "created auth profile"
@@ -135,7 +137,7 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
                 if not dry_run:
                     profile.unlink(missing_ok=True)
                     if profile.parent.exists():
-                        fsync_directory(profile.parent)
+                        mark_directory_dirty(profile.parent)
                 action = "would remove" if dry_run else "removed"
                 print(f"provider not found in registry: {provider}")
                 print(f"{action} auth profile: {profile}")
@@ -162,17 +164,18 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
         )
 
         if not dry_run:
-            atomic_write_bytes(
-                st.tool_config_path(),
-                updated.encode("utf-8"),
-                secret=True,
-                mode=SECRET_FILE_MODE,
-            )
-            if delete_auth:
-                profile.unlink(missing_ok=True)
-                if profile.parent.exists():
-                    fsync_directory(profile.parent)
-            forget_recent_provider(st.recent_path(), provider)
+            with defer_directory_sync():
+                atomic_write_bytes(
+                    st.tool_config_path(),
+                    updated.encode("utf-8"),
+                    secret=True,
+                    mode=SECRET_FILE_MODE,
+                )
+                if delete_auth:
+                    profile.unlink(missing_ok=True)
+                    if profile.parent.exists():
+                        mark_directory_dirty(profile.parent)
+                forget_recent_provider(st.recent_path(), provider)
 
     action = "would delete" if dry_run else "deleted"
     print(f"{action} provider: {provider}")
@@ -219,46 +222,47 @@ def rename_provider(old_name: str, new_name: str, dry_run: bool) -> int:
         )
 
         if not dry_run:
-            if old_profile.exists():
-                atomic_write_bytes(
-                    new_profile,
-                    old_profile.read_bytes(),
-                    secret=True,
-                    mode=SECRET_FILE_MODE,
-                )
-                old_profile.unlink(missing_ok=True)
-                if old_profile.parent.exists():
-                    fsync_directory(old_profile.parent)
-
-            atomic_write_bytes(
-                st.tool_config_path(),
-                updated.encode("utf-8"),
-                secret=True,
-                mode=SECRET_FILE_MODE,
-            )
-
-            if current == old_name:
-                r_config = st.runtime_config_path(state.codex_dir)
-                r_auth = st.runtime_auth_path(state.codex_dir)
-                base_runtime_text = (
-                    r_config.read_text(encoding="utf-8")
-                    if r_config.exists()
-                    else f'model_provider = "{RUNTIME_PROVIDER_ID}"\n'
-                )
-                runtime_payload = render_runtime_config(
-                    base_runtime_text, providers[new_name]
-                ).encode("utf-8")
-
-                if new_profile.exists():
+            with defer_directory_sync():
+                if old_profile.exists():
                     atomic_write_bytes(
-                        r_auth,
-                        new_profile.read_bytes(),
+                        new_profile,
+                        old_profile.read_bytes(),
                         secret=True,
                         mode=SECRET_FILE_MODE,
                     )
-                atomic_write_bytes(r_config, runtime_payload)
+                    old_profile.unlink(missing_ok=True)
+                    if old_profile.parent.exists():
+                        mark_directory_dirty(old_profile.parent)
 
-            rename_recent_provider(st.recent_path(), old_name, new_name)
+                atomic_write_bytes(
+                    st.tool_config_path(),
+                    updated.encode("utf-8"),
+                    secret=True,
+                    mode=SECRET_FILE_MODE,
+                )
+
+                if current == old_name:
+                    r_config = st.runtime_config_path(state.codex_dir)
+                    r_auth = st.runtime_auth_path(state.codex_dir)
+                    base_runtime_text = (
+                        r_config.read_text(encoding="utf-8")
+                        if r_config.exists()
+                        else f'model_provider = "{RUNTIME_PROVIDER_ID}"\n'
+                    )
+                    runtime_payload = render_runtime_config(
+                        base_runtime_text, providers[new_name]
+                    ).encode("utf-8")
+
+                    if new_profile.exists():
+                        atomic_write_bytes(
+                            r_auth,
+                            new_profile.read_bytes(),
+                            secret=True,
+                            mode=SECRET_FILE_MODE,
+                        )
+                    atomic_write_bytes(r_config, runtime_payload)
+
+                rename_recent_provider(st.recent_path(), old_name, new_name)
 
     action = "would rename" if dry_run else "renamed"
     print(f"{action} provider: {old_name} -> {new_name}")

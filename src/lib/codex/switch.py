@@ -13,7 +13,10 @@ from lib.common.common_store import (
 )
 from lib.common.constants import RUNTIME_PROVIDER_ID, SECRET_FILE_MODE
 from lib.common.errors import SwitchError
-from lib.common.recent import record_recent_provider
+from lib.common.recent import (
+    load_recent_providers,
+    serialize_recent_providers,
+)
 from lib.common.toml_config import (
     render_runtime_config,
     render_tool_config,
@@ -119,10 +122,21 @@ def switch_provider(provider: str, dry_run: bool) -> int:
                 FileChange(runtime_auth, target_auth.read_bytes(), secret=True)
             )
         changes.append(FileChange(runtime_config, runtime_payload))
+        recent_record = [provider] + [
+            name
+            for name in load_recent_providers(st.recent_path())
+            if name != provider
+        ]
+        changes.append(
+            FileChange(
+                st.recent_path(),
+                serialize_recent_providers(recent_record),
+                secret=True,
+            )
+        )
 
         if not dry_run:
             commit_file_changes(changes)
-            record_recent_provider(st.recent_path(), provider)
 
     action = "would switch" if dry_run else "switched"
     print(f"{action} default provider: {provider}")
