@@ -22,6 +22,13 @@ from lib.common.network import normalize_base_url
 # so Codex falls back to its built-in model catalog.
 MODEL_CATALOG_FIELD = "provider_model_catalog_json"
 
+# Provider field that enables Codex's standalone (live) web search. When a
+# provider sets it to true, the rendered runtime config also gets a top-level
+# `web_search = "live"` so Codex uses the provider's own web search instead of
+# the built-in catalog. The field stays on the provider block Codex reads.
+STANDALONE_WEB_SEARCH_FIELD = "supports_standalone_web_search"
+WEB_SEARCH_LIVE = "live"
+
 
 def validate_provider_name(provider: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", provider):
@@ -113,12 +120,17 @@ def render_runtime_config(base_text: str, config: dict[str, Any]) -> str:
     # - non-empty value -> write/update top-level model_catalog_json
     # - absent or empty  -> remove top-level model_catalog_json (builtin catalog)
     catalog_value = config.get(MODEL_CATALOG_FIELD)
+    web_search_value = config.get(STANDALONE_WEB_SEARCH_FIELD)
     provider_config = dict(config)
     provider_config.pop(MODEL_CATALOG_FIELD, None)
     if isinstance(catalog_value, str) and catalog_value.strip():
         document["model_catalog_json"] = catalog_value
     elif "model_catalog_json" in document:
         del document["model_catalog_json"]
+    if web_search_value is True or web_search_value == "true":
+        document["web_search"] = WEB_SEARCH_LIVE
+    elif "web_search" in document:
+        del document["web_search"]
     providers_table = tomlkit.table()
     providers_table.add(RUNTIME_PROVIDER_ID, build_provider_table(provider_config))
     # In-place assignment replaces the existing table at its original position.

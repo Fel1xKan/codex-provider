@@ -104,6 +104,13 @@ class CodexBackend(BaseBackend):
             if args.supports_websockets == "false"
             else None
         )
+        supports_web_search = (
+            True
+            if getattr(args, "supports_standalone_web_search", "") == "true"
+            else False
+            if getattr(args, "supports_standalone_web_search", "") == "false"
+            else None
+        )
         return edit.add_provider(
             args.provider,
             args.base_url,
@@ -112,6 +119,7 @@ class CodexBackend(BaseBackend):
             args.wire_api,
             supports_ws,
             args.dry_run,
+            supports_standalone_web_search=supports_web_search,
         )
 
     def delete(

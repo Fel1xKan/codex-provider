@@ -99,11 +99,14 @@ the following options:
 | `--name NAME` | Display name stored in provider configuration |
 | `--wire-api API` | Wire API value; defaults to `responses` |
 | `--supports-websockets true\|false` | Set WebSocket support when the backend supports it |
+| `--supports-standalone-web-search true\|false` | Enable Codex standalone (live) web search by writing `web_search = "live"` into the runtime config |
 | `--api-key-stdin` | Read the API key from standard input |
 | `--dry-run` | Preview changes without writing files |
 
 OpenCode accepts `--supports-websockets` for CLI compatibility but does not
-store it because OpenCode has no equivalent provider field.
+store it because OpenCode has no equivalent provider field. The same applies to
+`--supports-standalone-web-search`: OpenCode accepts it for parser parity but
+does not persist a standalone web search flag.
 
 ## Switch a Provider or Account
 

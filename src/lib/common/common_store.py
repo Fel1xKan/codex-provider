@@ -147,9 +147,7 @@ def apply_changes(changes: Sequence[FileChange]) -> None:
                             mode=SECRET_FILE_MODE if change.secret else None,
                         )
                 except Exception as exc:
-                    raise SwitchError(
-                        f"unable to commit state changes: {exc}"
-                    ) from exc
+                    raise SwitchError(f"unable to commit state changes: {exc}") from exc
     except Exception:
         # Roll back fully inside a fresh batch so a single directory fsync is
         # still enough to persist every restored entry.

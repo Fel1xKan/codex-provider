@@ -18,6 +18,7 @@ from lib.common.recent import (
 )
 from lib.common.toml_config import (
     MODEL_CATALOG_FIELD,
+    STANDALONE_WEB_SEARCH_FIELD,
     render_runtime_config,
     render_tool_config,
     validate_provider_name,
@@ -41,6 +42,7 @@ def add_provider(
     supports_websockets: bool | None,
     dry_run: bool,
     model_catalog_json: str | None = None,
+    supports_standalone_web_search: bool | None = None,
 ) -> int:
     base_url = normalize_base_url(base_url)
     provider = (
@@ -70,6 +72,10 @@ def add_provider(
         }
         if supports_websockets is not None:
             providers[provider]["supports_websockets"] = supports_websockets
+        if supports_standalone_web_search is not None:
+            providers[provider][STANDALONE_WEB_SEARCH_FIELD] = (
+                supports_standalone_web_search
+            )
         if model_catalog_json is not None and model_catalog_json.strip():
             providers[provider][MODEL_CATALOG_FIELD] = model_catalog_json
 
@@ -107,9 +113,7 @@ def add_provider(
                 except SwitchError as exc:
                     if not profile_existed:
                         profile.unlink(missing_ok=True)
-                    raise SwitchError(
-                        f"unable to commit state changes: {exc}"
-                    ) from exc
+                    raise SwitchError(f"unable to commit state changes: {exc}") from exc
 
     action = "would add" if dry_run else "added"
     auth_action = "replaced auth profile" if profile_existed else "created auth profile"

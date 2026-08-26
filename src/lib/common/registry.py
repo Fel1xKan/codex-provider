@@ -344,6 +344,14 @@ COMMON_COMMANDS: tuple[CommandSpec, ...] = (
                     "Set supports_websockets explicitly when supported by the backend"
                 ),
             ),
+            _opt(
+                "--supports-standalone-web-search",
+                choices=("true", "false"),
+                help=(
+                    "Set supports_standalone_web_search to enable Codex live "
+                    "web search for this provider"
+                ),
+            ),
             DRY_RUN,
         ),
     ),

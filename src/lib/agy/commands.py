@@ -265,7 +265,7 @@ def rename_account(old_name: str, new_name: str, dry_run: bool = False) -> int:
                 "display_name": a.display_name,
                 "auth_method": a.auth_method,
                 "token_data": a.token_data,
-        }
+            }
         if not dry_run:
             with defer_directory_sync():
                 _save_state_file(current, accounts_data)

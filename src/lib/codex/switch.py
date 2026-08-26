@@ -123,9 +123,7 @@ def switch_provider(provider: str, dry_run: bool) -> int:
             )
         changes.append(FileChange(runtime_config, runtime_payload))
         recent_record = [provider] + [
-            name
-            for name in load_recent_providers(st.recent_path())
-            if name != provider
+            name for name in load_recent_providers(st.recent_path()) if name != provider
         ]
         changes.append(
             FileChange(

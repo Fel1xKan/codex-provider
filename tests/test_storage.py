@@ -324,6 +324,72 @@ def test_render_runtime_sets_model_catalog_json_from_provider_field() -> None:
     )
 
 
+def test_render_runtime_sets_live_web_search_from_provider_field() -> None:
+    base = (
+        "model = 'gpt-5.5'\n"
+        "model_provider = 'codex-provider'\n\n"
+        "[model_providers.codex-provider]\n"
+        'base_url = "https://aihub.example.com/v1"\n'
+    )
+    rendered = cp.render_runtime_config(
+        base,
+        {
+            "base_url": "https://aihub.example.com/v1",
+            "wire_api": "responses",
+            "supports_standalone_web_search": True,
+        },
+    )
+    data = tomllib.loads(rendered)
+    assert data["web_search"] == "live"
+    assert (
+        data["model_providers"][cp.RUNTIME_PROVIDER_ID][
+            "supports_standalone_web_search"
+        ]
+        is True
+    )
+
+
+def test_render_runtime_removes_web_search_without_provider_field() -> None:
+    base = (
+        "model = 'gpt-5.5'\n"
+        'web_search = "live"\n'
+        "model_provider = 'codex-provider'\n\n"
+        "[model_providers.codex-provider]\n"
+        'base_url = "https://krill.example.com/v1"\n'
+    )
+    rendered = cp.render_runtime_config(
+        base,
+        {
+            "base_url": "https://krill.example.com/v1",
+            "wire_api": "responses",
+        },
+    )
+    data = tomllib.loads(rendered)
+    assert "web_search" not in data
+
+
+def test_add_stores_supports_standalone_web_search_field(
+    isolated_paths: IsolatedPaths,
+) -> None:
+    assert (
+        cp.add_provider(
+            provider="aihub",
+            base_url="https://aihub.example.com",
+            api_key="placeholder-aihub",
+            display_name="Aihub",
+            wire_api="responses",
+            supports_websockets=None,
+            dry_run=False,
+            supports_standalone_web_search=True,
+        )
+        == 0
+    )
+    tool_data = tomllib.loads(isolated_paths.tool_config.read_text(encoding="utf-8"))
+    assert (
+        tool_data["model_providers"]["aihub"]["supports_standalone_web_search"] is True
+    )
+
+
 def test_render_runtime_removes_model_catalog_json_when_provider_has_none() -> None:
     base = (
         "model = 'gpt-5.5'\n"
