@@ -22,12 +22,26 @@ from lib.common.cli import (
 from lib.common.cli import (
     read_api_key as read_common_api_key,
 )
+from lib.common.constants import MODE_OFFICIAL
 from lib.common.errors import SwitchError
 from lib.common.recent import (
     ensure_recent_providers,
     sort_providers_by_recent,
 )
-from lib.common.registry import build_parser_for
+from lib.common.registry import (
+    ADD_ARGS,
+    APPLY_OPT,
+    CONFIG_EDIT_SUB,
+    CONFIG_SHOW_SUB,
+    DRY_RUN,
+    FAST_MODE_OFF,
+    FAST_MODE_OPT,
+    MODEL_CATALOG_OPT,
+    ArgSpec,
+    CommandSpec,
+    SubcommandSpec,
+    build_parser_for,
+)
 
 
 def get_run_codex_ping() -> Any:
@@ -68,6 +82,103 @@ class CodexBackend(BaseBackend):
     command_help = {
         "list": "List providers from codex-provider config",
         "status": "Show current provider and configuration",
+    }
+    command_args = {
+        "add": (
+            *ADD_ARGS,
+            MODEL_CATALOG_OPT,
+            FAST_MODE_OPT,
+            APPLY_OPT,
+            DRY_RUN,
+        ),
+    }
+    command_subcommands = {
+        "config": (
+            CONFIG_SHOW_SUB,
+            CONFIG_EDIT_SUB,
+            SubcommandSpec(
+                "set",
+                dest="config_command",
+                handler="config_set",
+                help="Set provider options without opening an editor",
+                pass_args=True,
+                args=(
+                    ArgSpec(
+                        ("provider",),
+                        nargs="?",
+                        help="Provider name; defaults to the current provider",
+                    ),
+                    ArgSpec(
+                        ("--name",),
+                        dest="display_name",
+                        help="Display name stored in provider config",
+                    ),
+                    ArgSpec(
+                        ("--wire-api",),
+                        help="wire_api value",
+                    ),
+                    ArgSpec(
+                        ("--supports-websockets",),
+                        choices=("true", "false"),
+                        help="Set supports_websockets explicitly",
+                    ),
+                    ArgSpec(
+                        ("--supports-standalone-web-search",),
+                        choices=("true", "false"),
+                        help=(
+                            "Enable or disable Codex live web search for this "
+                            "provider"
+                        ),
+                    ),
+                    MODEL_CATALOG_OPT,
+                    FAST_MODE_OPT,
+                    FAST_MODE_OFF,
+                    ArgSpec(
+                        ("--reset",),
+                        action="store_true",
+                        help=(
+                            "Clear fast mode, web search, and model catalog "
+                            "options for the provider"
+                        ),
+                    ),
+                    APPLY_OPT,
+                    DRY_RUN,
+                ),
+            ),
+        ),
+    }
+    extra_commands = (
+        CommandSpec(
+            "official",
+            handler="official",
+            summary="Manage the official Codex login provider",
+            subcommands=(
+                SubcommandSpec(
+                    "add",
+                    dest="official_command",
+                    help="Snapshot the current Codex login as an official provider",
+                    args=(
+                        ArgSpec(
+                            ("provider",),
+                            nargs="?",
+                            default="official",
+                            help="Provider name, default: official",
+                        ),
+                        ArgSpec(
+                            ("--name",),
+                            dest="display_name",
+                            help="Display name stored in provider config",
+                        ),
+                        DRY_RUN,
+                    ),
+                ),
+            ),
+        ),
+    )
+    extra_handlers = {
+        "official": lambda args: edit.add_official_provider(
+            args.provider, args.display_name, args.dry_run
+        ),
     }
 
     def recent_entries(self) -> list[str]:
@@ -119,7 +230,10 @@ class CodexBackend(BaseBackend):
             args.wire_api,
             supports_ws,
             args.dry_run,
+            getattr(args, "fast", False),
+            getattr(args, "apply", False),
             supports_standalone_web_search=supports_web_search,
+            model_catalog_json=getattr(args, "provider_model_catalog_json", None),
         )
 
     def delete(
@@ -142,6 +256,27 @@ class CodexBackend(BaseBackend):
     def config_edit(self, provider: str | None) -> int:
         return adm.edit_provider_config(provider)
 
+    def config_set(self, args: Any) -> int:
+        fast_mode: bool | None = None
+        if args.fast and args.no_fast:
+            raise SwitchError("--fast and --no-fast cannot be combined")
+        if args.no_fast:
+            fast_mode = False
+        elif args.fast:
+            fast_mode = True
+        return edit.set_provider_options(
+            args.provider,
+            args.display_name,
+            args.wire_api,
+            args.supports_websockets,
+            args.supports_standalone_web_search,
+            args.provider_model_catalog_json,
+            fast_mode,
+            args.reset,
+            getattr(args, "apply", False),
+            args.dry_run,
+        )
+
     def doctor(self, fix: bool) -> int:
         return doctor(fix)
 
@@ -155,6 +290,8 @@ class CodexBackend(BaseBackend):
         targets: list[TestTarget] = []
         for provider in sorted(state.providers):
             config = state.providers[provider]
+            if config.get("mode") == MODE_OFFICIAL:
+                continue
             base_url = config.get("base_url", "")
             profile = st.auth_profile_path(provider, create=False)
             if not profile.exists():

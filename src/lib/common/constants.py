@@ -6,12 +6,19 @@ MAX_HTTP_BODY_BYTES = 2 * 1024 * 1024
 
 PROVIDER_PREFIX = "model_providers."
 RUNTIME_PROVIDER_ID = "codex-provider"
+OFFICIAL_MODEL_PROVIDER_ID = "openai"
+MODE_API = "api"
+MODE_OFFICIAL = "official"
+FAST_MODE_FIELD = "fast_mode"
+FAST_MODE_SERVICE_TIER = "priority"
 PROVIDER_ORDER = [
     "base_url",
     "name",
+    "mode",
     "requires_openai_auth",
     "wire_api",
     "supports_websockets",
+    FAST_MODE_FIELD,
 ]
 SENSITIVE_KEY_PARTS = {
     "api_key",

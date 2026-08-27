@@ -4,6 +4,7 @@ import json
 from contextlib import nullcontext
 
 import lib.codex.store as st
+from lib.codex.backup import create_snapshot
 from lib.codex.switch import switch_provider
 from lib.common.common_store import SECRET_FILE_MODE, atomic_write_bytes
 from lib.common.errors import SwitchError
@@ -83,6 +84,7 @@ def import_command(file_path: str | None, dry_run: bool) -> int:
                 )
 
         if not dry_run:
+            create_snapshot("import", None, state=state)
             base_text = (
                 st.tool_config_path().read_text(encoding="utf-8")
                 if st.tool_config_path().exists()
@@ -108,6 +110,6 @@ def import_command(file_path: str | None, dry_run: bool) -> int:
             if dry_run:
                 print(f"would switch default provider: {active_provider}")
             else:
-                switch_provider(active_provider, dry_run=False)
+                switch_provider(active_provider, dry_run=False, snapshot=False)
 
     return 0

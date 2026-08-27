@@ -28,6 +28,7 @@ class SubcommandSpec:
     handler: str = ""
     args: tuple[ArgSpec, ...] = ()
     help: str = ""
+    pass_args: bool = False
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,103 @@ TIMEOUT_OPT = _opt(
     help="HTTP timeout in seconds, default: 30",
 )
 
+MODEL_CATALOG_OPT = _opt(
+    "--provider-model-catalog-json",
+    help=(
+        "Path to a model catalog JSON file; an empty string clears "
+        "the provider field"
+    ),
+)
+
+FAST_MODE_OPT = _opt(
+    "--fast",
+    action="store_true",
+    help=(
+        "Enable fast mode for this provider by writing service_tier = "
+        '"priority" into the runtime config'
+    ),
+)
+
+FAST_MODE_OFF = _opt(
+    "--no-fast",
+    action="store_true",
+    help="Disable fast mode for this provider",
+)
+
+APPLY_OPT = _opt(
+    "--apply",
+    action="store_true",
+    help=(
+        "Re-render the runtime config.toml immediately when the target "
+        "is active"
+    ),
+)
+
+CONFIG_SHOW_SUB = SubcommandSpec(
+    "show",
+    dest="config_command",
+    handler="config_detail",
+    help="Show a provider config block",
+    args=(
+        _pos(
+            "provider",
+            nargs="?",
+            help="Provider name; defaults to the current provider",
+        ),
+    ),
+)
+
+CONFIG_EDIT_SUB = SubcommandSpec(
+    "edit",
+    dest="config_command",
+    handler="config_edit",
+    help=("Open provider configuration; use auth edit to change API keys"),
+    args=(
+        _pos(
+            "provider",
+            nargs="?",
+            help=("Provider name to validate; defaults to the current provider"),
+        ),
+    ),
+)
+
+ADD_ARGS = (
+    _pos("base_url", help="Provider base_url"),
+    _pos("legacy_api_key", nargs="?", hidden=True),
+    _opt(
+        "--api-key-stdin",
+        action="store_true",
+        help=("Read API key from stdin instead of a hidden interactive prompt"),
+    ),
+    _opt(
+        "--provider",
+        help="Provider name; defaults to the base_url domain",
+    ),
+    _opt(
+        "--name",
+        dest="display_name",
+        help="Display name stored in provider config",
+    ),
+    _opt(
+        "--wire-api",
+        default="responses",
+        help="wire_api value, default: responses",
+    ),
+    _opt(
+        "--supports-websockets",
+        choices=("true", "false"),
+        help=("Set supports_websockets explicitly when supported by the backend"),
+    ),
+    _opt(
+        "--supports-standalone-web-search",
+        choices=("true", "false"),
+        help=(
+            "Set supports_standalone_web_search to enable Codex live "
+            "web search for this provider"
+        ),
+    ),
+)
+
 
 def _add_argument(
     parser: argparse.ArgumentParser, spec: ArgSpec, *, program: str = ""
@@ -104,6 +202,7 @@ def build_subparser(
     *,
     help_text: str,
     args: tuple[ArgSpec, ...],
+    subcommands: tuple[SubcommandSpec, ...] = (),
     include_model: bool = False,
     program: str = "",
 ) -> argparse.ArgumentParser:
@@ -124,7 +223,7 @@ def build_subparser(
     for arg in args:
         _add_argument(parser, arg, program=program)
     sub_parsers = None
-    for sub in spec.subcommands:
+    for sub in subcommands or spec.subcommands:
         if sub_parsers is None:
             sub_parsers = parser.add_subparsers(dest=sub.dest, required=True)
         sub_cmd = sub_parsers.add_parser(sub.name, help=sub.help)
@@ -143,12 +242,14 @@ def build_parser_for(backend: Any) -> argparse.ArgumentParser:
     for spec in backend.commands():
         help_text = backend.command_help.get(spec.name, spec.summary)
         args = backend.command_args.get(spec.name, spec.args)
+        subcommands = backend.command_subcommands.get(spec.name, spec.subcommands)
         include_model = spec.name == "switch" and backend.switch_include_model
         build_subparser(
             subparsers,
             spec,
             help_text=help_text.format(program=backend.prog),
             args=args,
+            subcommands=subcommands,
             include_model=include_model,
             program=backend.prog,
         )
@@ -206,37 +307,7 @@ COMMON_COMMANDS: tuple[CommandSpec, ...] = (
         "config",
         handler="config",
         summary="Inspect or edit provider configuration; API keys use auth",
-        subcommands=(
-            SubcommandSpec(
-                "show",
-                dest="config_command",
-                handler="config_detail",
-                help="Show a provider config block",
-                args=(
-                    _pos(
-                        "provider",
-                        nargs="?",
-                        help="Provider name; defaults to the current provider",
-                    ),
-                ),
-            ),
-            SubcommandSpec(
-                "edit",
-                dest="config_command",
-                handler="config_edit",
-                help=("Open provider configuration; use auth edit to change API keys"),
-                args=(
-                    _pos(
-                        "provider",
-                        nargs="?",
-                        help=(
-                            "Provider name to validate; defaults to the current "
-                            "provider"
-                        ),
-                    ),
-                ),
-            ),
-        ),
+        subcommands=(CONFIG_SHOW_SUB, CONFIG_EDIT_SUB),
     ),
     CommandSpec(
         "doctor",
@@ -315,45 +386,7 @@ COMMON_COMMANDS: tuple[CommandSpec, ...] = (
         "add",
         handler="add",
         summary="Add a provider config and auth entry",
-        args=(
-            _pos("base_url", help="Provider base_url"),
-            _pos("legacy_api_key", nargs="?", hidden=True),
-            _opt(
-                "--api-key-stdin",
-                action="store_true",
-                help=("Read API key from stdin instead of a hidden interactive prompt"),
-            ),
-            _opt(
-                "--provider",
-                help="Provider name; defaults to the base_url domain",
-            ),
-            _opt(
-                "--name",
-                dest="display_name",
-                help="Display name stored in provider config",
-            ),
-            _opt(
-                "--wire-api",
-                default="responses",
-                help="wire_api value, default: responses",
-            ),
-            _opt(
-                "--supports-websockets",
-                choices=("true", "false"),
-                help=(
-                    "Set supports_websockets explicitly when supported by the backend"
-                ),
-            ),
-            _opt(
-                "--supports-standalone-web-search",
-                choices=("true", "false"),
-                help=(
-                    "Set supports_standalone_web_search to enable Codex live "
-                    "web search for this provider"
-                ),
-            ),
-            DRY_RUN,
-        ),
+        args=(*ADD_ARGS, DRY_RUN),
     ),
     CommandSpec(
         "delete",

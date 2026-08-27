@@ -48,6 +48,45 @@ def test_capability_commands_only_on_declaring_backends() -> None:
     assert "provider" in cursor_commands
 
 
+def test_codex_only_extensions_stay_out_of_other_clis() -> None:
+    codex_config = codex.build_parser()
+    opencode_config = op.build_parser()
+    agy_config = agy.build_parser()
+    cursor_config = cursor.build_parser()
+
+    assert "official" in parser_commands(codex_config)
+    for parser in (opencode_config, agy_config, cursor_config):
+        assert "official" not in parser_commands(parser)
+
+    opencode_cmds = parser_commands(opencode_config)
+    agy_cmds = parser_commands(agy_config)
+    cursor_cmds = parser_commands(cursor_config)
+    codex_cmds = parser_commands(codex_config)
+
+    def config_subcommands(parser: argparse.ArgumentParser) -> set[str]:
+        action = next(
+            item for item in parser._actions if item.dest == "config_command"
+        )
+        return set(action.choices)
+
+    assert config_subcommands(opencode_cmds["config"]) == {"show", "edit"}
+    assert config_subcommands(agy_cmds["config"]) == {"show", "edit"}
+    assert config_subcommands(cursor_cmds["config"]) == {"show", "edit"}
+    assert config_subcommands(codex_cmds["config"]) == {"show", "edit", "set"}
+
+    def add_options(parser: argparse.ArgumentParser) -> set[str]:
+        return {
+            option
+            for action in parser._actions
+            for option in action.option_strings
+        }
+
+    for parser in (opencode_config, agy_config, cursor_config):
+        other_add = add_options(parser_commands(parser)["add"])
+        assert "--fast" not in other_add
+    assert "--no-fast" not in add_options(codex_cmds["add"])
+
+
 class StubBackend(BaseBackend):
     prog = "stub-provider"
     description = "stub provider"

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import errno
+import json
 import os
 import sys
+import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -256,11 +259,21 @@ class FileLockManager:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             else:
                 raise SwitchError("file locking is not supported on this platform")
+            self._write_owner(lock_file)
             self._lock_file = lock_file
             self._lock_depth = 1
         except OSError as exc:
             lock_file.close()
             raise SwitchError(f"unable to lock state: {exc}") from exc
+
+    def _write_owner(self, lock_file: Any) -> None:
+        payload = json.dumps(
+            {"pid": os.getpid(), "started_at_ms": int(time.time() * 1000)}
+        ).encode("utf-8")
+        lock_file.seek(0)
+        lock_file.truncate()
+        lock_file.write(payload)
+        lock_file.flush()
 
     def release(self) -> None:
         if self._lock_depth > 1:
@@ -271,6 +284,8 @@ class FileLockManager:
             self._lock_depth = 0
             if self._lock_file:
                 try:
+                    self._lock_file.seek(0)
+                    self._lock_file.truncate()
                     if os.name == "nt" and msvcrt:
                         self._lock_file.seek(0)
                         msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_UNLCK, 1)
@@ -287,3 +302,54 @@ class FileLockManager:
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.release()
+
+
+@dataclass(frozen=True)
+class LockInspection:
+    state: str
+    pid: int | None = None
+    started_at_ms: int | None = None
+
+
+def _read_lock_owner(lock_file: Any) -> tuple[int | None, int | None]:
+    try:
+        lock_file.seek(0)
+        raw = lock_file.read()
+        if not raw:
+            return None, None
+        payload = json.loads(raw.decode("utf-8"))
+        pid = payload.get("pid") if isinstance(payload, dict) else None
+        started = payload.get("started_at_ms") if isinstance(payload, dict) else None
+        return (
+            pid if isinstance(pid, int) else None,
+            started if isinstance(started, int) else None,
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None, None
+
+
+def inspect_file_lock(path: Path) -> LockInspection:
+    if not path.exists():
+        return LockInspection("free")
+    if fcntl is None:
+        return LockInspection("unknown")
+    try:
+        lock_file = path.open("a+b")
+    except OSError:
+        return LockInspection("unknown")
+    try:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            if exc.errno not in (errno.EAGAIN, errno.EACCES, errno.EWOULDBLOCK):
+                return LockInspection("unknown")
+            pid, started = _read_lock_owner(lock_file)
+            return LockInspection("held", pid, started)
+        with suppress(OSError):
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        pid, started = _read_lock_owner(lock_file)
+        if pid is None:
+            return LockInspection("free")
+        return LockInspection("stale", pid, started)
+    finally:
+        lock_file.close()

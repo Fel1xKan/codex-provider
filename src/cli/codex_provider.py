@@ -58,6 +58,7 @@ run_codex_ping = cx_doc.run_codex_ping
 
 ProviderState = cx_st.ProviderState
 add_provider = cx_ed.add_provider
+add_official_provider = cx_ed.add_official_provider
 auth_profile_path = cx_st.auth_profile_path
 auth_store_dir = cx_st.auth_store_dir
 build_parser = cx_be.build_parser
@@ -108,6 +109,7 @@ __all__ = [
     "_lock_depth",
     "_lock_file",
     "add_provider",
+    "add_official_provider",
     "atomic_write_bytes",
     "auth_profile_path",
     "auth_store_dir",

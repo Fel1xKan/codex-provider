@@ -8,6 +8,11 @@ from typing import Any
 import tomlkit
 
 from lib.common.constants import (
+    FAST_MODE_FIELD,
+    FAST_MODE_SERVICE_TIER,
+    MODE_API,
+    MODE_OFFICIAL,
+    OFFICIAL_MODEL_PROVIDER_ID,
     PROVIDER_ORDER,
     RUNTIME_PROVIDER_ID,
     SENSITIVE_KEY_PARTS,
@@ -37,6 +42,13 @@ def validate_provider_name(provider: str) -> str:
 
 
 def validate_provider_config(provider: str, config: dict[str, Any]) -> None:
+    mode = config.get("mode", MODE_API)
+    if mode not in (MODE_API, MODE_OFFICIAL):
+        raise SwitchError(f"invalid mode for provider: {provider}: {mode!r}")
+    if mode == MODE_OFFICIAL:
+        if config.get("base_url"):
+            raise SwitchError(f"official provider must not set base_url: {provider}")
+        return
     base_url = config.get("base_url")
     if not isinstance(base_url, str) or not base_url:
         raise SwitchError(f"base_url is missing for provider: {provider}")
@@ -123,6 +135,7 @@ def render_runtime_config(base_text: str, config: dict[str, Any]) -> str:
     web_search_value = config.get(STANDALONE_WEB_SEARCH_FIELD)
     provider_config = dict(config)
     provider_config.pop(MODEL_CATALOG_FIELD, None)
+    provider_config.pop("mode", None)
     if isinstance(catalog_value, str) and catalog_value.strip():
         document["model_catalog_json"] = catalog_value
     elif "model_catalog_json" in document:
@@ -131,12 +144,53 @@ def render_runtime_config(base_text: str, config: dict[str, Any]) -> str:
         document["web_search"] = WEB_SEARCH_LIVE
     elif "web_search" in document:
         del document["web_search"]
+    fast_mode = config.get(FAST_MODE_FIELD)
+    if fast_mode is True or fast_mode == "true":
+        document["service_tier"] = FAST_MODE_SERVICE_TIER
+    elif "service_tier" in document:
+        del document["service_tier"]
     providers_table = tomlkit.table()
     providers_table.add(RUNTIME_PROVIDER_ID, build_provider_table(provider_config))
     # In-place assignment replaces the existing table at its original position.
     # The previous delete-then-add left the removed table's whitespace behind,
     # accumulating a blank line in config.toml on every other switch.
     document["model_providers"] = providers_table
+    rendered = tomlkit.dumps(document)
+    try:
+        tomllib.loads(rendered)
+    except tomllib.TOMLDecodeError as exc:
+        raise SwitchError(f"generated runtime TOML is invalid: {exc}") from exc
+    return rendered
+
+
+def _path_is_under(path: Path, root: Path) -> bool:
+    try:
+        path.expanduser().resolve().relative_to(root.expanduser().resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def render_official_runtime_config(base_text: str, tool_home: Path) -> str:
+    try:
+        document = tomlkit.parse(base_text)
+    except tomlkit.exceptions.ParseError as exc:
+        raise SwitchError(f"invalid runtime TOML: {exc}") from exc
+    document["model_provider"] = OFFICIAL_MODEL_PROVIDER_ID
+    catalog_value = document.get("model_catalog_json")
+    if (
+        isinstance(catalog_value, str)
+        and catalog_value.strip()
+        and _path_is_under(Path(catalog_value), tool_home)
+    ):
+        del document["model_catalog_json"]
+    if document.get("web_search") == WEB_SEARCH_LIVE:
+        del document["web_search"]
+    if "service_tier" in document:
+        del document["service_tier"]
+    providers_table = document.get("model_providers")
+    if providers_table is not None and RUNTIME_PROVIDER_ID in providers_table:
+        del providers_table[RUNTIME_PROVIDER_ID]
     rendered = tomlkit.dumps(document)
     try:
         tomllib.loads(rendered)

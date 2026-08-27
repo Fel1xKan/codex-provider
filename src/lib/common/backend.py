@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from lib.common.errors import SwitchError
-from lib.common.registry import COMMON_COMMANDS, ArgSpec, CommandSpec
+from lib.common.registry import COMMON_COMMANDS, ArgSpec, CommandSpec, SubcommandSpec
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,7 @@ class BaseBackend:
     switch_include_model: bool = False
     command_help: dict[str, str] = {}
     command_args: dict[str, tuple[ArgSpec, ...]] = {}
+    command_subcommands: dict[str, tuple[SubcommandSpec, ...]] = {}
     extra_commands: tuple[CommandSpec, ...] = ()
     extra_handlers: dict[str, Callable[[Any], int]] = {}
 

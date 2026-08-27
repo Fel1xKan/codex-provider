@@ -876,14 +876,26 @@ def test_command_matrix_matches_codex_with_models_extension() -> None:
     codex_commands = parser_commands(codex.build_parser())
     opencode_commands = parser_commands(op.build_parser())
 
-    assert set(opencode_commands) == set(codex_commands) | {"models"}
-    for command in set(codex_commands) - {"switch"}:
+    codex_shared = set(codex_commands) - {"official"}
+    assert set(opencode_commands) == codex_shared | {"models"}
+    for command in codex_shared - {"switch", "add", "config"}:
         assert parser_signature(opencode_commands[command]) == parser_signature(
             codex_commands[command]
         )
     assert parser_signature(codex_commands["switch"]) < parser_signature(
         opencode_commands["switch"]
     )
+    assert parser_signature(opencode_commands["add"]) < parser_signature(
+        codex_commands["add"]
+    )
+    def config_subcommands(parser: argparse.ArgumentParser) -> set[str]:
+        action = next(
+            item for item in parser._actions if item.dest == "config_command"
+        )
+        return set(action.choices)
+
+    assert config_subcommands(opencode_commands["config"]) == {"show", "edit"}
+    assert config_subcommands(codex_commands["config"]) == {"show", "edit", "set"}
 
 
 def test_auth_show_never_prints_credentials(

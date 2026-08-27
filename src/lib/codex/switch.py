@@ -6,18 +6,24 @@ from pathlib import Path
 from typing import Any
 
 import lib.codex.store as st
+from lib.codex.backup import create_snapshot
 from lib.common.common_store import (
     FileChange,
     apply_changes,
     atomic_write_bytes,
 )
-from lib.common.constants import RUNTIME_PROVIDER_ID, SECRET_FILE_MODE
+from lib.common.constants import (
+    MODE_OFFICIAL,
+    RUNTIME_PROVIDER_ID,
+    SECRET_FILE_MODE,
+)
 from lib.common.errors import SwitchError
 from lib.common.recent import (
     load_recent_providers,
     serialize_recent_providers,
 )
 from lib.common.toml_config import (
+    render_official_runtime_config,
     render_runtime_config,
     render_tool_config,
     validate_provider_name,
@@ -50,6 +56,8 @@ def migrate_runtime_config(
     r_config = st.runtime_config_path(codex_dir)
     if not r_config.exists() or active not in providers:
         return
+    if providers[active].get("mode") == MODE_OFFICIAL:
+        return
     with suppress(Exception):
         r_text = r_config.read_text(encoding="utf-8")
         try:
@@ -74,7 +82,7 @@ def migrate_runtime_config(
             )
 
 
-def switch_provider(provider: str, dry_run: bool) -> int:
+def switch_provider(provider: str, dry_run: bool, *, snapshot: bool = True) -> int:
     provider = validate_provider_name(provider)
     lock = nullcontext() if dry_run else st.state_lock()
     with lock:
@@ -109,9 +117,15 @@ def switch_provider(provider: str, dry_run: bool) -> int:
             else f'model_provider = "{RUNTIME_PROVIDER_ID}"\n'
         )
 
-        runtime_payload = render_runtime_config(base_text, providers[provider]).encode(
-            "utf-8"
-        )
+        provider_config = providers[provider]
+        if provider_config.get("mode") == MODE_OFFICIAL:
+            runtime_payload = render_official_runtime_config(
+                base_text, st.tool_home()
+            ).encode("utf-8")
+        else:
+            runtime_payload = render_runtime_config(base_text, provider_config).encode(
+                "utf-8"
+            )
         tool_payload = render_tool_state(state, providers, active_provider=provider)
 
         changes = [
@@ -134,6 +148,8 @@ def switch_provider(provider: str, dry_run: bool) -> int:
         )
 
         if not dry_run:
+            if snapshot:
+                create_snapshot("switch", provider, state=state)
             commit_file_changes(changes)
 
     action = "would switch" if dry_run else "switched"

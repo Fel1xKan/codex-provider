@@ -23,11 +23,31 @@ for the exact parser surface.
 | `models list` / `models sync` | No | Yes | No | No | Discover and synchronize OpenCode models |
 | `models list` / `models set` | No | No | No | Yes | List or switch the Cursor model selection |
 | `models sync` | No | No | No | Yes | Import models from a custom Cursor provider |
+| `official add` | Yes | No | No | No | Save the current Codex login as a switchable official provider |
 | `provider add` / `switch` / `delete` | No | No | No | Yes | Manage custom OpenAI-compatible Cursor providers |
 | `login` / `usage` | No | No | Yes | No | Authenticate an account or inspect quota |
 
 Codex and OpenCode share their parsers for common commands. Backend-specific
 differences exist only where the target configuration format requires them.
+
+## Official Codex Login
+
+```bash
+codex login
+codex-provider official add
+codex-provider switch official
+```
+
+`official add` snapshots the current `~/.codex/auth.json` into the provider
+store and records a provider with `mode = "official"`. Switching to that
+provider restores the official auth snapshot and renders the runtime config
+with Codex's built-in `openai` provider. codex-provider also removes its own
+managed runtime provider block, standalone web-search override, and model
+catalog pointer in that mode. Use `codex-provider ping official` to verify the
+login; HTTP `/models` tests do not apply.
+
+`--provider NAME` selects a different provider identifier and `--name` sets the
+display name. Both `official add` and `switch` support `--dry-run` previews.
 
 ## Provider Discovery
 
@@ -55,6 +75,18 @@ codex-provider auth show my-provider
 codex-provider auth edit my-provider
 codex-provider config show my-provider
 codex-provider config edit my-provider
+codex-provider config set my-provider \
+  --supports-standalone-web-search true \
+  --provider-model-catalog-json ~/.codex-provider/catalogs/custom.json
+codex-provider config set my-provider --fast
+codex-provider config set my-provider --fast --apply
+codex-provider config set my-provider --no-fast
+codex-provider config set my-provider --provider-model-catalog-json ""
+codex-provider config set my-provider --name "New Name" \
+  --wire-api chat --supports-websockets true
+codex-provider config set my-provider --reset
+codex-provider config set my-provider --supports-standalone-web-search false \
+  --dry-run
 
 opencode-provider auth show my-provider
 opencode-provider auth edit my-provider
@@ -69,6 +101,21 @@ backend has one.
 - `auth edit` opens the backend auth file in `$VISUAL` or `$EDITOR`, then validates the result before keeping it.
 - `config show` redacts inline secrets.
 - `config edit` opens and validates provider configuration. Use `auth edit` to change an API key.
+- `config set` (Codex only) updates provider fields without opening an editor:
+  `--name`, `--wire-api`, `--supports-websockets`,
+  `--supports-standalone-web-search`, `--provider-model-catalog-json`, and
+  `--fast`/`--no-fast`. At least one option is required. An empty
+  `--provider-model-catalog-json` clears the catalog field; a non-empty value
+  is stored exactly as provided so a catalog file can be generated before the
+  next switch. `--fast` enables fast mode by writing Codex's native top-level
+  `service_tier = "priority"` into the runtime config; `--no-fast` clears it
+  and lets Codex choose. `--reset` clears fast mode, web search, and model
+  catalog options in one step.
+
+  `config set` writes the intended provider state in the tool config. The
+  runtime `~/.codex/config.toml` is generated from it by `switch`. Pass
+  `--apply` to re-render the runtime config immediately for the active
+  provider; otherwise run `codex-provider switch <provider>`.
 - `doctor` validates config, provider models, and auth JSON. `doctor --fix` applies repairs supported by that backend.
 
 OpenCode currently has no legacy files that require automatic repair.
@@ -100,6 +147,9 @@ the following options:
 | `--wire-api API` | Wire API value; defaults to `responses` |
 | `--supports-websockets true\|false` | Set WebSocket support when the backend supports it |
 | `--supports-standalone-web-search true\|false` | Enable Codex standalone (live) web search by writing `web_search = "live"` into the runtime config |
+| `--provider-model-catalog-json PATH` | Codex only; store a per-provider model catalog pointer. Empty clears the field |
+| `--fast` / `--no-fast` | Codex only; enable or disable fast mode. `--fast` writes `service_tier = "priority"` on switch |
+| `--apply` | Codex only; after `add`, switch to the new provider immediately |
 | `--api-key-stdin` | Read the API key from standard input |
 | `--dry-run` | Preview changes without writing files |
 
@@ -223,6 +273,22 @@ from standard input. `import --dry-run` validates and previews changes without
 writing files. Exported data can contain credentials and must be protected as a
 secret.
 
+## Automatic Snapshots
+
+Codex provider `switch`, `delete`, `rename`, and `import` write a full
+pre-change snapshot to `~/.codex-provider/backups/` before modifying provider
+state. Snapshots use the export JSON format, include auth data, and are stored
+with owner-only permissions. The ten most recent snapshots are retained.
+
+Restore a snapshot with the standard import command:
+
+```bash
+codex-provider import ~/.codex-provider/backups/<snapshot-token>.json
+```
+
+Snapshot files contain credentials. Copy them only over trusted channels and
+remove copies when they are no longer needed.
+
 ## Cursor Accounts and Models
 
 Cursor stores the signed-in account and the model selection in its SQLite
@@ -336,7 +402,9 @@ not modified.
 ~/.codex/
 ~/.codex-provider/config.toml
 ~/.codex-provider/auth/
+~/.codex-provider/backups/
 ~/.codex-provider/recent.json
+~/.codex-provider/.lock
 ```
 
 ### OpenCode

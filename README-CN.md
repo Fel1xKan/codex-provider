@@ -36,25 +36,28 @@ OpenAI 兼容 API 提供商或多个 Antigravity 账号之间切换，手动编�
 ## 功能亮点
 
 - **无需手动编辑即可切换**：选择已保存的提供商或账号，同时保留无关的全局配置。
+- **隔离 Codex 官方登录**：可把官方登录保存为提供商，切回时清理托管 API 提供商配置。
+- **按提供商设置 Codex 选项**：可免编辑器配置联网搜索、模型目录和 fast 模式，切换时自动渲染到运行时配置。
 - **避免在终端泄露秘密**：可以查看认证字段元数据和脱敏配置，不会打印凭据值。
 - **验证完整调用链**：既能探测 `/models` 接口，也能通过 Codex、OpenCode 或 Antigravity 执行最小命令。
 - **管理 OpenCode 模型**：发现远端模型 ID、只同步新增模型，并在切换提供商时选择默认模型。
 - **管理 Antigravity 账号**：登录、导入账号快照、切换账号，并查看 5 小时和每周配额余量。
 - **管理 Cursor 账号和模型**：快照当前登录的 Cursor 账号，直接改写 Cursor SQLite 数据库中的认证行，并可在所有 Composer 场景间切换模型。
-- **预览和恢复变更**：修改类命令支持预演，并可用 JSON 导出或导入提供商数据。
+- **预览和恢复变更**：修改类命令支持预演，Codex 会保留最近十份变更前快照，也支持 JSON 导出或导入。
 - **快速返回最近使用项**：交互式选择器和列表会优先显示最近使用的提供商或账号。
 
 ## 选择对应的 CLI
 
 | CLI | 适用场景 | 原生配置位置 |
 |-----|----------|--------------|
-| `codex-provider` | Codex 兼容 API 提供商和认证快照 | `~/.codex` 与 `~/.codex-provider` |
+| `codex-provider` | Codex 兼容 API 提供商、按提供商的模型目录与联网搜索选项、官方登录快照和认证快照 | `~/.codex` 与 `~/.codex-provider` |
 | `opencode-provider` | OpenCode 提供商、凭据、默认模型与模型发现 | OpenCode 的 XDG 配置、数据和状态目录 |
 | `agy-provider` | Antigravity 账号、登录快照、切换和配额查询 | `~/.gemini/antigravity-cli` 与 `~/.gemini/agy-provider` |
 | `cursor-provider` | 存储在 Cursor SQLite 数据库中的账号与模型选择 | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` 与 `~/.cursor-provider` |
 
-Codex 与 OpenCode CLI 的公共操作会保持命令名称和行为一致。OpenCode 额外提供 `models`，
-Antigravity 额外提供 `login` 和 `usage`，Cursor 额外提供 `model`，用于各自特有的工作流。
+Codex 与 OpenCode CLI 的公共操作会保持命令名称和行为一致。Codex 额外提供 `official`、
+`config set` 和模型目录选项，OpenCode 额外提供 `models`，Antigravity 额外提供 `login`
+和 `usage`，Cursor 额外提供 `model`，用于各自特有的工作流。
 
 ## 适用场景
 
@@ -137,6 +140,7 @@ Cursor 数据库中的自定义 OpenAI 兼容提供商（如 DeepSeek），`mode
 - 配置采用原子写入，并保留现有 POSIX 权限。
 - OpenCode 的 JSONC 注释、尾逗号和无关全局配置会被保留。
 - 工具会遵守提供商过滤规则，避免误选已禁用的提供商。
+- Codex 的 `switch`、`delete`、`rename`、`import` 和 `config set` 会在 `~/.codex-provider/backups/` 保留最近十份变更前快照。
 - `switch`、`add`、`delete`、`rename`、`import` 以及支持的账号操作提供预演模式。
 - Cursor 只改写 `state.vscdb` 中的认证和模型行，聊天历史和 workspace 状态保持不变。
 - 工具拒绝把 API 密钥作为位置参数传入；请使用隐藏输入或 `--api-key-stdin`。

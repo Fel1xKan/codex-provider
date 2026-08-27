@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import lib.opencode.store as st
-from lib.common.common_store import atomic_write_bytes
+from lib.common.common_store import atomic_write_bytes, inspect_file_lock
 from lib.common.errors import SwitchError
 from lib.common.network import run_models_test as default_run_models_test
 from lib.common.platform import run_editor as platform_run_editor
@@ -163,6 +163,11 @@ def edit_config(provider: str | None) -> int:
 
 def doctor_command(fix: bool) -> int:
     issues = []
+    lock = inspect_file_lock(st.lock_path())
+    print(
+        f"state lock: {lock.state}"
+        + (f" (pid {lock.pid})" if lock.pid is not None else "")
+    )
     try:
         state = st.load_state()
         print(f"global config: {state.path}")

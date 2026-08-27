@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import lib.codex.store as st
+from lib.common.common_store import inspect_file_lock
 from lib.common.constants import (
+    MODE_OFFICIAL,
+    OFFICIAL_MODEL_PROVIDER_ID,
     RUNTIME_PROVIDER_ID,
     SECRET_FILE_MODE,
 )
@@ -83,6 +86,11 @@ def doctor(fix: bool) -> int:
     print(f"tool config: {st.tool_config_path()}")
     print(f"auth store: {st.auth_store_dir()}")
     print(f"codex dir: {st.get_codex_dir()}")
+    lock = inspect_file_lock(st.tool_home() / ".lock")
+    print(
+        f"state lock: {lock.state}"
+        + (f" (pid {lock.pid})" if lock.pid is not None else "")
+    )
 
     if not st.tool_config_path().exists():
         issues.append(f"missing tool config: {st.tool_config_path()}")
@@ -138,12 +146,37 @@ def doctor(fix: bool) -> int:
     elif providers:
         issues.append(f"active_provider is missing from {st.tool_config_path()}")
 
+    active_mode = ""
+    if active_provider and active_provider in providers:
+        active_mode = providers[active_provider].get("mode", "api")
+
     if runtime_provider:
         print(f"runtime provider: {runtime_provider}")
-        if runtime_provider != RUNTIME_PROVIDER_ID:
+        expected_provider = (
+            OFFICIAL_MODEL_PROVIDER_ID
+            if active_mode == MODE_OFFICIAL
+            else RUNTIME_PROVIDER_ID
+        )
+        if active_provider and runtime_provider != expected_provider:
             issues.append(
                 "runtime model_provider mismatch: "
-                f"expected {RUNTIME_PROVIDER_ID}, found {runtime_provider}"
+                f"expected {expected_provider}, found {runtime_provider}"
+            )
+    elif active_provider and active_mode == MODE_OFFICIAL:
+        issues.append(
+            "runtime model_provider missing: "
+            f"expected {OFFICIAL_MODEL_PROVIDER_ID}"
+        )
+
+    if active_mode == MODE_OFFICIAL:
+        runtime_providers = runtime_data.get("model_providers")
+        if (
+            isinstance(runtime_providers, dict)
+            and RUNTIME_PROVIDER_ID in runtime_providers
+        ):
+            issues.append(
+                "official provider isolation mismatch: managed runtime provider "
+                f"block '{RUNTIME_PROVIDER_ID}' is still present"
             )
 
     if providers:

@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+import json
 from contextlib import nullcontext
 from urllib.parse import urlparse
 
 import lib.codex.store as st
+from lib.codex.backup import create_snapshot
+from lib.codex.switch import switch_provider
 from lib.common.common_store import (
     atomic_write_bytes,
     defer_directory_sync,
     mark_directory_dirty,
 )
-from lib.common.constants import RUNTIME_PROVIDER_ID, SECRET_FILE_MODE
+from lib.common.constants import (
+    FAST_MODE_FIELD,
+    MODE_OFFICIAL,
+    RUNTIME_PROVIDER_ID,
+    SECRET_FILE_MODE,
+)
 from lib.common.errors import SwitchError
 from lib.common.network import normalize_base_url
 from lib.common.recent import (
@@ -41,6 +49,8 @@ def add_provider(
     wire_api: str,
     supports_websockets: bool | None,
     dry_run: bool,
+    fast: bool = False,
+    apply_runtime: bool = False,
     model_catalog_json: str | None = None,
     supports_standalone_web_search: bool | None = None,
 ) -> int:
@@ -76,6 +86,8 @@ def add_provider(
             providers[provider][STANDALONE_WEB_SEARCH_FIELD] = (
                 supports_standalone_web_search
             )
+        if fast:
+            providers[provider][FAST_MODE_FIELD] = True
         if model_catalog_json is not None and model_catalog_json.strip():
             providers[provider][MODEL_CATALOG_FIELD] = model_catalog_json
 
@@ -114,6 +126,8 @@ def add_provider(
                     if not profile_existed:
                         profile.unlink(missing_ok=True)
                     raise SwitchError(f"unable to commit state changes: {exc}") from exc
+        if apply_runtime and not dry_run:
+            switch_provider(provider, dry_run=False, snapshot=False)
 
     action = "would add" if dry_run else "added"
     auth_action = "replaced auth profile" if profile_existed else "created auth profile"
@@ -124,6 +138,208 @@ def add_provider(
         print(f"current provider remains: {current}")
     else:
         print("current provider remains: (none)")
+    if apply_runtime and not dry_run:
+        print(f"switched default provider: {provider}")
+    return 0
+
+
+def add_official_provider(
+    provider: str | None,
+    display_name: str | None,
+    dry_run: bool,
+) -> int:
+    provider = validate_provider_name(provider or "official")
+    if display_name is not None:
+        display_name = display_name.strip()
+        if not display_name:
+            raise SwitchError("display name must not be empty")
+
+    lock = nullcontext() if dry_run else st.state_lock()
+    with lock:
+        state = st.ensure_provider_state(read_only=dry_run)
+        current = state.active_provider
+        if provider in state.providers:
+            raise SwitchError(f"provider already exists: {provider}")
+
+        runtime_auth = st.runtime_auth_path(state.codex_dir)
+        if not runtime_auth.exists():
+            raise SwitchError(
+                "official auth file not found; run `codex login` first: "
+                f"{runtime_auth}"
+            )
+        from lib.codex.doctor import load_auth_json
+
+        payload = load_auth_json(runtime_auth)
+
+        config: dict[str, object] = {"mode": MODE_OFFICIAL}
+        if display_name is not None:
+            config["name"] = display_name
+
+        providers = dict(state.providers)
+        providers[provider] = config
+        base_text = (
+            st.tool_config_path().read_text(encoding="utf-8")
+            if st.tool_config_path().exists()
+            else None
+        )
+        updated = render_tool_config(
+            state.codex_dir,
+            providers,
+            base_text=base_text,
+            active_provider=current,
+        )
+
+        if not dry_run:
+            profile = st.auth_profile_path(provider, create=True)
+            auth_payload = (
+                json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+            ).encode("utf-8")
+            atomic_write_bytes(
+                profile, auth_payload, secret=True, mode=SECRET_FILE_MODE
+            )
+            atomic_write_bytes(
+                st.tool_config_path(),
+                updated.encode("utf-8"),
+                secret=True,
+                mode=SECRET_FILE_MODE,
+            )
+
+    action = "would add" if dry_run else "added"
+    print(f"{action} official provider: {provider}")
+    if current:
+        print(f"current provider remains: {current}")
+    else:
+        print("current provider remains: (none)")
+    return 0
+
+
+def set_provider_options(
+    provider: str | None,
+    display_name: str | None,
+    wire_api: str | None,
+    supports_websockets: str | None,
+    supports_standalone_web_search: str | None,
+    model_catalog_json: str | None,
+    fast_mode: str | None,
+    reset: bool,
+    apply_runtime: bool,
+    dry_run: bool,
+) -> int:
+    if (
+        display_name is None
+        and wire_api is None
+        and supports_websockets is None
+        and
+        supports_standalone_web_search is None
+        and model_catalog_json is None
+        and fast_mode is None
+        and not reset
+    ):
+        raise SwitchError(
+            "nothing to set; pass at least one option or --reset"
+        )
+    lock = nullcontext() if dry_run else st.state_lock()
+    with lock:
+        state = st.ensure_provider_state(read_only=dry_run)
+        target = provider or state.active_provider
+        if not target:
+            raise SwitchError("no active provider set")
+        target = validate_provider_name(target)
+        if target not in state.providers:
+            raise SwitchError(f"unknown provider '{target}'")
+
+        providers = dict(state.providers)
+        config = dict(providers[target])
+        changes: list[str] = []
+        if reset:
+            for key in (
+                STANDALONE_WEB_SEARCH_FIELD,
+                MODEL_CATALOG_FIELD,
+                FAST_MODE_FIELD,
+            ):
+                if key in config:
+                    del config[key]
+                    changes.append(f"reset {key}")
+        if display_name is not None:
+            display_name = display_name.strip()
+            if not display_name:
+                raise SwitchError("display name must not be empty")
+            config["name"] = display_name
+            changes.append(f"name = {display_name}")
+        if wire_api is not None:
+            config["wire_api"] = wire_api
+            changes.append(f"wire_api = {wire_api}")
+        if supports_websockets is not None:
+            enabled = supports_websockets == "true"
+            config["supports_websockets"] = enabled
+            changes.append(f"supports_websockets = {str(enabled).lower()}")
+        if supports_standalone_web_search is not None:
+            enabled = supports_standalone_web_search == "true"
+            config[STANDALONE_WEB_SEARCH_FIELD] = enabled
+            changes.append(f"{STANDALONE_WEB_SEARCH_FIELD} = {str(enabled).lower()}")
+        if model_catalog_json is not None:
+            if model_catalog_json.strip():
+                config[MODEL_CATALOG_FIELD] = model_catalog_json
+                changes.append(f"{MODEL_CATALOG_FIELD} = {model_catalog_json}")
+            elif MODEL_CATALOG_FIELD in config:
+                del config[MODEL_CATALOG_FIELD]
+                changes.append(f"remove {MODEL_CATALOG_FIELD}")
+            else:
+                changes.append(f"{MODEL_CATALOG_FIELD} remains unset")
+        if fast_mode is not None:
+            if fast_mode:
+                config[FAST_MODE_FIELD] = True
+                changes.append("fast_mode = true")
+            elif FAST_MODE_FIELD in config:
+                del config[FAST_MODE_FIELD]
+                changes.append("remove fast_mode")
+            else:
+                changes.append("fast_mode remains unset")
+        providers[target] = config
+
+        base_text = (
+            st.tool_config_path().read_text(encoding="utf-8")
+            if st.tool_config_path().exists()
+            else None
+        )
+        updated = render_tool_config(
+            state.codex_dir,
+            providers,
+            base_text=base_text,
+            active_provider=state.active_provider,
+        )
+
+        if not dry_run:
+            create_snapshot("config-set", target, state=state)
+            atomic_write_bytes(
+                st.tool_config_path(),
+                updated.encode("utf-8"),
+                secret=True,
+                mode=SECRET_FILE_MODE,
+            )
+        if apply_runtime:
+            if dry_run:
+                changes.append("would render runtime config.toml")
+            elif target == state.active_provider:
+                if state.providers[target].get("mode") == MODE_OFFICIAL:
+                    raise SwitchError(
+                        "cannot apply runtime config for official provider; "
+                        "switch to an API provider first"
+                    )
+                switch_provider(target, dry_run=False, snapshot=False)
+                changes.append("rendered runtime config.toml")
+            else:
+                raise SwitchError(
+                    "--apply targets the active provider; "
+                    f"'{target}' is not active"
+                )
+
+    action = "would set" if dry_run else "set"
+    print(f"{action} provider options: {target}")
+    for change in changes:
+        print(f"- {change}")
+    if target == state.active_provider and not apply_runtime:
+        print(f"apply with: codex-provider switch {target}")
     return 0
 
 
@@ -168,6 +384,7 @@ def delete_provider(provider: str, delete_auth: bool, dry_run: bool) -> int:
         )
 
         if not dry_run:
+            create_snapshot("delete", provider, state=state)
             with defer_directory_sync():
                 atomic_write_bytes(
                     st.tool_config_path(),
@@ -226,6 +443,7 @@ def rename_provider(old_name: str, new_name: str, dry_run: bool) -> int:
         )
 
         if not dry_run:
+            create_snapshot("rename", old_name, state=state)
             with defer_directory_sync():
                 if old_profile.exists():
                     atomic_write_bytes(

@@ -114,10 +114,12 @@ def _dispatch_subcommand(backend: Any, command_name: str, args: Any) -> int:
     spec = next((item for item in COMMON_COMMANDS if item.name == command_name), None)
     if spec is None or not spec.subcommands:
         return 0
+    subcommands = backend.command_subcommands.get(command_name, spec.subcommands)
     value = getattr(args, spec.subcommands[0].dest, None)
-    for sub in spec.subcommands:
+    for sub in subcommands:
         if sub.name == value:
-            return getattr(backend, sub.handler)(args.provider)
+            handler = getattr(backend, sub.handler)
+            return handler(args) if sub.pass_args else handler(args.provider)
     return 0
 
 

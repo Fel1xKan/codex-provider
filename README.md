@@ -42,26 +42,28 @@ validation, safe writes, and dry-run previews.
 ## Features
 
 - **Switch without manual edits** - select saved providers or accounts while preserving unrelated global configuration.
+- **Isolate the official Codex login** - snapshot it as a provider and remove managed API-provider entries when switching back.
 - **Keep secrets out of terminal output** - inspect authentication metadata and redacted configuration without printing credential values.
 - **Verify the entire path** - probe `/models` endpoints or run a minimal command through Codex, OpenCode, or Antigravity.
 - **Manage OpenCode models** - discover remote model IDs, sync new models without deleting metadata, and choose a model while switching.
 - **Manage Antigravity accounts** - log in, import account snapshots, switch accounts, and inspect 5-hour and weekly quota remaining.
 - **Manage Cursor accounts and models** - snapshot signed-in Cursor accounts, swap auth rows in the Cursor SQLite database, and switch models across every Composer surface.
-- **Preview and recover changes** - use dry runs for mutating commands and export or import provider data as JSON.
+- **Preview and recover changes** - use dry runs, import pre-change snapshots retained by Codex provider mutations, and export or import provider data as JSON.
 - **Move quickly between recent providers** - interactive pickers and list output prioritize recently used entries.
 
 ## Choose Your CLI
 
 | CLI | Use it for | Native configuration |
 |-----|------------|----------------------|
-| `codex-provider` | Codex-compatible API providers and auth snapshots | `~/.codex` and `~/.codex-provider` |
+| `codex-provider` | Codex-compatible API providers, per-provider catalog and web-search options, official-login snapshots, and auth snapshots | `~/.codex` and `~/.codex-provider` |
 | `opencode-provider` | OpenCode providers, credentials, default models, and model discovery | XDG OpenCode config, data, and state directories |
 | `agy-provider` | Antigravity accounts, login snapshots, switching, and quota checks | `~/.gemini/antigravity-cli` and `~/.gemini/agy-provider` |
 | `cursor-provider` | Cursor accounts and model selection stored in the Cursor SQLite database | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` and `~/.cursor-provider` |
 
 The Codex and OpenCode CLIs intentionally share command names and behavior for
-their common operations. OpenCode adds `models`; Antigravity adds `login` and
-`usage`; Cursor adds `model` because those workflows are backend-specific.
+their common operations. Codex adds `official` plus focused `config set` and
+catalog options; OpenCode adds `models`; Antigravity adds `login` and `usage`;
+Cursor adds `model` because those workflows are backend-specific.
 
 ## When to Use
 
@@ -156,6 +158,7 @@ bulk checks, provider lifecycle operations, and JSON backup or restore.
 - Configuration writes are atomic and retain existing POSIX permissions.
 - OpenCode JSONC comments, trailing commas, and unrelated global values are preserved.
 - Provider filters are respected, so disabled providers cannot be selected accidentally.
+- Codex provider `switch`, `delete`, `rename`, `import`, and `config set` keep the ten most recent pre-change snapshots in `~/.codex-provider/backups/`.
 - `switch`, `add`, `delete`, `rename`, `import`, and supported account operations provide dry-run previews.
 - Cursor writes target only the auth and model rows in `state.vscdb`; chat history and workspace state are preserved.
 - API keys passed as positional command arguments are rejected; use a hidden prompt or `--api-key-stdin`.

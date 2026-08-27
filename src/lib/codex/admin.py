@@ -12,7 +12,7 @@ from lib.codex.switch import switch_provider
 from lib.common.common_store import (
     atomic_write_bytes,
 )
-from lib.common.constants import SECRET_FILE_MODE
+from lib.common.constants import MODE_OFFICIAL, SECRET_FILE_MODE
 from lib.common.errors import SwitchError
 from lib.common.network import run_models_test as default_run_models_test
 from lib.common.platform import (
@@ -184,6 +184,11 @@ def test_provider(provider: str | None, timeout: float) -> int:
     target = resolve_provider(provider)
     state = st.ensure_provider_state(read_only=True)
     config = state.providers[target]
+    if config.get("mode") == MODE_OFFICIAL:
+        raise SwitchError(
+            f"provider '{target}' uses official Codex login; "
+            f"use `codex-provider ping {target}` instead"
+        )
     base_url = config.get("base_url", "")
     profile = st.auth_profile_path(target, create=False)
     if not profile.exists():
