@@ -167,7 +167,7 @@ HANDLERS: dict[str, Any] = {
 
 
 def generic_main(backend: Any, argv: list[str] | None = None) -> int:
-    invoked = Path(sys.argv[0]).name
+    invoked = Path(sys.argv[0]).name.removesuffix(".exe")
     legacy_name = getattr(backend, "legacy_name", None)
     if legacy_name and invoked == legacy_name:
         print(
