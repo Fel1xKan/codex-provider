@@ -670,15 +670,18 @@ def _release_payload(
     asset_name: str | None = None,
 ) -> dict[str, object]:
     version = tag.lstrip("v")
+    platform_key = self_upgrade._platform_key()
+    suffix = ".exe" if os.name == "nt" else ""
+    name = asset_name or f"{program}-{version}-{platform_key}{suffix}"
     return {
         "tag_name": tag,
         "html_url": f"https://github.com/Fel1xKan/codex-provider/releases/tag/{tag}",
         "assets": [
             {
-                "name": asset_name or f"{program}-{version}-linux-x86_64",
+                "name": name,
                 "browser_download_url": (
                     f"https://github.com/Fel1xKan/codex-provider/releases/download/"
-                    f"{tag}/{program}-{version}-linux-x86_64"
+                    f"{tag}/{name}"
                 ),
             }
         ],
@@ -801,5 +804,9 @@ def test_build_upgrade_plan_selects_platform_asset(
         _release_payload("v1.3.0"),
     )
     assert plan.update_available
-    assert plan.asset_name == "codex-provider-1.3.0-linux-x86_64"
+    expected_suffix = ".exe" if os.name == "nt" else ""
+    expected_name = (
+        f"codex-provider-1.3.0-{self_upgrade._platform_key()}{expected_suffix}"
+    )
+    assert plan.asset_name == expected_name
     assert plan.sha256_url.endswith(".sha256")

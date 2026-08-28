@@ -331,13 +331,31 @@ def _read_lock_owner(lock_file: Any) -> tuple[int | None, int | None]:
 def inspect_file_lock(path: Path) -> LockInspection:
     if not path.exists():
         return LockInspection("free")
-    if fcntl is None:
+    if fcntl is None and msvcrt is None:
         return LockInspection("unknown")
     try:
         lock_file = path.open("a+b")
     except OSError:
         return LockInspection("unknown")
     try:
+        if os.name == "nt":
+            lock_file.seek(0, os.SEEK_END)
+            if lock_file.tell() == 0:
+                lock_file.write(b"0")
+                lock_file.flush()
+            lock_file.seek(0)
+            try:
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError:
+                pid, started = _read_lock_owner(lock_file)
+                return LockInspection("held", pid, started)
+            with suppress(OSError):
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            pid, started = _read_lock_owner(lock_file)
+            if pid is None:
+                return LockInspection("free")
+            return LockInspection("stale", pid, started)
         try:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
