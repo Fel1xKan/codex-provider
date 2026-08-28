@@ -84,6 +84,8 @@ codex-provider config set my-provider --no-fast
 codex-provider config set my-provider --provider-model-catalog-json ""
 codex-provider config set my-provider --name "New Name" \
   --wire-api chat --supports-websockets true
+codex-provider config set my-provider \
+  --header x-openai-actor-authorization=local-image-extension
 codex-provider config set my-provider --reset
 codex-provider config set my-provider --supports-standalone-web-search false \
   --dry-run
@@ -103,14 +105,20 @@ backend has one.
 - `config edit` opens and validates provider configuration. Use `auth edit` to change an API key.
 - `config set` (Codex only) updates provider fields without opening an editor:
   `--name`, `--wire-api`, `--supports-websockets`,
-  `--supports-standalone-web-search`, `--provider-model-catalog-json`, and
-  `--fast`/`--no-fast`. At least one option is required. An empty
+  `--supports-standalone-web-search`, `--provider-model-catalog-json`,
+  `--header`, and `--fast`/`--no-fast`. At least one option is required. An empty
   `--provider-model-catalog-json` clears the catalog field; a non-empty value
   is stored exactly as provided so a catalog file can be generated before the
   next switch. `--fast` enables fast mode by writing Codex's native top-level
   `service_tier = "priority"` into the runtime config; `--no-fast` clears it
   and lets Codex choose. `--reset` clears fast mode, web search, and model
   catalog options in one step.
+
+  `--header KEY=VALUE` adds a provider HTTP header and may be repeated. It is
+  written into the provider block as `http_headers = { ... }`, so Codex sends
+  the header on every request to that provider. Pass `--header KEY=` (empty
+  value) to remove a single header. Header values are redacted by
+  `config show`.
 
   `config set` writes the intended provider state in the tool config. The
   runtime `~/.codex/config.toml` is generated from it by `switch`. Pass
@@ -149,6 +157,7 @@ the following options:
 | `--supports-standalone-web-search true\|false` | Enable Codex standalone (live) web search by writing `web_search = "live"` into the runtime config |
 | `--provider-model-catalog-json PATH` | Codex only; store a per-provider model catalog pointer. Empty clears the field |
 | `--fast` / `--no-fast` | Codex only; enable or disable fast mode. `--fast` writes `service_tier = "priority"` on switch |
+| `--header KEY=VALUE` | Codex only; add a provider HTTP header. Repeat to add more; `KEY=` removes one |
 | `--apply` | Codex only; after `add`, switch to the new provider immediately |
 | `--api-key-stdin` | Read the API key from standard input |
 | `--dry-run` | Preview changes without writing files |

@@ -561,3 +561,105 @@ def test_official_provider_is_excluded_from_http_tests(
 
     targets = BACKEND.test_targets()
     assert "official" not in {target.name for target in targets}
+
+
+def test_add_supports_http_headers(
+    initialized_registry: IsolatedPaths,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cp, "read_api_key", lambda from_stdin: "placeholder-key")
+
+    assert (
+        cp.main(
+            [
+                "add",
+                "https://sub2api.example.com",
+                "--provider",
+                "sub2api",
+                "--header",
+                "x-openai-actor-authorization=local-image-extension",
+                "--header",
+                "X-Custom=foo",
+            ]
+        )
+        == 0
+    )
+    data = tomllib.loads(initialized_registry.tool_config.read_text(encoding="utf-8"))
+    headers = data["model_providers"]["sub2api"]["http_headers"]
+    assert headers == {
+        "x-openai-actor-authorization": "local-image-extension",
+        "X-Custom": "foo",
+    }
+
+    assert cp.switch_provider("sub2api", dry_run=False) == 0
+    runtime = tomllib.loads(
+        (initialized_registry.codex_dir / "config.toml").read_text(encoding="utf-8")
+    )
+    runtime_headers = runtime["model_providers"]["codex-provider"]["http_headers"]
+    assert runtime_headers["x-openai-actor-authorization"] == "local-image-extension"
+    assert runtime_headers["X-Custom"] == "foo"
+
+
+def test_config_set_adds_and_removes_headers(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    assert (
+        cp.main(
+            [
+                "config",
+                "set",
+                "beta",
+                "--header",
+                "x-openai-actor-authorization=local-image-extension",
+            ]
+        )
+        == 0
+    )
+    data = tomllib.loads(initialized_registry.tool_config.read_text(encoding="utf-8"))
+    assert data["model_providers"]["beta"]["http_headers"] == {
+        "x-openai-actor-authorization": "local-image-extension"
+    }
+
+    assert (
+        cp.main(
+            [
+                "config",
+                "set",
+                "beta",
+                "--header",
+                "x-openai-actor-authorization=",
+            ]
+        )
+        == 0
+    )
+    data = tomllib.loads(initialized_registry.tool_config.read_text(encoding="utf-8"))
+    assert "http_headers" not in data["model_providers"]["beta"]
+
+
+def test_config_set_reset_clears_headers(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    assert (
+        cp.main(
+            [
+                "config",
+                "set",
+                "beta",
+                "--header",
+                "x-openai-actor-authorization=local-image-extension",
+            ]
+        )
+        == 0
+    )
+    assert cp.main(["config", "set", "beta", "--reset"]) == 0
+    data = tomllib.loads(initialized_registry.tool_config.read_text(encoding="utf-8"))
+    assert "http_headers" not in data["model_providers"]["beta"]
+
+
+def test_header_requires_key_value_pair(
+    initialized_registry: IsolatedPaths,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cp.main(["config", "set", "beta", "--header", "no-equals"]) == 1
+    output = capsys.readouterr()
+    assert "expected KEY=VALUE" in output.err

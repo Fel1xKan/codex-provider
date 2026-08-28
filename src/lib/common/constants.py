@@ -11,6 +11,7 @@ MODE_API = "api"
 MODE_OFFICIAL = "official"
 FAST_MODE_FIELD = "fast_mode"
 FAST_MODE_SERVICE_TIER = "priority"
+HTTP_HEADERS_FIELD = "http_headers"
 PROVIDER_ORDER = [
     "base_url",
     "name",
@@ -19,6 +20,7 @@ PROVIDER_ORDER = [
     "wire_api",
     "supports_websockets",
     FAST_MODE_FIELD,
+    HTTP_HEADERS_FIELD,
 ]
 SENSITIVE_KEY_PARTS = {
     "api_key",

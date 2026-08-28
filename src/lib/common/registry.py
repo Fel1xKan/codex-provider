@@ -105,6 +105,16 @@ APPLY_OPT = _opt(
     ),
 )
 
+HEADER_OPT = _opt(
+    "--header",
+    action="append",
+    metavar="KEY=VALUE",
+    help=(
+        "Add a provider HTTP header; repeat for multiple headers. "
+        "Pass KEY= with an empty value to remove a header"
+    ),
+)
+
 CONFIG_SHOW_SUB = SubcommandSpec(
     "show",
     dest="config_command",

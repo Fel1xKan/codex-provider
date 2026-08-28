@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from contextlib import nullcontext
+from typing import Any
 from urllib.parse import urlparse
 
 import lib.codex.store as st
@@ -14,6 +15,7 @@ from lib.common.common_store import (
 )
 from lib.common.constants import (
     FAST_MODE_FIELD,
+    HTTP_HEADERS_FIELD,
     MODE_OFFICIAL,
     RUNTIME_PROVIDER_ID,
     SECRET_FILE_MODE,
@@ -31,6 +33,43 @@ from lib.common.toml_config import (
     render_tool_config,
     validate_provider_name,
 )
+
+
+def _parse_header(header: str) -> tuple[str, str]:
+    if "=" not in header:
+        raise SwitchError(
+            f"invalid header (expected KEY=VALUE): {header}"
+        )
+    key, value = header.split("=", 1)
+    key = key.strip()
+    if not key:
+        raise SwitchError("header key must not be empty")
+    return key, value
+
+
+def _merge_headers(
+    config: dict[str, Any],
+    headers: list[str],
+    changes: list[str],
+) -> None:
+    if not headers:
+        return
+    current = dict(config.get(HTTP_HEADERS_FIELD, {}) or {})
+    for header in headers:
+        key, value = _parse_header(header)
+        if value:
+            current[key] = value
+            changes.append(f"{HTTP_HEADERS_FIELD}.{key} = {value}")
+        else:
+            if key in current:
+                del current[key]
+                changes.append(f"remove {HTTP_HEADERS_FIELD}.{key}")
+            else:
+                changes.append(f"{HTTP_HEADERS_FIELD}.{key} remains unset")
+    if current:
+        config[HTTP_HEADERS_FIELD] = current
+    elif HTTP_HEADERS_FIELD in config:
+        del config[HTTP_HEADERS_FIELD]
 
 
 def derive_provider_name(base_url: str) -> str:
@@ -51,6 +90,7 @@ def add_provider(
     dry_run: bool,
     fast: bool = False,
     apply_runtime: bool = False,
+    headers: list[str] | None = None,
     model_catalog_json: str | None = None,
     supports_standalone_web_search: bool | None = None,
 ) -> int:
@@ -64,6 +104,11 @@ def add_provider(
             raise SwitchError("display name must not be empty")
     if not api_key:
         raise SwitchError("api_key must not be empty")
+    headers = headers or []
+    parsed_headers: dict[str, str] = {}
+    for header in headers:
+        key, value = _parse_header(header)
+        parsed_headers[key] = value
 
     lock = nullcontext() if dry_run else st.state_lock()
     with lock:
@@ -88,6 +133,8 @@ def add_provider(
             )
         if fast:
             providers[provider][FAST_MODE_FIELD] = True
+        if parsed_headers:
+            providers[provider][HTTP_HEADERS_FIELD] = parsed_headers
         if model_catalog_json is not None and model_catalog_json.strip():
             providers[provider][MODEL_CATALOG_FIELD] = model_catalog_json
 
@@ -221,6 +268,7 @@ def set_provider_options(
     supports_standalone_web_search: str | None,
     model_catalog_json: str | None,
     fast_mode: str | None,
+    headers: list[str] | None,
     reset: bool,
     apply_runtime: bool,
     dry_run: bool,
@@ -233,6 +281,7 @@ def set_provider_options(
         supports_standalone_web_search is None
         and model_catalog_json is None
         and fast_mode is None
+        and not headers
         and not reset
     ):
         raise SwitchError(
@@ -256,10 +305,13 @@ def set_provider_options(
                 STANDALONE_WEB_SEARCH_FIELD,
                 MODEL_CATALOG_FIELD,
                 FAST_MODE_FIELD,
+                HTTP_HEADERS_FIELD,
             ):
                 if key in config:
                     del config[key]
                     changes.append(f"reset {key}")
+        if headers:
+            _merge_headers(config, headers, changes)
         if display_name is not None:
             display_name = display_name.strip()
             if not display_name:
