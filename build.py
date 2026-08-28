@@ -153,8 +153,10 @@ def build_target(python_cmd: list[str], target: str, skip_smoke_test: bool) -> N
     if not skip_smoke_test:
         run([str(short_bin), "--help"], quiet=True)
     verify_binary_version(short_bin, short_name.removesuffix(".exe"))
-    legacy_prog = SHORT_TO_LEGACY[short_name]
-    legacy_bin = DIST_DIR / legacy_prog
+    legacy_prog = SHORT_TO_LEGACY[short_name.removesuffix(".exe")]
+    legacy_bin = DIST_DIR / (
+        f"{legacy_prog}.exe" if os.name == "nt" else legacy_prog
+    )
     res = subprocess.run(
         [str(legacy_bin), "--version"],
         cwd=ROOT_DIR,
