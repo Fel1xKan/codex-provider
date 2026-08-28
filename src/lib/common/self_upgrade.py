@@ -110,9 +110,7 @@ def build_upgrade_plan(
         None,
     )
     if asset is None:
-        raise SwitchError(
-            f"release {tag} has no asset for this platform: {expected}"
-        )
+        raise SwitchError(f"release {tag} has no asset for this platform: {expected}")
     return UpgradePlan(
         current_version=current_version,
         latest_version=latest,
@@ -145,9 +143,7 @@ def verify_sha256(path: Path, expected: str) -> None:
     expected = expected.strip().split()[0].lower()
     actual = _sha256_hex(path)
     if actual != expected:
-        raise SwitchError(
-            f"checksum mismatch: expected {expected}, got {actual}"
-        )
+        raise SwitchError(f"checksum mismatch: expected {expected}, got {actual}")
 
 
 def _sha256_expected_from_release(asset_url: str) -> str:

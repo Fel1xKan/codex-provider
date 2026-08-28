@@ -329,9 +329,7 @@ def test_config_set_fast_renders_priority_tier_on_switch(
         (initialized_registry.codex_dir / "config.toml").read_text(encoding="utf-8")
     )
     assert runtime["service_tier"] == "priority"
-    assert (
-        runtime["model_providers"]["codex-provider"].get("service_tier") is None
-    )
+    assert runtime["model_providers"]["codex-provider"].get("service_tier") is None
 
     assert (
         cp.main(
@@ -699,7 +697,7 @@ def test_upgrade_check_reports_up_to_date(
 
     assert cp.main(["upgrade", "--check"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.1.0" in output
+    assert "current: 1.2.0" in output
     assert "latest:  1.1.0" in output
     assert "up to date" in output
 
@@ -711,13 +709,13 @@ def test_upgrade_dry_run_reports_newer_version(
     monkeypatch.setattr(
         self_upgrade,
         "fetch_latest_release",
-        lambda repo: _release_payload("v1.2.0"),
+        lambda repo: _release_payload("v1.3.0"),
     )
 
     assert cp.main(["upgrade", "--dry-run"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.1.0" in output
-    assert "latest:  1.2.0" in output
+    assert "current: 1.2.0" in output
+    assert "latest:  1.3.0" in output
     assert "would upgrade" in output
 
 
@@ -800,8 +798,8 @@ def test_build_upgrade_plan_selects_platform_asset(
         "Fel1xKan/codex-provider",
         "codex-provider",
         "1.1.0",
-        _release_payload("v1.2.0"),
+        _release_payload("v1.3.0"),
     )
     assert plan.update_available
-    assert plan.asset_name == "codex-provider-1.2.0-linux-x86_64"
+    assert plan.asset_name == "codex-provider-1.3.0-linux-x86_64"
     assert plan.sha256_url.endswith(".sha256")

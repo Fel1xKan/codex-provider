@@ -76,8 +76,7 @@ TIMEOUT_OPT = _opt(
 MODEL_CATALOG_OPT = _opt(
     "--provider-model-catalog-json",
     help=(
-        "Path to a model catalog JSON file; an empty string clears "
-        "the provider field"
+        "Path to a model catalog JSON file; an empty string clears the provider field"
     ),
 )
 
@@ -99,10 +98,7 @@ FAST_MODE_OFF = _opt(
 APPLY_OPT = _opt(
     "--apply",
     action="store_true",
-    help=(
-        "Re-render the runtime config.toml immediately when the target "
-        "is active"
-    ),
+    help=("Re-render the runtime config.toml immediately when the target is active"),
 )
 
 HEADER_OPT = _opt(

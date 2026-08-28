@@ -128,8 +128,7 @@ class CodexBackend(BaseBackend):
                         ("--supports-standalone-web-search",),
                         choices=("true", "false"),
                         help=(
-                            "Enable or disable Codex live web search for this "
-                            "provider"
+                            "Enable or disable Codex live web search for this provider"
                         ),
                     ),
                     MODEL_CATALOG_OPT,

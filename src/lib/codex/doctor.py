@@ -164,8 +164,7 @@ def doctor(fix: bool) -> int:
             )
     elif active_provider and active_mode == MODE_OFFICIAL:
         issues.append(
-            "runtime model_provider missing: "
-            f"expected {OFFICIAL_MODEL_PROVIDER_ID}"
+            f"runtime model_provider missing: expected {OFFICIAL_MODEL_PROVIDER_ID}"
         )
 
     if active_mode == MODE_OFFICIAL:

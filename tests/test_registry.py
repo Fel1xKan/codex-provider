@@ -64,9 +64,7 @@ def test_codex_only_extensions_stay_out_of_other_clis() -> None:
     codex_cmds = parser_commands(codex_config)
 
     def config_subcommands(parser: argparse.ArgumentParser) -> set[str]:
-        action = next(
-            item for item in parser._actions if item.dest == "config_command"
-        )
+        action = next(item for item in parser._actions if item.dest == "config_command")
         return set(action.choices)
 
     assert config_subcommands(opencode_cmds["config"]) == {"show", "edit"}
@@ -76,9 +74,7 @@ def test_codex_only_extensions_stay_out_of_other_clis() -> None:
 
     def add_options(parser: argparse.ArgumentParser) -> set[str]:
         return {
-            option
-            for action in parser._actions
-            for option in action.option_strings
+            option for action in parser._actions for option in action.option_strings
         }
 
     for parser in (opencode_config, agy_config, cursor_config):

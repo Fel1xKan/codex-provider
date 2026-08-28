@@ -37,9 +37,7 @@ from lib.common.toml_config import (
 
 def _parse_header(header: str) -> tuple[str, str]:
     if "=" not in header:
-        raise SwitchError(
-            f"invalid header (expected KEY=VALUE): {header}"
-        )
+        raise SwitchError(f"invalid header (expected KEY=VALUE): {header}")
     key, value = header.split("=", 1)
     key = key.strip()
     if not key:
@@ -211,8 +209,7 @@ def add_official_provider(
         runtime_auth = st.runtime_auth_path(state.codex_dir)
         if not runtime_auth.exists():
             raise SwitchError(
-                "official auth file not found; run `codex login` first: "
-                f"{runtime_auth}"
+                f"official auth file not found; run `codex login` first: {runtime_auth}"
             )
         from lib.codex.doctor import load_auth_json
 
@@ -277,16 +274,13 @@ def set_provider_options(
         display_name is None
         and wire_api is None
         and supports_websockets is None
-        and
-        supports_standalone_web_search is None
+        and supports_standalone_web_search is None
         and model_catalog_json is None
         and fast_mode is None
         and not headers
         and not reset
     ):
-        raise SwitchError(
-            "nothing to set; pass at least one option or --reset"
-        )
+        raise SwitchError("nothing to set; pass at least one option or --reset")
     lock = nullcontext() if dry_run else st.state_lock()
     with lock:
         state = st.ensure_provider_state(read_only=dry_run)
@@ -382,8 +376,7 @@ def set_provider_options(
                 changes.append("rendered runtime config.toml")
             else:
                 raise SwitchError(
-                    "--apply targets the active provider; "
-                    f"'{target}' is not active"
+                    f"--apply targets the active provider; '{target}' is not active"
                 )
 
     action = "would set" if dry_run else "set"

@@ -888,10 +888,9 @@ def test_command_matrix_matches_codex_with_models_extension() -> None:
     assert parser_signature(opencode_commands["add"]) < parser_signature(
         codex_commands["add"]
     )
+
     def config_subcommands(parser: argparse.ArgumentParser) -> set[str]:
-        action = next(
-            item for item in parser._actions if item.dest == "config_command"
-        )
+        action = next(item for item in parser._actions if item.dest == "config_command")
         return set(action.choices)
 
     assert config_subcommands(opencode_commands["config"]) == {"show", "edit"}
