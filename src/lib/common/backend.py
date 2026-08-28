@@ -22,6 +22,7 @@ class TestTarget:
 class BaseBackend:
     prog: str = ""
     description: str = ""
+    legacy_name: str | None = None
     capabilities: frozenset[str] = frozenset()
     switch_include_model: bool = False
     command_help: dict[str, str] = {}
@@ -173,6 +174,7 @@ class BaseBackend:
             self.prog,
             VERSION,
             payload,
+            legacy_name=self.legacy_name,
         )
         if check or dry_run:
             print(f"current: {plan.current_version}")

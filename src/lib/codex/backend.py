@@ -78,10 +78,11 @@ def ping_provider(
 
 
 class CodexBackend(BaseBackend):
-    prog = "codex-provider"
+    prog = "cpx"
+    legacy_name = "codex-provider"
     description = "Switch the default provider in Codex global config."
     command_help = {
-        "list": "List providers from codex-provider config",
+        "list": "List providers from cpx config",
         "status": "Show current provider and configuration",
     }
     command_args = {

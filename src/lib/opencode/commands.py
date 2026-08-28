@@ -76,7 +76,7 @@ def resolve_model(
     if not models:
         raise SwitchError(
             f"provider '{provider}' has no configured models; run "
-            f"opencode-provider models sync {provider}"
+            f"opx models sync {provider}"
         )
     if requested and "/" in requested:
         requested_provider, requested = requested.split("/", 1)

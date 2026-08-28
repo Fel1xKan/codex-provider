@@ -25,6 +25,7 @@ src/lib/common/ Shared parsing, network, storage, and platform helpers
 src/lib/codex/  Codex-specific behavior
 src/lib/opencode/ OpenCode-specific behavior
 src/lib/agy/    Antigravity-specific behavior
+src/lib/claude/ Claude-specific behavior
 tests/          Command, storage, network, and parity tests
 ```
 
@@ -33,8 +34,9 @@ PyInstaller specifications produce the standalone binaries in `dist/`.
 
 ## CLI Consistency
 
-Changes to a shared command must update both `codex-provider` and
-`opencode-provider` in the same change. Keep command names, aliases, positional
+Changes to a shared command must update `cpx` and
+`opx` in the same change, and keep `clpx` aligned
+where the shared command surface applies. Keep command names, aliases, positional
 arguments, options, defaults, validation rules, exit codes, dry-run behavior,
 and user-facing wording aligned.
 
@@ -56,13 +58,14 @@ Run the full suite from the repository root:
 Also verify that every wrapper starts and exposes its intended commands:
 
 ```bash
-./codex-provider --help
-./opencode-provider --help
-./agy-provider --help
+./cpx --help
+./opx --help
+./apx --help
+./clpx --help
 ```
 
 For behavior changes, validate the exact commands touched. Shared command work
-should cover both Codex and OpenCode variants, especially `auth detail`,
+should cover the Codex, OpenCode, and Claude variants, especially `auth detail`,
 `auth edit`, `config detail`, `config edit`, `switch`, and `doctor`.
 
 Tests that read or write provider state must use an isolated temporary `HOME`
@@ -71,15 +74,16 @@ Codex, OpenCode, or Antigravity configuration.
 
 ## Building Binaries
 
-One build invocation creates all three standalone binaries and matching
+One build invocation creates all standalone binaries and matching
 SHA-256 files:
 
 ```bash
 ./.venv/bin/python build.py
 ./build.sh
-./dist/codex-provider --help
-./dist/opencode-provider --help
-./dist/agy-provider --help
+./dist/cpx --help
+./dist/opx --help
+./dist/apx --help
+./dist/clpx --help
 ```
 
 On Windows:
@@ -87,12 +91,14 @@ On Windows:
 ```bat
 py -3 build.py
 build.cmd
-dist\codex-provider.exe --help
-dist\opencode-provider.exe --help
-dist\agy-provider.exe --help
+dist\cpx.exe --help
+dist\opx.exe --help
+dist\apx.exe --help
+dist\clpx.exe --help
 ```
 
-Use `--target codex`, `--target opencode`, `--target agy`, or `--target cursor`
+Use `--target codex`, `--target opencode`, `--target agy`, `--target cursor`,
+or `--target claude`
 with `build.py` to build one target. Do not edit generated files in `build/` or
 `dist/` manually.
 

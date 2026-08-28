@@ -85,6 +85,7 @@ def build_upgrade_plan(
     program: str,
     current_version: str,
     payload: dict[str, Any],
+    legacy_name: str | None = None,
 ) -> UpgradePlan:
     tag = str(payload.get("tag_name", ""))
     latest = tag.lstrip("v") if tag.startswith("v") else tag
@@ -96,21 +97,27 @@ def build_upgrade_plan(
     if not isinstance(assets, list):
         raise SwitchError("release payload missing assets")
     platform_key = _platform_key()
-    prefix = f"{program}-{latest}-{platform_key}"
     suffix = ".exe" if os.name == "nt" else ""
-    expected = f"{prefix}{suffix}"
-    asset = next(
-        (
-            item
-            for item in assets
-            if isinstance(item, dict)
-            and item.get("name") == expected
-            and item.get("browser_download_url")
-        ),
-        None,
-    )
+    names = [f"{program}-{latest}-{platform_key}{suffix}"]
+    if legacy_name and legacy_name != program:
+        names.append(f"{legacy_name}-{latest}-{platform_key}{suffix}")
+    asset = None
+    for expected in names:
+        asset = next(
+            (
+                item
+                for item in assets
+                if isinstance(item, dict)
+                and item.get("name") == expected
+                and item.get("browser_download_url")
+            ),
+            None,
+        )
+        if asset is not None:
+            break
     if asset is None:
-        raise SwitchError(f"release {tag} has no asset for this platform: {expected}")
+        raise SwitchError(f"release {tag} has no asset for this platform: {names[0]}")
+    expected = str(asset["name"])
     return UpgradePlan(
         current_version=current_version,
         latest_version=latest,

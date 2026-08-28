@@ -72,7 +72,7 @@ def config_edit(account_name: str | None) -> int:
 
 
 def doctor_command(fix: bool) -> int:
-    print("Checking agy-provider environment...")
+    print("Checking apx environment...")
 
     issues = []
     token_file = st.oauth_token_path()

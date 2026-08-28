@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
+
+import pytest
 
 import cli.agy_provider as agy
+import cli.claude_provider as claude
 import cli.codex_provider as codex
 import cli.cursor_provider as cursor
 import cli.opencode_provider as op
@@ -27,6 +31,7 @@ def test_every_cli_exposes_shared_registry_commands() -> None:
         op.build_parser(),
         agy.build_parser(),
         cursor.build_parser(),
+        claude.build_parser(),
     ):
         assert shared <= set(parser_commands(parser))
 
@@ -36,6 +41,7 @@ def test_capability_commands_only_on_declaring_backends() -> None:
     opencode_commands = set(parser_commands(op.build_parser()))
     agy_commands = set(parser_commands(agy.build_parser()))
     cursor_commands = set(parser_commands(cursor.build_parser()))
+    claude_commands = set(parser_commands(claude.build_parser()))
 
     assert "models" not in codex_commands
     assert "models" not in agy_commands
@@ -46,6 +52,8 @@ def test_capability_commands_only_on_declaring_backends() -> None:
     assert "login" in agy_commands
     assert "models" in cursor_commands
     assert "provider" in cursor_commands
+    assert "official" not in claude_commands
+    assert "models" in claude_commands
 
 
 def test_codex_only_extensions_stay_out_of_other_clis() -> None:
@@ -57,6 +65,7 @@ def test_codex_only_extensions_stay_out_of_other_clis() -> None:
     assert "official" in parser_commands(codex_config)
     for parser in (opencode_config, agy_config, cursor_config):
         assert "official" not in parser_commands(parser)
+    assert "official" not in parser_commands(claude.build_parser())
 
     opencode_cmds = parser_commands(opencode_config)
     agy_cmds = parser_commands(agy_config)
@@ -119,3 +128,20 @@ def test_subcommand_dispatch_resolves_through_registry() -> None:
 
     assert generic_main(backend, ["config", "show", "alpha"]) == 0
     assert backend.calls[-1] == ("config_detail", "alpha")
+
+
+def test_legacy_name_prints_rename_notice_and_refuses(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    original = sys.argv[0]
+    try:
+        sys.argv[0] = "codex-provider"
+        assert codex.main(["--version"]) == 1
+        captured = capsys.readouterr()
+        assert "renamed" in captured.err
+        assert "cpx" in captured.err
+
+        sys.argv[0] = "cpx"
+        assert codex.main(["--version"]) == 0
+    finally:
+        sys.argv[0] = original

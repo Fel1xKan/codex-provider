@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import getpass
 import sys
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -166,6 +167,14 @@ HANDLERS: dict[str, Any] = {
 
 
 def generic_main(backend: Any, argv: list[str] | None = None) -> int:
+    invoked = Path(sys.argv[0]).name
+    legacy_name = getattr(backend, "legacy_name", None)
+    if legacy_name and invoked == legacy_name:
+        print(
+            f"'{legacy_name}' has been renamed; use '{backend.prog}' instead",
+            file=sys.stderr,
+        )
+        return 1
     parser = build_parser_for(backend)
     try:
         args = parser.parse_args(argv)

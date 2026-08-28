@@ -88,9 +88,14 @@ def fetch_provider_models(
     base_url: str,
     api_key: str,
     protocol: WireProtocol = WireProtocol.OPENAI,
+    models_url_override: str | None = None,
 ) -> list[str]:
     base_url = normalize_base_url(base_url)
-    models_url = f"{base_url}/models"
+    models_url = (
+        models_url_override.strip().rstrip("/")
+        if models_url_override and models_url_override.strip()
+        else f"{base_url}/models"
+    )
     req_mod = get_request_module()
     req = req_mod.Request(
         models_url,
@@ -133,8 +138,13 @@ def run_models_test(
     timeout: float,
     current_provider: str | None = None,
     anthropic: bool = False,
+    models_url_override: str | None = None,
 ) -> int:
-    models_endpoint = models_url(base_url)
+    models_endpoint = (
+        models_url_override.strip().rstrip("/")
+        if models_url_override and models_url_override.strip()
+        else models_url(base_url)
+    )
 
     req_mod = get_request_module()
     protocol = WireProtocol.ANTHROPIC if anthropic else WireProtocol.OPENAI

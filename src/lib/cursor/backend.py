@@ -43,10 +43,11 @@ def _handle_cursor_models(args: Any) -> int:
 
 
 class CursorBackend(BaseBackend):
-    prog = "cursor-provider"
+    prog = "cupx"
+    legacy_name = "cursor-provider"
     description = "Switch account and model configuration for Cursor."
     command_help = {
-        "list": "List accounts from cursor-provider config",
+        "list": "List accounts from cupx config",
         "status": "Show the current active account and status",
         "add": "Add an account from the current login",
         "delete": "Delete an account",

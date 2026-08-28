@@ -1,50 +1,50 @@
 # Command Reference
 
-This document covers `codex-provider`, `opencode-provider`, `agy-provider`, and
-`cursor-provider` version 1.0.0. Run `<command> --help` in your installed version
-for the exact parser surface.
+This document covers `codex-provider`, `opencode-provider`, `agy-provider`,
+`cursor-provider`, and `claude-provider` version 1.0.0. Run `<command> --help`
+in your installed version for the exact parser surface.
 
 ## Command Matrix
 
-| Command | Codex | OpenCode | Antigravity | Cursor | Purpose |
-|---------|:-----:|:--------:|:-----------:|:------:|---------|
-| `list` | Yes | Yes | Yes | Yes | List configured providers or accounts |
-| `status` | Yes | Yes | Yes | Yes | Show the active provider or account |
-| `auth show` / `auth edit` | Yes | Yes | Yes | Yes | Inspect auth metadata or edit credentials |
-| `config show` / `config edit` | Yes | Yes | Yes | Yes | Inspect or edit provider configuration |
-| `doctor [--fix]` | Yes | Yes | Yes | Yes | Validate configuration and authentication |
-| `test [--all]` | Yes | Yes | Yes | Yes | Test provider connectivity |
-| `ping` / `p` | Yes | Yes | Yes | Yes | Run a minimal command through the target CLI |
-| `switch [name] [--dry-run]` | Yes | Yes | Yes | Yes | Switch the active provider or account |
-| `add` | Yes | Yes | Yes | Yes | Add a provider or import an account |
-| `delete [--full] [--dry-run]` | Yes | Yes | Yes | Yes | Remove configuration, optionally including auth |
-| `rename [--dry-run]` | Yes | Yes | Yes | Yes | Rename a provider or account |
-| `export` / `import` | Yes | Yes | Yes | Yes | Back up or restore configuration and auth |
-| `upgrade [--check] [--dry-run]` | Yes | Yes | Yes | Yes | Update the binary from the latest GitHub release |
-| `models list` / `models sync` | No | Yes | No | No | Discover and synchronize OpenCode models |
-| `models list` / `models set` | No | No | No | Yes | List or switch the Cursor model selection |
-| `models sync` | No | No | No | Yes | Import models from a custom Cursor provider |
-| `official add` | Yes | No | No | No | Save the current Codex login as a switchable official provider |
-| `provider add` / `switch` / `delete` | No | No | No | Yes | Manage custom OpenAI-compatible Cursor providers |
-| `login` / `usage` | No | No | Yes | No | Authenticate an account or inspect quota |
+| Command | Codex | OpenCode | Antigravity | Cursor | Claude | Purpose |
+|---------|:-----:|:--------:|:-----------:|:------:|:------:|---------|
+| `list` | Yes | Yes | Yes | Yes | Yes | List configured providers or accounts |
+| `status` | Yes | Yes | Yes | Yes | Yes | Show the active provider or account |
+| `auth show` / `auth edit` | Yes | Yes | Yes | Yes | Yes | Inspect auth metadata or edit credentials |
+| `config show` / `config edit` | Yes | Yes | Yes | Yes | Yes | Inspect or edit provider configuration |
+| `doctor [--fix]` | Yes | Yes | Yes | Yes | Yes | Validate configuration and authentication |
+| `test [--all]` | Yes | Yes | Yes | Yes | Yes | Test provider connectivity |
+| `ping` / `p` | Yes | Yes | Yes | Yes | Yes | Run a minimal command through the target CLI |
+| `switch [name] [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Switch the active provider or account |
+| `add` | Yes | Yes | Yes | Yes | Yes | Add a provider or import an account |
+| `delete [--full] [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Remove configuration, optionally including auth |
+| `rename [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Rename a provider or account |
+| `export` / `import` | Yes | Yes | Yes | Yes | Yes | Back up or restore configuration and auth |
+| `upgrade [--check] [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Update the binary from the latest GitHub release |
+| `models list` / `models sync` | No | Yes | No | No | Yes | Discover and synchronize OpenCode/Claude models |
+| `models list` / `models set` | No | No | No | Yes | No | List or switch the Cursor model selection |
+| `models sync` | No | No | No | Yes | No | Import models from a custom Cursor provider |
+| `official add` | Yes | No | No | No | No | Save the current Codex login as a switchable official provider |
+| `provider add` / `switch` / `delete` | No | No | No | Yes | No | Manage custom OpenAI-compatible Cursor providers |
+| `login` / `usage` | No | No | Yes | No | No | Authenticate an account or inspect quota |
 
-Codex and OpenCode share their parsers for common commands. Backend-specific
+Codex, OpenCode, and Claude share their parsers for common commands. Backend-specific
 differences exist only where the target configuration format requires them.
 
 ## Official Codex Login
 
 ```bash
 codex login
-codex-provider official add
-codex-provider switch official
+cpx official add
+cpx switch official
 ```
 
 `official add` snapshots the current `~/.codex/auth.json` into the provider
 store and records a provider with `mode = "official"`. Switching to that
 provider restores the official auth snapshot and renders the runtime config
-with Codex's built-in `openai` provider. codex-provider also removes its own
+with Codex's built-in `openai` provider. cpx also removes its own
 managed runtime provider block, standalone web-search override, and model
-catalog pointer in that mode. Use `codex-provider ping official` to verify the
+catalog pointer in that mode. Use `cpx ping official` to verify the
 login; HTTP `/models` tests do not apply.
 
 `--provider NAME` selects a different provider identifier and `--name` sets the
@@ -53,12 +53,14 @@ display name. Both `official add` and `switch` support `--dry-run` previews.
 ## Provider Discovery
 
 ```bash
-codex-provider list
-codex-provider status
-opencode-provider list
-opencode-provider status
-agy-provider list
-agy-provider status
+cpx list
+cpx status
+opx list
+opx status
+apx list
+apx status
+clpx list
+clpx status
 ```
 
 `list` and interactive provider selection order entries by recent use. Entries
@@ -69,32 +71,88 @@ For OpenCode, only providers explicitly declared in the global config's
 `provider` object are switchable. Built-in providers that exist only in
 `auth.json` are not listed because OpenCode requires a concrete model ID.
 
+## Claude Providers
+
+```bash
+clpx add https://api.claude.ai --provider claudeai --model claude-sonnet-4-5
+clpx switch claudeai
+clpx status
+```
+
+`claude-provider` keeps its registry in `~/.claude-provider/config.json` and
+auth snapshots in `~/.claude-provider/auth/<provider>.json`. Switching writes
+`ANTHROPIC_BASE_URL`, the provider credential (`ANTHROPIC_AUTH_TOKEN` or
+`ANTHROPIC_API_KEY`), and any provider-specific model env keys
+(`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`)
+into the `env` object of `~/.claude/settings.json`. A provider can also carry a
+`modelOverrides` block; switching restores it and removes it when the target
+provider has none, mirroring how `codex-provider` points Codex at a per-provider
+model catalog. The active provider is recorded in
+`~/.claude-provider/config.json`, so Claude Code picks up the selected endpoint
+and credentials on its next run. Other settings such as `permissions` and
+`model` are preserved. The optional `--model` on `add` is stored per provider
+as metadata; use `config set --model` to change it later.
+
+`clpx add --from-settings` snapshots the current `env` and
+`modelOverrides` from `~/.claude/settings.json` into a new provider without
+prompting for a credential, which is convenient when switching between a local
+gateway (for example `http://127.0.0.1:4000` with `ANTHROPIC_API_KEY`) and an
+official endpoint (for example `https://api.deepseek.com/anthropic` with
+`ANTHROPIC_AUTH_TOKEN`).
+
+`clpx test` probes the Anthropic-compatible models endpoint with
+`x-api-key` authentication and the standard `anthropic-version` header.
+Some providers expose model discovery on a different path (DeepSeek uses
+`https://api.deepseek.com/models`); set it per provider with
+`clpx config set <provider> --models-url <url>`.
+`clpx ping` runs a minimal `claude -p "<prompt>"` command through
+the locally installed Claude Code binary so the full settings path is
+exercised.
+
+### Claude model management
+
+```bash
+clpx models sync cistern
+clpx models sync --all
+clpx models list cistern
+clpx models list cistern --remote
+clpx models set claude-sonnet-5 cistern
+```
+
+`models sync` fetches the model IDs exposed by a provider and stores them at
+`~/.claude-provider/models/<provider>.json`. `models list` shows the cached
+list, or fetches live with `--remote`. `models set <model> [provider]` updates
+the provider's model env keys (`ANTHROPIC_MODEL`,
+`ANTHROPIC_DEFAULT_*_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`) and re-renders
+`~/.claude/settings.json` so the new default model applies immediately without
+changing the active provider or endpoint.
+
 ## Authentication and Configuration
 
 ```bash
-codex-provider auth show my-provider
-codex-provider auth edit my-provider
-codex-provider config show my-provider
-codex-provider config edit my-provider
-codex-provider config set my-provider \
+cpx auth show my-provider
+cpx auth edit my-provider
+cpx config show my-provider
+cpx config edit my-provider
+cpx config set my-provider \
   --supports-standalone-web-search true \
   --provider-model-catalog-json ~/.codex-provider/catalogs/custom.json
-codex-provider config set my-provider --fast
-codex-provider config set my-provider --fast --apply
-codex-provider config set my-provider --no-fast
-codex-provider config set my-provider --provider-model-catalog-json ""
-codex-provider config set my-provider --name "New Name" \
+cpx config set my-provider --fast
+cpx config set my-provider --fast --apply
+cpx config set my-provider --no-fast
+cpx config set my-provider --provider-model-catalog-json ""
+cpx config set my-provider --name "New Name" \
   --wire-api chat --supports-websockets true
-codex-provider config set my-provider \
+cpx config set my-provider \
   --header x-openai-actor-authorization=local-image-extension
-codex-provider config set my-provider --reset
-codex-provider config set my-provider --supports-standalone-web-search false \
+cpx config set my-provider --reset
+cpx config set my-provider --supports-standalone-web-search false \
   --dry-run
 
-opencode-provider auth show my-provider
-opencode-provider auth edit my-provider
-opencode-provider config show my-provider
-opencode-provider config edit my-provider
+opx auth show my-provider
+opx auth edit my-provider
+opx config show my-provider
+opx config edit my-provider
 ```
 
 The provider argument is optional and defaults to the current provider when the
@@ -124,7 +182,7 @@ backend has one.
   `config set` writes the intended provider state in the tool config. The
   runtime `~/.codex/config.toml` is generated from it by `switch`. Pass
   `--apply` to re-render the runtime config immediately for the active
-  provider; otherwise run `codex-provider switch <provider>`.
+  provider; otherwise run `cpx switch <provider>`.
 - `doctor` validates config, provider models, and auth JSON. `doctor --fix` applies repairs supported by that backend.
 
 OpenCode currently has no legacy files that require automatic repair.
@@ -132,8 +190,8 @@ OpenCode currently has no legacy files that require automatic repair.
 ## Add a Provider
 
 ```bash
-codex-provider add https://api.example.com --provider example
-opencode-provider add https://api.example.com --provider example
+cpx add https://api.example.com --provider example
+opx add https://api.example.com --provider example
 ```
 
 By default, the command reads the API key from a hidden terminal prompt. For
@@ -141,7 +199,7 @@ scripts, pipe the value to standard input:
 
 ```bash
 printf '%s\n' "$PROVIDER_API_KEY" | \
-  opencode-provider add https://api.example.com \
+  opx add https://api.example.com \
   --provider example \
   --api-key-stdin
 ```
@@ -171,15 +229,15 @@ does not persist a standalone web search flag.
 ## Switch a Provider or Account
 
 ```bash
-codex-provider switch my-provider
-codex-provider switch my-provider --dry-run
+cpx switch my-provider
+cpx switch my-provider --dry-run
 
-opencode-provider switch my-provider
-opencode-provider switch my-provider --model my-model
-opencode-provider switch my-provider --model my-provider/my-model --dry-run
+opx switch my-provider
+opx switch my-provider --model my-model
+opx switch my-provider --model my-provider/my-model --dry-run
 
-agy-provider switch work-account
-agy-provider switch work-account --dry-run
+apx switch work-account
+apx switch work-account --dry-run
 ```
 
 Running `switch` without a name opens the interactive picker. In a
@@ -199,17 +257,17 @@ A project-level top-level `model` continues to override a global switch.
 ## Test and Ping
 
 ```bash
-codex-provider test
-codex-provider test --all
-codex-provider test my-provider
-codex-provider ping my-provider --model gpt-5
+cpx test
+cpx test --all
+cpx test my-provider
+cpx ping my-provider --model gpt-5
 
-opencode-provider test
-opencode-provider test --all
-opencode-provider ping my-provider --model my-model
+opx test
+opx test --all
+opx ping my-provider --model my-model
 
-agy-provider test
-agy-provider ping work-account
+apx test
+apx ping work-account
 ```
 
 `test` probes the configured provider endpoint. It accepts the current provider,
@@ -232,10 +290,10 @@ fails.
 ## OpenCode Models
 
 ```bash
-opencode-provider models list my-provider
-opencode-provider models sync my-provider
-opencode-provider models sync my-provider --dry-run
-opencode-provider models sync --all
+opx models list my-provider
+opx models sync my-provider
+opx models sync my-provider --dry-run
+opx models sync --all
 ```
 
 `models list` fetches IDs from the OpenAI-compatible
@@ -250,13 +308,13 @@ provider and returns status 1 if any provider cannot be queried.
 ## Delete and Rename
 
 ```bash
-codex-provider delete my-provider --dry-run
-codex-provider delete my-provider
-codex-provider delete my-provider --full
-codex-provider rename my-provider new-provider --dry-run
+cpx delete my-provider --dry-run
+cpx delete my-provider
+cpx delete my-provider --full
+cpx rename my-provider new-provider --dry-run
 
-opencode-provider delete my-provider --full
-opencode-provider rename my-provider new-provider
+opx delete my-provider --full
+opx rename my-provider new-provider
 ```
 
 `delete` removes provider configuration but retains authentication by default.
@@ -272,10 +330,10 @@ one operation.
 ## Export and Import
 
 ```bash
-codex-provider export backup.json
-codex-provider export -
-opencode-provider import backup.json --dry-run
-opencode-provider import backup.json
+cpx export backup.json
+cpx export -
+opx import backup.json --dry-run
+opx import backup.json
 ```
 
 Omit the file or use `-` to write an export to standard output or read an import
@@ -293,7 +351,7 @@ with owner-only permissions. The ten most recent snapshots are retained.
 Restore a snapshot with the standard import command:
 
 ```bash
-codex-provider import ~/.codex-provider/backups/<snapshot-token>.json
+cpx import ~/.codex-provider/backups/<snapshot-token>.json
 ```
 
 Snapshot files contain credentials. Copy them only over trusted channels and
@@ -302,9 +360,9 @@ remove copies when they are no longer needed.
 ## Upgrade
 
 ```bash
-codex-provider upgrade --check
-codex-provider upgrade --dry-run
-codex-provider upgrade
+cpx upgrade --check
+cpx upgrade --dry-run
+cpx upgrade
 ```
 
 `upgrade` fetches the latest GitHub release for the current platform, verifies
@@ -323,15 +381,15 @@ Cursor stores the signed-in account and the model selection in its SQLite
 `state.vscdb` database, so switching only rewrites a few rows.
 
 ```bash
-cursor-provider add work --from-current
-cursor-provider add work --from-current --dry-run
-cursor-provider list
-cursor-provider status
-cursor-provider switch work
-cursor-provider switch work --dry-run
-cursor-provider models list
-cursor-provider models set claude-sonnet-4-6
-cursor-provider models set claude-sonnet-4-6 --dry-run
+cupx add work --from-current
+cupx add work --from-current --dry-run
+cupx list
+cupx status
+cupx switch work
+cupx switch work --dry-run
+cupx models list
+cupx models set claude-sonnet-4-6
+cupx models set claude-sonnet-4-6 --dry-run
 ```
 `add --from-current` snapshots the account currently signed in to Cursor.
 `switch` writes the saved `cursorAuth/*` tokens and the reactive account fields
@@ -353,21 +411,21 @@ Cursor database and the API key in the encrypted `secret://cursorAuth/openAIKey`
 row. `cursor-provider` can capture and restore both.
 
 ```bash
-cursor-provider provider add deepseek --from-current
-cursor-provider provider add moon --base-url https://api.moon.com --api-key-stdin
-cursor-provider provider list
-cursor-provider provider switch deepseek --dry-run
-cursor-provider provider switch deepseek
-cursor-provider provider delete deepseek --full
-cursor-provider models sync deepseek
-cursor-provider models sync deepseek --dry-run
+cupx provider add deepseek --from-current
+cupx provider add moon --base-url https://api.moon.com --api-key-stdin
+cupx provider list
+cupx provider switch deepseek --dry-run
+cupx provider switch deepseek
+cupx provider delete deepseek --full
+cupx models sync deepseek
+cupx models sync deepseek --dry-run
 ```
 
 - `provider add --from-current` snapshots the provider currently configured in
   Cursor (base URL plus the API key row).
 - `provider add --base-url` stores a new base URL and prompts for the API key
   with a hidden prompt; pass `--api-key-stdin` to pipe it in instead (identical
-  behavior to `codex-provider add`). On Windows the key is re-encrypted into
+  behavior to `cpx add`). On Windows the key is re-encrypted into
   Cursor's secret format using the DPAPI-wrapped key in `Local State`; on macOS
   and Linux the tool reads Cursor's encryption key from the login Keychain or
   Secret Service keyring (the first terminal run asks for Keychain access). If
@@ -398,11 +456,11 @@ for an expired token.
 ### Login and import
 
 ```bash
-agy-provider login work-account
-agy-provider login work-account --dry-run
-agy-provider add work-account --from-current
-agy-provider add work-account --from-dir /path/to/account
-agy-provider add work-account --login
+apx login work-account
+apx login work-account --dry-run
+apx add work-account --from-current
+apx add work-account --from-dir /path/to/account
+apx add work-account --login
 ```
 
 `login` starts an interactive AGY login and saves the resulting account
@@ -412,8 +470,8 @@ delegate to the login flow.
 ### Quota usage
 
 ```bash
-agy-provider usage
-agy-provider usage work-account
+apx usage
+apx usage work-account
 ```
 
 Without an account name, `usage` queries the current account. It initializes
@@ -479,6 +537,21 @@ The Cursor database written by this CLI is:
 ~/Library/Application Support/Cursor/User/globalStorage/state.vscdb   (macOS)
 ~/.config/Cursor/User/globalStorage/state.vscdb   (Linux)
 ```
+
+### Claude
+
+```text
+~/.claude/settings.json
+~/.claude-provider/config.json
+~/.claude-provider/auth/
+~/.claude-provider/recent.json
+~/.claude-provider/.lock
+```
+
+`~/.claude/settings.json` is the Claude Code global settings file managed by
+Claude itself; this CLI only adds or updates the `env` keys
+`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`. The settings path can be
+customized with the `settings_path` field in `~/.claude-provider/config.json`.
 
 ## Safety and Exit Semantics
 

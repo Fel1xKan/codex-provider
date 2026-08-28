@@ -384,7 +384,7 @@ def set_provider_options(
     for change in changes:
         print(f"- {change}")
     if target == state.active_provider and not apply_runtime:
-        print(f"apply with: codex-provider switch {target}")
+        print(f"apply with: cpx switch {target}")
     return 0
 
 

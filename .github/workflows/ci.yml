@@ -22,8 +22,21 @@ jobs:
       - run: python -m ruff check .
       - run: python -m ruff format --check .
       - run: python -m pytest
-      - run: codex-provider --help
-      - run: cursor-provider --help
+      - run: cpx --help
+      - run: opx --help
+      - run: apx --help
+      - run: cupx --help
+      - run: clpx --help
+      - name: Legacy names print rename notice
+        shell: bash
+        run: |
+          set -e
+          for old in codex-provider opencode-provider agy-provider cursor-provider claude-provider; do
+            if "$old" --version >/dev/null 2>&1; then
+              echo "expected $old to refuse execution" >&2
+              exit 1
+            fi
+          done
 
   build:
     strategy:
@@ -59,4 +72,28 @@ jobs:
             dist/cursor-provider.exe
             dist/cursor-provider.sha256
             dist/cursor-provider.exe.sha256
+            dist/claude-provider
+            dist/claude-provider.exe
+            dist/claude-provider.sha256
+            dist/claude-provider.exe.sha256
+            dist/cpx
+            dist/cpx.exe
+            dist/cpx.sha256
+            dist/cpx.exe.sha256
+            dist/opx
+            dist/opx.exe
+            dist/opx.sha256
+            dist/opx.exe.sha256
+            dist/apx
+            dist/apx.exe
+            dist/apx.sha256
+            dist/apx.exe.sha256
+            dist/cupx
+            dist/cupx.exe
+            dist/cupx.sha256
+            dist/cupx.exe.sha256
+            dist/clpx
+            dist/clpx.exe
+            dist/clpx.sha256
+            dist/clpx.exe.sha256
           if-no-files-found: error

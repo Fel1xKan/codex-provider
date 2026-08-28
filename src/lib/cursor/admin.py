@@ -89,7 +89,7 @@ def _access_token_valid(access_token: str) -> tuple[bool, str]:
 
 
 def doctor_command(fix: bool) -> int:
-    print("Checking cursor-provider environment...")
+    print("Checking cupx environment...")
 
     issues = []
     db_file = st.db_path()

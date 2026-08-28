@@ -40,10 +40,11 @@ from lib.common.registry import (
 
 
 class AgyBackend(BaseBackend):
-    prog = "agy-provider"
+    prog = "apx"
+    legacy_name = "agy-provider"
     description = "Switch account configurations for Antigravity (agy) CLI."
     command_help = {
-        "list": "List accounts from agy-provider config",
+        "list": "List accounts from apx config",
         "status": "Show the current active account and status",
         "add": "Add or import an account configuration",
         "delete": "Delete an account",

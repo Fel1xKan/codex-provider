@@ -23,9 +23,9 @@
   <a href="https://github.com/Fel1xKan/codex-provider/issues/new?labels=bug">Report Bug</a>
 </div>
 
-> Switch Codex, OpenCode, Antigravity, and Cursor accounts and models without hand-editing credentials or global configuration.
+> Switch Codex, OpenCode, Antigravity, Cursor, and Claude accounts and models without hand-editing credentials or global configuration.
 
-The four CLIs are built on a shared command registry and backend adapter
+The five CLIs are built on a shared command registry and backend adapter
 framework; see [docs/architecture.md](docs/architecture.md) for the command
 definition model and how to onboard a new agent provider.
 
@@ -46,8 +46,10 @@ validation, safe writes, and dry-run previews.
 - **Keep secrets out of terminal output** - inspect authentication metadata and redacted configuration without printing credential values.
 - **Verify the entire path** - probe `/models` endpoints or run a minimal command through Codex, OpenCode, or Antigravity.
 - **Manage OpenCode models** - discover remote model IDs, sync new models without deleting metadata, and choose a model while switching.
+- **Manage Claude providers and models** - snapshot a local gateway or official endpoint from `settings.json`, sync provider model lists, and switch the default model independently of the endpoint.
 - **Manage Antigravity accounts** - log in, import account snapshots, switch accounts, and inspect 5-hour and weekly quota remaining.
 - **Manage Cursor accounts and models** - snapshot signed-in Cursor accounts, swap auth rows in the Cursor SQLite database, and switch models across every Composer surface.
+- **Manage Claude providers** - switch the base URL, auth token, and optional default model written into `~/.claude/settings.json`.
 - **Preview and recover changes** - use dry runs, import pre-change snapshots retained by Codex provider mutations, and export or import provider data as JSON.
 - **Move quickly between recent providers** - interactive pickers and list output prioritize recently used entries.
 
@@ -55,12 +57,17 @@ validation, safe writes, and dry-run previews.
 
 | CLI | Use it for | Native configuration |
 |-----|------------|----------------------|
-| `codex-provider` | Codex-compatible API providers, per-provider catalog and web-search options, official-login snapshots, and auth snapshots | `~/.codex` and `~/.codex-provider` |
-| `opencode-provider` | OpenCode providers, credentials, default models, and model discovery | XDG OpenCode config, data, and state directories |
-| `agy-provider` | Antigravity accounts, login snapshots, switching, and quota checks | `~/.gemini/antigravity-cli` and `~/.gemini/agy-provider` |
-| `cursor-provider` | Cursor accounts and model selection stored in the Cursor SQLite database | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` and `~/.cursor-provider` |
+| `cpx` | Codex-compatible API providers, per-provider catalog and web-search options, official-login snapshots, and auth snapshots | `~/.codex` and `~/.codex-provider` |
+| `opx` | OpenCode providers, credentials, default models, and model discovery | XDG OpenCode config, data, and state directories |
+| `apx` | Antigravity accounts, login snapshots, switching, and quota checks | `~/.gemini/antigravity-cli` and `~/.gemini/agy-provider` |
+| `cupx` | Cursor accounts and model selection stored in the Cursor SQLite database | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` and `~/.cursor-provider` |
+| `clpx` | Claude-compatible API providers and default models, written into Claude global settings | `~/.claude/settings.json` and `~/.claude-provider` |
 
-The Codex and OpenCode CLIs intentionally share command names and behavior for
+The previous `codex-provider`/`opencode-provider`/`agy-provider`/`cursor-provider`/
+`claude-provider` names are deprecated: invoking them prints a rename notice and
+refuses to run. Use the short names above.
+
+The Codex, OpenCode, and Claude CLIs intentionally share command names and behavior for
 their common operations. Codex adds `official` plus focused `config set` and
 catalog options; OpenCode adds `models`; Antigravity adds `login` and `usage`;
 Cursor adds `model` because those workflows are backend-specific.
@@ -80,11 +87,11 @@ manages configuration and credentials that you already control.
 
 ```bash
 pipx install git+https://github.com/Fel1xKan/codex-provider.git
-codex-provider status
+cpx status
 ```
 
-Replace the second command with `opencode-provider status`,
-`agy-provider status`, or `cursor-provider status` for the tool you use.
+Replace the second command with `opx status`, `apx status`, `cupx status`, or
+`clpx status` for the tool you use.
 
 ## Install
 
@@ -94,11 +101,15 @@ Replace the second command with `opencode-provider status`,
 pipx install git+https://github.com/Fel1xKan/codex-provider.git
 ```
 
-This installs all four commands in isolated Python packaging. Upgrade with:
+This installs all ten commands (short and legacy names) in isolated Python
+packaging. Upgrade with:
 
 ```bash
-pipx upgrade opencode-provider
+pipx upgrade opx
 ```
+
+The legacy entry points still exist so `pipx upgrade` keeps working, but they
+only print a rename notice. Prefer `cpx`, `opx`, `apx`, `cupx`, and `clpx`.
 
 ### Standalone binaries
 
@@ -107,11 +118,26 @@ published with SHA-256 checksum files on the
 [GitHub Releases page][release-url]. Standalone binaries do not require a local
 Python installation.
 
+Install a standalone binary with the official script:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/Fel1xKan/codex-provider/master/scripts/install.sh | sh -s -- cpx
+```
+
+Windows users run `scripts/install.ps1` from PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Fel1xKan/codex-provider/master/scripts/install.ps1 | iex -Command cpx
+```
+
+The script detects the platform, downloads the matching release asset, verifies
+its SHA-256 checksum, and installs it to `~/.local/bin`.
+
 Standalone binaries can update themselves from the latest GitHub release:
 
 ```bash
-codex-provider upgrade
-codex-provider upgrade --check
+cpx upgrade
+cpx upgrade --check
 ```
 
 ## Usage
@@ -119,12 +145,12 @@ codex-provider upgrade --check
 ### Switch, inspect, and validate a provider
 
 ```bash
-codex-provider list
-codex-provider switch my-provider --dry-run
-codex-provider switch my-provider
-codex-provider status
-codex-provider doctor
-codex-provider test my-provider
+cpx list
+cpx switch my-provider --dry-run
+cpx switch my-provider
+cpx status
+cpx doctor
+cpx test my-provider
 ```
 
 Omit the provider from `switch` to open an interactive picker. Recent providers
@@ -134,15 +160,15 @@ appear first. `doctor` checks stored configuration and authentication, while
 ### Use backend-specific capabilities
 
 ```bash
-opencode-provider models list my-provider
-opencode-provider models sync my-provider --dry-run
-agy-provider login work-account
-agy-provider usage work-account
-cursor-provider add work --from-current
-cursor-provider switch work
-cursor-provider provider add deepseek --from-current
-cursor-provider models sync deepseek
-cursor-provider models set deepseek-v4-flash
+opx models list my-provider
+opx models sync my-provider --dry-run
+apx login work-account
+apx usage work-account
+cupx add work --from-current
+cupx switch work
+cupx provider add deepseek --from-current
+cupx models sync deepseek
+cupx models set deepseek-v4-flash
 ```
 
 `models sync` replaces `provider.<id>.models` with the provider's current
@@ -172,10 +198,11 @@ bulk checks, provider lifecycle operations, and JSON backup or restore.
 
 ## Command Reference
 
-The four CLIs expose aligned provider-management commands, with focused
+The five CLIs expose aligned provider-management commands, with focused
 extensions for OpenCode model discovery, Antigravity account workflows, and
-Cursor account and model switching. The reference also documents file locations,
-switch behavior, secret handling, and exit semantics.
+Cursor account and model switching, and Claude provider env injection. The
+reference also documents file locations, switch behavior, secret handling, and
+exit semantics.
 
 → [Read the complete command reference](docs/command-reference.md)
 

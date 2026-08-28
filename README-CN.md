@@ -23,7 +23,7 @@
   <a href="https://github.com/Fel1xKan/codex-provider/issues/new?labels=bug">报告问题</a>
 </div>
 
-> 无需手动修改凭据或全局配置，即可切换 Codex、OpenCode、Antigravity 和 Cursor 的账号与模型。
+> 无需手动修改凭据或全局配置，即可切换 Codex、OpenCode、Antigravity、Cursor 和 Claude 的账号与模型。
 
 ---
 
@@ -50,12 +50,13 @@ OpenAI 兼容 API 提供商或多个 Antigravity 账号之间切换，手动编�
 
 | CLI | 适用场景 | 原生配置位置 |
 |-----|----------|--------------|
-| `codex-provider` | Codex 兼容 API 提供商、按提供商的模型目录与联网搜索选项、官方登录快照和认证快照 | `~/.codex` 与 `~/.codex-provider` |
-| `opencode-provider` | OpenCode 提供商、凭据、默认模型与模型发现 | OpenCode 的 XDG 配置、数据和状态目录 |
-| `agy-provider` | Antigravity 账号、登录快照、切换和配额查询 | `~/.gemini/antigravity-cli` 与 `~/.gemini/agy-provider` |
-| `cursor-provider` | 存储在 Cursor SQLite 数据库中的账号与模型选择 | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` 与 `~/.cursor-provider` |
+| `cpx` | Codex 兼容 API 提供商、按提供商的模型目录与联网搜索选项、官方登录快照和认证快照 | `~/.codex` 与 `~/.codex-provider` |
+| `opx` | OpenCode 提供商、凭据、默认模型与模型发现 | OpenCode 的 XDG 配置、数据和状态目录 |
+| `apx` | Antigravity 账号、登录快照、切换和配额查询 | `~/.gemini/antigravity-cli` 与 `~/.gemini/agy-provider` |
+| `cupx` | 存储在 Cursor SQLite 数据库中的账号与模型选择 | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` 与 `~/.cursor-provider` |
+| `clpx` | Claude 兼容 API 提供商与默认模型，写入 Claude 全局设置 | `~/.claude/settings.json` 与 `~/.claude-provider` |
 
-Codex 与 OpenCode CLI 的公共操作会保持命令名称和行为一致。Codex 额外提供 `official`、
+Codex、OpenCode 与 Claude CLI 的公共操作会保持命令名称和行为一致。Codex 额外提供 `official`、
 `config set` 和模型目录选项，OpenCode 额外提供 `models`，Antigravity 额外提供 `login`
 和 `usage`，Cursor 额外提供 `model`，用于各自特有的工作流。
 
@@ -71,11 +72,10 @@ Codex 与 OpenCode CLI 的公共操作会保持命令名称和行为一致。Cod
 
 ```bash
 pipx install git+https://github.com/Fel1xKan/codex-provider.git
-codex-provider status
+cpx status
 ```
 
-如果你使用的是另外三个工具，将第二条命令替换为 `opencode-provider status`、
-`agy-provider status` 或 `cursor-provider status`。
+如果你使用的是另外四个工具，将第二条命令替换为 `opx status`、`apx status`、`cupx status` 或 `clpx status`。
 
 ## 安装
 
@@ -85,10 +85,10 @@ codex-provider status
 pipx install git+https://github.com/Fel1xKan/codex-provider.git
 ```
 
-该命令会在隔离的 Python 环境中安装全部四个 CLI。升级命令为：
+该命令会在隔离的 Python 环境中安装全部五个 CLI。升级命令为：
 
 ```bash
-pipx upgrade opencode-provider
+pipx upgrade opx
 ```
 
 ### 独立二进制文件
@@ -102,12 +102,12 @@ macOS (Apple Silicon) 二进制文件以及对应的 SHA-256
 ### 切换、检查并验证提供商
 
 ```bash
-codex-provider list
-codex-provider switch my-provider --dry-run
-codex-provider switch my-provider
-codex-provider status
-codex-provider doctor
-codex-provider test my-provider
+cpx list
+cpx switch my-provider --dry-run
+cpx switch my-provider
+cpx status
+cpx doctor
+cpx test my-provider
 ```
 
 省略 `switch` 的提供商参数会打开交互式选择器，最近使用的提供商会排在前面。`doctor`
@@ -116,15 +116,15 @@ codex-provider test my-provider
 ### 使用后端专属能力
 
 ```bash
-opencode-provider models list my-provider
-opencode-provider models sync my-provider --dry-run
-agy-provider login work-account
-agy-provider usage work-account
-cursor-provider add work --from-current
-cursor-provider switch work
-cursor-provider provider add deepseek --from-current
-cursor-provider models sync deepseek
-cursor-provider models set deepseek-v4-flash
+opx models list my-provider
+opx models sync my-provider --dry-run
+apx login work-account
+apx usage work-account
+cupx add work --from-current
+cupx switch work
+cupx provider add deepseek --from-current
+cupx models sync deepseek
+cupx models set deepseek-v4-flash
 ```
 
 OpenCode 模型同步只添加新 ID，并保留现有元数据。Antigravity `usage` 会在不切换账号的
@@ -148,8 +148,8 @@ Cursor 数据库中的自定义 OpenAI 兼容提供商（如 DeepSeek），`mode
 独立二进制可从 GitHub 最新 Release 自升级：
 
 ```bash
-codex-provider upgrade
-codex-provider upgrade --check
+cpx upgrade
+cpx upgrade --check
 ```
 
 ## 命令参考

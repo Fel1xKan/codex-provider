@@ -49,11 +49,12 @@ def read_api_key(api_key_stdin: bool, prompt: str = "API key: ") -> str:
 
 
 class OpenCodeBackend(BaseBackend):
-    prog = "opencode-provider"
+    prog = "opx"
+    legacy_name = "opencode-provider"
     description = "Switch the default provider in OpenCode global config."
     switch_include_model = True
     command_help = {
-        "list": "List providers from OpenCode config",
+        "list": "List providers from opx config",
         "status": "Show current provider and configuration",
     }
     extra_commands = (

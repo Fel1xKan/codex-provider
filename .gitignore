@@ -12,6 +12,7 @@ dist/
 !opencode-provider.spec
 !agy-provider.spec
 !cursor-provider.spec
+!claude-provider.spec
 
 .DS_Store
 temp

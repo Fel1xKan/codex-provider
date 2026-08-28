@@ -149,7 +149,7 @@ def _refresh_access_token(token_data: dict[str, Any]) -> str:
     if not isinstance(refresh_token, str) or not refresh_token:
         raise SwitchError(
             "Antigravity access token expired and no refresh token is available; "
-            "log in again with `agy-provider login`"
+            "log in again with `apx login`"
         )
 
     client_id, client_secret = _oauth_client(token_data)

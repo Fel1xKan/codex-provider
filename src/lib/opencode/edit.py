@@ -104,7 +104,7 @@ def add_provider(
     print(f"base_url: {base_url}")
     print(f"auth file: {auth_file}")
     print(f"{auth_action}: {provider}")
-    print(f"models: none; run 'opencode-provider models sync {provider}'")
+    print(f"models: none; run 'opx models sync {provider}'")
     return 0
 
 

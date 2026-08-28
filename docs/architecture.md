@@ -1,17 +1,17 @@
 # 架构与扩展指南
 
-四个 CLI（`codex-provider` / `opencode-provider` / `agy-provider` / `cursor-provider`）共享同一套命令定义与执行框架，后端只负责各自配置格式、凭据模型和 switch 语义的适配。
+五个 CLI（`cpx` / `opx` / `apx` / `cupx` / `clpx`，旧长名 `codex-provider` 等只打印改名提示）共享同一套命令定义与执行框架，后端只负责各自配置格式、凭据模型和 switch 语义的适配。
 
 ## 命令定义：单一来源
 
 `src/lib/common/registry.py` 是命令的唯一事实来源：
 
 - `CommandSpec` 声明命令名、别名、帮助、参数、子命令和能力门控；
-- `COMMON_COMMANDS` 是三个 CLI 共用的命令表（list/status/auth/config/doctor/test/ping/switch/add/delete/rename/export/import）；
+- `COMMON_COMMANDS` 是所有 CLI 共用的命令表（list/status/auth/config/doctor/test/ping/switch/add/delete/rename/export/import）；
 - 后端通过 `capabilities`、`extra_commands`、`command_args`、`command_help` 声明差异（如 opencode 的 `models`、agy 的 `usage`/`login`）；
 - `build_parser_for(backend)` 从注册表生成解析器，所有 CLI 的 `--help` 与参数形状由此而来。
 
-修改共享命令只改注册表，三个 CLI 自动同步，不再需要逐份维护 `build_parser`/`main`。
+修改共享命令只改注册表，所有 CLI 自动同步，不再需要逐份维护 `build_parser`/`main`。
 
 ## 后端适配器
 

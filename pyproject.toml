@@ -25,13 +25,19 @@ dev = [
 
 [project.scripts]
 codex-provider = "cli.codex_provider:main"
+cpx = "cli.codex_provider:main"
 opencode-provider = "cli.opencode_provider:main"
+opx = "cli.opencode_provider:main"
 agy-provider = "cli.agy_provider:main"
+apx = "cli.agy_provider:main"
 cursor-provider = "cli.cursor_provider:main"
+cupx = "cli.cursor_provider:main"
+claude-provider = "cli.claude_provider:main"
+clpx = "cli.claude_provider:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["cli", "lib", "lib.common", "lib.codex", "lib.opencode", "lib.agy", "lib.cursor"]
+packages = ["cli", "lib", "lib.common", "lib.codex", "lib.opencode", "lib.agy", "lib.cursor", "lib.claude"]
 
 [tool.setuptools.dynamic]
 version = { attr = "lib.common.constants.VERSION" }

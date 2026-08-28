@@ -61,9 +61,7 @@ def temporary_provider(provider: str) -> Iterator[None]:
 def ensure_registry_ready() -> None:
     state = st.ensure_provider_state(read_only=True)
     if not state.providers:
-        raise SwitchError(
-            "no model providers configured; add one first with `codex-provider add`"
-        )
+        raise SwitchError("no model providers configured; add one first with `cpx add`")
 
 
 def resolve_provider(provider: str | None) -> str:
@@ -187,7 +185,7 @@ def test_provider(provider: str | None, timeout: float) -> int:
     if config.get("mode") == MODE_OFFICIAL:
         raise SwitchError(
             f"provider '{target}' uses official Codex login; "
-            f"use `codex-provider ping {target}` instead"
+            f"use `cpx ping {target}` instead"
         )
     base_url = config.get("base_url", "")
     profile = st.auth_profile_path(target, create=False)

@@ -146,9 +146,7 @@ def edit_config(provider: str | None) -> int:
     before = state.text
     auth_target = provider or state.current_provider
     auth_command = (
-        f"opencode-provider auth edit {auth_target}"
-        if auth_target
-        else "opencode-provider auth edit <provider>"
+        f"opx auth edit {auth_target}" if auth_target else "opx auth edit <provider>"
     )
     print(f"API key: use '{auth_command}'")
     run_editor(state.path)
