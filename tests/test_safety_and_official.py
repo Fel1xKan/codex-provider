@@ -443,7 +443,12 @@ def test_lock_owner_is_visible_and_stale_locks_are_reported(
 
     assert inspect_file_lock(lock_path).state == "free"
 
-    lock_path.write_text('{"pid": 12345, "started_at_ms": 1}', encoding="utf-8")
+    # On Windows the owner payload starts after a placeholder byte at offset
+    # 0, which is what msvcrt.locking() locks; mirror that layout here.
+    owner_payload = '{"pid": 12345, "started_at_ms": 1}'
+    if os.name == "nt":
+        owner_payload = "0" + owner_payload
+    lock_path.write_text(owner_payload, encoding="utf-8")
     stale = inspect_file_lock(lock_path)
     assert stale.state == "stale"
     assert stale.pid == 12345
