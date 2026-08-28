@@ -272,6 +272,11 @@ class FileLockManager:
         ).encode("utf-8")
         lock_file.seek(0)
         lock_file.truncate()
+        if os.name == "nt":
+            # msvcrt locks the first byte of the file; keep that byte as a
+            # placeholder so the owner payload stays readable while held.
+            lock_file.write(b"0")
+            lock_file.flush()
         lock_file.write(payload)
         lock_file.flush()
 
@@ -313,7 +318,7 @@ class LockInspection:
 
 def _read_lock_owner(lock_file: Any) -> tuple[int | None, int | None]:
     try:
-        lock_file.seek(0)
+        lock_file.seek(1 if os.name == "nt" else 0)
         raw = lock_file.read()
         if not raw:
             return None, None
