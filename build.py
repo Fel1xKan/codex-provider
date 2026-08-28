@@ -152,7 +152,7 @@ def build_target(python_cmd: list[str], target: str, skip_smoke_test: bool) -> N
     shutil.copy2(output_bin, short_bin)
     if not skip_smoke_test:
         run([str(short_bin), "--help"], quiet=True)
-    verify_binary_version(short_bin, short_name)
+    verify_binary_version(short_bin, short_name.removesuffix(".exe"))
     legacy_prog = SHORT_TO_LEGACY[short_name]
     legacy_bin = DIST_DIR / legacy_prog
     res = subprocess.run(
