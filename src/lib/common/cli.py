@@ -143,6 +143,10 @@ def _handle_import(backend: Any, args: Any) -> int:
     return backend.import_(args.file, args.dry_run)
 
 
+def _handle_upgrade(backend: Any, args: Any) -> int:
+    return backend.upgrade(args.check, args.dry_run)
+
+
 HANDLERS: dict[str, Any] = {
     "list": _handle_list,
     "status": _handle_status,
@@ -157,6 +161,7 @@ HANDLERS: dict[str, Any] = {
     "ping": _handle_ping,
     "export": _handle_export,
     "import": _handle_import,
+    "upgrade": _handle_upgrade,
 }
 
 

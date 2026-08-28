@@ -4,6 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from lib.common import self_upgrade
+from lib.common.constants import VERSION
 from lib.common.errors import SwitchError
 from lib.common.registry import COMMON_COMMANDS, ArgSpec, CommandSpec, SubcommandSpec
 
@@ -163,3 +165,23 @@ class BaseBackend:
 
     def import_(self, file_path: str | None, dry_run: bool) -> int:
         raise NotImplementedError
+
+    def upgrade(self, check: bool, dry_run: bool) -> int:
+        payload = self_upgrade.fetch_latest_release(self_upgrade.DEFAULT_REPOSITORY)
+        plan = self_upgrade.build_upgrade_plan(
+            self_upgrade.DEFAULT_REPOSITORY,
+            self.prog,
+            VERSION,
+            payload,
+        )
+        if check or dry_run:
+            print(f"current: {plan.current_version}")
+            print(f"latest:  {plan.latest_version}")
+            print(f"asset:   {plan.asset_name}")
+            if not plan.update_available:
+                print("up to date")
+            else:
+                print("would upgrade" if dry_run else "update available")
+            return 0
+        target = self_upgrade.current_executable()
+        return self_upgrade.perform_upgrade(plan, target)

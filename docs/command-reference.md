@@ -20,6 +20,7 @@ for the exact parser surface.
 | `delete [--full] [--dry-run]` | Yes | Yes | Yes | Yes | Remove configuration, optionally including auth |
 | `rename [--dry-run]` | Yes | Yes | Yes | Yes | Rename a provider or account |
 | `export` / `import` | Yes | Yes | Yes | Yes | Back up or restore configuration and auth |
+| `upgrade [--check] [--dry-run]` | Yes | Yes | Yes | Yes | Update the binary from the latest GitHub release |
 | `models list` / `models sync` | No | Yes | No | No | Discover and synchronize OpenCode models |
 | `models list` / `models set` | No | No | No | Yes | List or switch the Cursor model selection |
 | `models sync` | No | No | No | Yes | Import models from a custom Cursor provider |
@@ -297,6 +298,24 @@ codex-provider import ~/.codex-provider/backups/<snapshot-token>.json
 
 Snapshot files contain credentials. Copy them only over trusted channels and
 remove copies when they are no longer needed.
+
+## Upgrade
+
+```bash
+codex-provider upgrade --check
+codex-provider upgrade --dry-run
+codex-provider upgrade
+```
+
+`upgrade` fetches the latest GitHub release for the current platform, verifies
+the asset against its published SHA-256 checksum, and atomically replaces the
+executable. `--check` only reports whether a newer version exists; `--dry-run`
+prints what would be downloaded without replacing anything. The command is
+available in every provider CLI and targets that CLI's own release asset.
+
+Standalone binaries are published per platform as
+`<tool>-<version>-<platform>`. Source installations managed with pip should use
+`pipx upgrade <tool>` instead.
 
 ## Cursor Accounts and Models
 

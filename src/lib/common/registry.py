@@ -451,4 +451,21 @@ COMMON_COMMANDS: tuple[CommandSpec, ...] = (
             DRY_RUN,
         ),
     ),
+    CommandSpec(
+        "upgrade",
+        handler="upgrade",
+        summary="Upgrade {program} from the latest GitHub release",
+        args=(
+            _opt(
+                "--check",
+                action="store_true",
+                help="Check for a newer version without downloading",
+            ),
+            _opt(
+                "--dry-run",
+                action="store_true",
+                help="Preview the upgrade without replacing the binary",
+            ),
+        ),
+    ),
 )

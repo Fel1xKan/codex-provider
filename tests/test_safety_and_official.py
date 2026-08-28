@@ -9,6 +9,7 @@ import pytest
 from conftest import IsolatedPaths
 
 import cli.codex_provider as cp
+from lib.common import self_upgrade
 from lib.common.common_store import FileLockManager, inspect_file_lock
 from lib.common.errors import SwitchError
 from lib.common.toml_config import parse_provider_section
@@ -663,3 +664,144 @@ def test_header_requires_key_value_pair(
     assert cp.main(["config", "set", "beta", "--header", "no-equals"]) == 1
     output = capsys.readouterr()
     assert "expected KEY=VALUE" in output.err
+
+
+def _release_payload(
+    tag: str,
+    program: str = "codex-provider",
+    asset_name: str | None = None,
+) -> dict[str, object]:
+    version = tag.lstrip("v")
+    return {
+        "tag_name": tag,
+        "html_url": f"https://github.com/Fel1xKan/codex-provider/releases/tag/{tag}",
+        "assets": [
+            {
+                "name": asset_name or f"{program}-{version}-linux-x86_64",
+                "browser_download_url": (
+                    f"https://github.com/Fel1xKan/codex-provider/releases/download/"
+                    f"{tag}/{program}-{version}-linux-x86_64"
+                ),
+            }
+        ],
+    }
+
+
+def test_upgrade_check_reports_up_to_date(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        self_upgrade,
+        "fetch_latest_release",
+        lambda repo: _release_payload("v1.1.0"),
+    )
+
+    assert cp.main(["upgrade", "--check"]) == 0
+    output = capsys.readouterr().out
+    assert "current: 1.1.0" in output
+    assert "latest:  1.1.0" in output
+    assert "up to date" in output
+
+
+def test_upgrade_dry_run_reports_newer_version(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        self_upgrade,
+        "fetch_latest_release",
+        lambda repo: _release_payload("v1.2.0"),
+    )
+
+    assert cp.main(["upgrade", "--dry-run"]) == 0
+    output = capsys.readouterr().out
+    assert "current: 1.1.0" in output
+    assert "latest:  1.2.0" in output
+    assert "would upgrade" in output
+
+
+def test_upgrade_downloads_verifies_and_replaces(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = tmp_path / "codex-provider"
+    target.write_bytes(b"old-binary")
+    plan = self_upgrade.UpgradePlan(
+        current_version="1.1.0",
+        latest_version="1.2.0",
+        release_url="https://github.com/Fel1xKan/codex-provider/releases/tag/v1.2.0",
+        asset_name="codex-provider-1.2.0-linux-x86_64",
+        asset_url="https://example.com/codex-provider",
+        sha256_url="https://example.com/codex-provider.sha256",
+        update_available=True,
+    )
+    digest = self_upgrade._sha256_hex(target)
+
+    monkeypatch.setattr(
+        self_upgrade,
+        "_download",
+        lambda url, dest: dest.write_bytes(b"new-binary"),
+    )
+    monkeypatch.setattr(
+        self_upgrade,
+        "_sha256_expected_from_release",
+        lambda url: f"{self_upgrade._sha256_hex(Path(tmp_path) / 'placeholder')}  name",
+    )
+    monkeypatch.setattr(
+        self_upgrade,
+        "_sha256_hex",
+        lambda path: digest if path.name == "codex-provider" else digest,
+    )
+
+    assert self_upgrade.perform_upgrade(plan, target) == 0
+    assert target.read_bytes() == b"new-binary"
+    output = capsys.readouterr().out
+    assert "upgraded codex-provider: 1.1.0 -> 1.2.0" in output
+
+
+def test_upgrade_checksum_mismatch_aborts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "codex-provider"
+    target.write_bytes(b"old-binary")
+    plan = self_upgrade.UpgradePlan(
+        current_version="1.1.0",
+        latest_version="1.2.0",
+        release_url="",
+        asset_name="codex-provider-1.2.0-linux-x86_64",
+        asset_url="https://example.com/codex-provider",
+        sha256_url="https://example.com/codex-provider.sha256",
+        update_available=True,
+    )
+    monkeypatch.setattr(
+        self_upgrade,
+        "_download",
+        lambda url, dest: dest.write_bytes(b"new-binary"),
+    )
+    monkeypatch.setattr(
+        self_upgrade,
+        "_sha256_expected_from_release",
+        lambda url: "0" * 64,
+    )
+
+    with pytest.raises(SwitchError, match="checksum mismatch"):
+        self_upgrade.perform_upgrade(plan, target)
+    assert target.read_bytes() == b"old-binary"
+
+
+def test_build_upgrade_plan_selects_platform_asset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(self_upgrade, "_platform_key", lambda: "linux-x86_64")
+    plan = self_upgrade.build_upgrade_plan(
+        "Fel1xKan/codex-provider",
+        "codex-provider",
+        "1.1.0",
+        _release_payload("v1.2.0"),
+    )
+    assert plan.update_available
+    assert plan.asset_name == "codex-provider-1.2.0-linux-x86_64"
+    assert plan.sha256_url.endswith(".sha256")

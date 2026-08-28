@@ -107,6 +107,13 @@ published with SHA-256 checksum files on the
 [GitHub Releases page][release-url]. Standalone binaries do not require a local
 Python installation.
 
+Standalone binaries can update themselves from the latest GitHub release:
+
+```bash
+codex-provider upgrade
+codex-provider upgrade --check
+```
+
 ## Usage
 
 ### Switch, inspect, and validate a provider

@@ -145,6 +145,13 @@ Cursor 数据库中的自定义 OpenAI 兼容提供商（如 DeepSeek），`mode
 - Cursor 只改写 `state.vscdb` 中的认证和模型行，聊天历史和 workspace 状态保持不变。
 - 工具拒绝把 API 密钥作为位置参数传入；请使用隐藏输入或 `--api-key-stdin`。
 
+独立二进制可从 GitHub 最新 Release 自升级：
+
+```bash
+codex-provider upgrade
+codex-provider upgrade --check
+```
+
 ## 命令参考
 
 四个 CLI 提供一致的提供商管理命令，并分别扩展 OpenCode 模型发现、Antigravity 账号工作流
