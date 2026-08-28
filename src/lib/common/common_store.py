@@ -318,8 +318,12 @@ class LockInspection:
 
 def _read_lock_owner(lock_file: Any) -> tuple[int | None, int | None]:
     try:
-        lock_file.seek(1 if os.name == "nt" else 0)
+        lock_file.seek(0)
         raw = lock_file.read()
+        if os.name == "nt" and raw.startswith(b"0"):
+            # msvcrt keeps a placeholder byte at offset 0 so the owner
+            # payload is readable while the first byte is locked.
+            raw = raw[1:]
         if not raw:
             return None, None
         payload = json.loads(raw.decode("utf-8"))
