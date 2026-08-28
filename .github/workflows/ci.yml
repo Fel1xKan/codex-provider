@@ -27,16 +27,6 @@ jobs:
       - run: apx --help
       - run: cupx --help
       - run: clpx --help
-      - name: Legacy names print rename notice
-        shell: bash
-        run: |
-          set -e
-          for old in codex-provider opencode-provider agy-provider cursor-provider claude-provider; do
-            if "$old" --version >/dev/null 2>&1; then
-              echo "expected $old to refuse execution" >&2
-              exit 1
-            fi
-          done
 
   build:
     strategy:
@@ -56,26 +46,6 @@ jobs:
         with:
           name: binaries-${{ matrix.os }}
           path: |
-            dist/codex-provider
-            dist/codex-provider.exe
-            dist/codex-provider.sha256
-            dist/codex-provider.exe.sha256
-            dist/opencode-provider
-            dist/opencode-provider.exe
-            dist/opencode-provider.sha256
-            dist/opencode-provider.exe.sha256
-            dist/agy-provider
-            dist/agy-provider.exe
-            dist/agy-provider.sha256
-            dist/agy-provider.exe.sha256
-            dist/cursor-provider
-            dist/cursor-provider.exe
-            dist/cursor-provider.sha256
-            dist/cursor-provider.exe.sha256
-            dist/claude-provider
-            dist/claude-provider.exe
-            dist/claude-provider.sha256
-            dist/claude-provider.exe.sha256
             dist/cpx
             dist/cpx.exe
             dist/cpx.sha256

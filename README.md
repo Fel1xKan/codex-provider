@@ -64,8 +64,7 @@ validation, safe writes, and dry-run previews.
 | `clpx` | Claude-compatible API providers and default models, written into Claude global settings | `~/.claude/settings.json` and `~/.claude-provider` |
 
 The previous `codex-provider`/`opencode-provider`/`agy-provider`/`cursor-provider`/
-`claude-provider` names are deprecated: invoking them prints a rename notice and
-refuses to run. Use the short names above.
+`claude-provider` names were removed in v1.4.0. Use the short names above.
 
 The Codex, OpenCode, and Claude CLIs intentionally share command names and behavior for
 their common operations. Codex adds `official` plus focused `config set` and
@@ -101,15 +100,11 @@ Replace the second command with `opx status`, `apx status`, `cupx status`, or
 pipx install git+https://github.com/Fel1xKan/codex-provider.git
 ```
 
-This installs all ten commands (short and legacy names) in isolated Python
-packaging. Upgrade with:
+This installs all five commands in isolated Python packaging. Upgrade with:
 
 ```bash
-pipx upgrade opx
+pipx upgrade cpx
 ```
-
-The legacy entry points still exist so `pipx upgrade` keeps working, but they
-only print a rename notice. Prefer `cpx`, `opx`, `apx`, `cupx`, and `clpx`.
 
 ### Standalone binaries
 

@@ -56,6 +56,8 @@ OpenAI 兼容 API 提供商或多个 Antigravity 账号之间切换，手动编�
 | `cupx` | 存储在 Cursor SQLite 数据库中的账号与模型选择 | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` 与 `~/.cursor-provider` |
 | `clpx` | Claude 兼容 API 提供商与默认模型，写入 Claude 全局设置 | `~/.claude/settings.json` 与 `~/.claude-provider` |
 
+旧的长命令名（`codex-provider` 等）已在 v1.4.0 移除，请使用上面的短命令名。
+
 Codex、OpenCode 与 Claude CLI 的公共操作会保持命令名称和行为一致。Codex 额外提供 `official`、
 `config set` 和模型目录选项，OpenCode 额外提供 `models`，Antigravity 额外提供 `login`
 和 `usage`，Cursor 额外提供 `model`，用于各自特有的工作流。

@@ -24,15 +24,10 @@ dev = [
 ]
 
 [project.scripts]
-codex-provider = "cli.codex_provider:main"
 cpx = "cli.codex_provider:main"
-opencode-provider = "cli.opencode_provider:main"
 opx = "cli.opencode_provider:main"
-agy-provider = "cli.agy_provider:main"
 apx = "cli.agy_provider:main"
-cursor-provider = "cli.cursor_provider:main"
 cupx = "cli.cursor_provider:main"
-claude-provider = "cli.claude_provider:main"
 clpx = "cli.claude_provider:main"
 
 [tool.setuptools]

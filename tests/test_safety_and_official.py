@@ -705,7 +705,7 @@ def test_upgrade_check_reports_up_to_date(
 
     assert cp.main(["upgrade", "--check"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.3.0" in output
+    assert "current: 1.4.0" in output
     assert "latest:  1.1.0" in output
     assert "up to date" in output
 
@@ -717,13 +717,13 @@ def test_upgrade_dry_run_reports_newer_version(
     monkeypatch.setattr(
         self_upgrade,
         "fetch_latest_release",
-        lambda repo: _release_payload("v1.4.0"),
+        lambda repo: _release_payload("v1.5.0"),
     )
 
     assert cp.main(["upgrade", "--dry-run"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.3.0" in output
-    assert "latest:  1.4.0" in output
+    assert "current: 1.4.0" in output
+    assert "latest:  1.5.0" in output
     assert "would upgrade" in output
 
 
@@ -804,20 +804,18 @@ def test_build_upgrade_plan_selects_platform_asset(
     monkeypatch.setattr(self_upgrade, "_platform_key", lambda: "linux-x86_64")
     plan = self_upgrade.build_upgrade_plan(
         "Fel1xKan/codex-provider",
-        "codex-provider",
+        "cpx",
         "1.1.0",
-        _release_payload("v1.3.0"),
+        _release_payload("v1.5.0", program="cpx"),
     )
     assert plan.update_available
     expected_suffix = ".exe" if os.name == "nt" else ""
-    expected_name = (
-        f"codex-provider-1.3.0-{self_upgrade._platform_key()}{expected_suffix}"
-    )
+    expected_name = f"cpx-1.5.0-{self_upgrade._platform_key()}{expected_suffix}"
     assert plan.asset_name == expected_name
     assert plan.sha256_url.endswith(".sha256")
 
 
-def test_build_upgrade_plan_falls_back_to_legacy_asset(
+def test_build_upgrade_plan_falls_back_to_legacy_asset_when_present(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(self_upgrade, "_platform_key", lambda: "linux-x86_64")

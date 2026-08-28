@@ -47,31 +47,14 @@ jobs:
           else
             ext=""
           fi
-          for pair in "codex-provider cpx" "opencode-provider opx" "agy-provider apx" "cursor-provider cupx" "claude-provider clpx"; do
-            set -- $pair
-            long="$1"
-            short="$2"
-            src="dist/${long}${ext}"
-            dest="release/${long}-${version}-${platform}${ext}"
+          for name in cpx opx apx cupx clpx; do
+            src="dist/${name}${ext}"
+            dest="release/${name}-${version}-${platform}${ext}"
             cp "$src" "$dest"
             python - <<PY
           from pathlib import Path
           import hashlib
           path = Path(r"${dest}")
-          digest = hashlib.sha256(path.read_bytes()).hexdigest()
-          path.with_suffix(path.suffix + ".sha256").write_text(
-              f"{digest}  {path.name}\n", encoding="ascii"
-          )
-          print(path)
-          print(path.with_suffix(path.suffix + ".sha256"))
-          PY
-            short_src="dist/${short}${ext}"
-            short_dest="release/${short}-${version}-${platform}${ext}"
-            cp "$short_src" "$short_dest"
-            python - <<PY
-          from pathlib import Path
-          import hashlib
-          path = Path(r"${short_dest}")
           digest = hashlib.sha256(path.read_bytes()).hexdigest()
           path.with_suffix(path.suffix + ".sha256").write_text(
               f"{digest}  {path.name}\n", encoding="ascii"

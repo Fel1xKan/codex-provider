@@ -6,7 +6,7 @@ This repository contains five Python CLIs for managing Codex, OpenCode, Antigrav
 
 - `src/cli/`: CLI entrypoints (`codex_provider.py`, `opencode_provider.py`, `agy_provider.py`, `cursor_provider.py`, `claude_provider.py`).
 - `src/lib/`: modularized packages (`common/`, `codex/`, `opencode/`, `agy/`, `cursor/`, `claude/`).
-- `cpx`, `opx`, `apx`, `cupx`, `clpx` (plus legacy `codex-provider`, `opencode-provider`, `agy-provider`, `cursor-provider`, `claude-provider` guard launchers): shell launchers for the Python entrypoints.
+- `cpx`, `opx`, `apx`, `cupx`, `clpx`: shell launchers for the Python entrypoints.
 - `codex-provider-bin.spec`, `opencode-provider.spec`, `agy-provider.spec`, `cursor-provider.spec`, `claude-provider.spec`: PyInstaller specs for the standalone binaries.
 - `build/` and `dist/`: generated artifacts from packaging; treat them as outputs, not source.
 
@@ -14,7 +14,7 @@ Keep backend-specific code near its provider module under `src/lib/`. Put genuin
 
 ## Dual CLI API Consistency
 
-`codex-provider` and `opencode-provider` must expose a consistent API for every shared command. A change to a shared command must update both CLIs in the same change, even when the request mentions only one of them.
+`cpx` and `opx` must expose a consistent API for every shared command. A change to a shared command must update both CLIs in the same change, even when the request mentions only one of them.
 
 - Keep shared command names, aliases, positional arguments, options, defaults, validation rules, exit-code semantics, dry-run behavior, and user-facing result wording aligned.
 - Before completing a change to `list`, `status`, `auth`, `config`, `doctor`, `switch`, `test`, `ping`, `add`, `delete`, or `rename`, inspect and update the corresponding parser, dispatch path, implementation, documentation, and tests for both CLIs.
@@ -31,8 +31,8 @@ Run commands from the repository root:
 - `./cpx status` and `./opx status`: run the wrappers the same way end users do.
 - `./.venv/bin/python -m pytest -q`: run the complete test suite, including CLI parity checks.
 - `./.venv/bin/ruff check .`: run static checks.
-- `./.venv/bin/python -m PyInstaller --clean -y codex-provider-bin.spec` and the corresponding `opencode-provider.spec` command: rebuild both standalone binaries into `dist/`.
-- `./dist/codex-provider --help` and `./dist/opencode-provider --help`: confirm both packaged binaries start and expose the expected commands.
+- `./.venv/bin/python build.py --target codex` and `./.venv/bin/python build.py --target opencode`: rebuild both standalone binaries into `dist/`.
+- `./dist/cpx --help` and `./dist/opx --help`: confirm both packaged binaries start and expose the expected commands.
 
 In addition to the full suite, validate the exact commands touched by your change, especially `auth show`, `auth edit`, `config show`, `config edit`, `switch`, and `doctor` in both CLIs.
 
