@@ -301,7 +301,10 @@ def test_models_sync_adds_missing_ids_and_preserves_existing_config(
 
     data = json5.loads(config.read_text())
     assert data["provider"]["alpha"]["models"]["gpt-5"]["name"] == "GPT 5"
-    assert data["provider"]["alpha"]["models"]["gpt-5-new"] == {}
+    assert data["provider"]["alpha"]["models"]["gpt-5-new"]["variants"] == {
+        name: {"reasoningEffort": name}
+        for name in ("low", "medium", "high", "xhigh", "max")
+    }
 
 
 def test_models_sync_adds_first_model_to_empty_models_object(
@@ -323,7 +326,10 @@ def test_models_sync_adds_first_model_to_empty_models_object(
     assert op.main(["models", "sync", "alpha"]) == 0
 
     updated = json5.loads(config.read_text())
-    assert updated["provider"]["alpha"]["models"] == {"first-model": {}}
+    assert updated["provider"]["alpha"]["models"]["first-model"]["variants"] == {
+        name: {"reasoningEffort": name}
+        for name in ("low", "medium", "high", "xhigh", "max")
+    }
 
 
 def test_models_sync_sends_provider_user_agent(

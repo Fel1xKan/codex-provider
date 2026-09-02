@@ -15,6 +15,17 @@ from lib.opencode.store import (
     provider_models,
 )
 
+# OpenCode accepts provider-specific options in each model variant.  These
+# reasoning-effort names are useful for the OpenAI-compatible providers this
+# CLI manages, while keeping the config shape compatible with OpenCode's
+# built-in variant selector.
+DEFAULT_VARIANT_NAMES = ("low", "medium", "high", "xhigh", "max")
+
+
+def default_model_variants() -> dict[str, dict[str, str]]:
+    """Return fresh default variants for a newly discovered model."""
+    return {name: {"reasoningEffort": name} for name in DEFAULT_VARIANT_NAMES}
+
 
 def fetch_provider_models(
     base_url: str, api_key: str, anthropic: bool = False
@@ -54,7 +65,7 @@ def sync_provider_models(state: ConfigState, target: str, dry_run: bool) -> int:
         if m in existing_models and isinstance(existing_models[m], dict):
             model_objs[m] = existing_models[m]
         else:
-            model_objs[m] = {}
+            model_objs[m] = {"variants": default_model_variants()}
     updated = patch_provider_models(state.text, target, model_objs)
 
     if not dry_run:

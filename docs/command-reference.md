@@ -1,7 +1,7 @@
 # Command Reference
 
 This document covers `codex-provider`, `opencode-provider`, `agy-provider`,
-`cursor-provider`, and `claude-provider` version 1.0.0. Run `<command> --help`
+`cursor-provider`, and `claude-provider` version 1.4.1. Run `<command> --help`
 in your installed version for the exact parser surface.
 
 ## Command Matrix
@@ -299,7 +299,10 @@ opx models sync --all
 `models list` fetches IDs from the OpenAI-compatible
 `options.baseURL/models` endpoint without changing config. `models sync` adds
 new IDs to `provider.<id>.models`, retains existing model metadata, and never
-removes models.
+removes models. Newly discovered models receive default `variants` named
+`low`, `medium`, `high`, `xhigh`, and `max`; each variant sets the matching
+`reasoningEffort` value. Existing model entries and custom variants are left
+unchanged.
 
 Credentials are read from `options.apiKey` or OpenCode's auth store. API keys
 are never printed. With `--all`, synchronization continues through every
