@@ -332,6 +332,37 @@ def test_models_sync_adds_first_model_to_empty_models_object(
     }
 
 
+def test_models_sync_force_refreshes_variants_preserving_metadata(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write_config(opencode_paths)
+    data = json.loads(config.read_text())
+    data["provider"]["alpha"]["models"]["gpt-5"] = {
+        "name": "GPT 5 custom",
+        "options": {"temperature": 0.2},
+        "variants": {"custom": {"reasoningEffort": "high"}},
+    }
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        op.urllib.request,
+        "urlopen",
+        lambda request, timeout: ModelsResponse(
+            json.dumps({"data": [{"id": "gpt-5"}]}).encode()
+        ),
+    )
+
+    assert op.main(["models", "sync", "alpha", "--force"]) == 0
+
+    updated = json5.loads(config.read_text())
+    model = updated["provider"]["alpha"]["models"]["gpt-5"]
+    assert model["name"] == "GPT 5 custom"
+    assert model["options"] == {"temperature": 0.2}
+    assert model["variants"] == {
+        name: {"reasoningEffort": name}
+        for name in ("low", "medium", "high", "xhigh", "max")
+    }
+
+
 def test_models_sync_sends_provider_user_agent(
     opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

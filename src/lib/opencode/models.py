@@ -43,13 +43,20 @@ def add_models_parser(subparsers: Any) -> None:
     sync_p.add_argument("provider", nargs="?", help="Provider name")
     sync_p.add_argument("--dry-run", action="store_true", help="Perform a dry run")
     sync_p.add_argument(
+        "--force",
+        action="store_true",
+        help="Refresh default variants for every synced model",
+    )
+    sync_p.add_argument(
         "--all",
         action="store_true",
         help="Sync models for every configured provider",
     )
 
 
-def sync_provider_models(state: ConfigState, target: str, dry_run: bool) -> int:
+def sync_provider_models(
+    state: ConfigState, target: str, dry_run: bool, force: bool = False
+) -> int:
     config = state.providers[target]
     options = config.get("options", {})
     base_url = options.get("baseURL") if isinstance(options, dict) else None
@@ -63,7 +70,9 @@ def sync_provider_models(state: ConfigState, target: str, dry_run: bool) -> int:
     model_objs: dict[str, dict[str, Any]] = {}
     for m in models_list:
         if m in existing_models and isinstance(existing_models[m], dict):
-            model_objs[m] = existing_models[m]
+            model_objs[m] = dict(existing_models[m])
+            if force:
+                model_objs[m]["variants"] = default_model_variants()
         else:
             model_objs[m] = {"variants": default_model_variants()}
     updated = patch_provider_models(state.text, target, model_objs)
@@ -76,11 +85,11 @@ def sync_provider_models(state: ConfigState, target: str, dry_run: bool) -> int:
     return 0
 
 
-def sync_all_models(state: ConfigState, dry_run: bool) -> int:
+def sync_all_models(state: ConfigState, dry_run: bool, force: bool = False) -> int:
     failures = 0
     for target in sorted(state.providers):
         try:
-            sync_provider_models(load_state(), target, dry_run)
+            sync_provider_models(load_state(), target, dry_run, force)
         except SwitchError as exc:
             print(f"error: {exc}", file=sys.stderr)
             failures += 1
@@ -92,12 +101,13 @@ def models_command(
     provider: str | None,
     dry_run: bool = False,
     all_providers: bool = False,
+    force: bool = False,
 ) -> int:
     state = load_state()
     if command == "sync" and all_providers:
         if provider is not None:
             raise SwitchError("--all cannot be combined with a provider")
-        return sync_all_models(state, dry_run)
+        return sync_all_models(state, dry_run, force)
     target = provider or state.current_provider
     if not target:
         raise SwitchError("no current provider; pass a provider name")
@@ -122,6 +132,6 @@ def models_command(
         return 0
 
     if command == "sync":
-        return sync_provider_models(state, target, dry_run)
+        return sync_provider_models(state, target, dry_run, force)
 
     return 0

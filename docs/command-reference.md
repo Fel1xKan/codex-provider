@@ -1,7 +1,7 @@
 # Command Reference
 
 This document covers `codex-provider`, `opencode-provider`, `agy-provider`,
-`cursor-provider`, and `claude-provider` version 1.4.1. Run `<command> --help`
+`cursor-provider`, and `claude-provider` version 1.4.2. Run `<command> --help`
 in your installed version for the exact parser surface.
 
 ## Command Matrix
@@ -303,6 +303,10 @@ removes models. Newly discovered models receive default `variants` named
 `low`, `medium`, `high`, `xhigh`, and `max`; each variant sets the matching
 `reasoningEffort` value. Existing model entries and custom variants are left
 unchanged.
+
+Pass `--force` to refresh the five default variants for every synchronized
+model. Other model metadata is preserved; custom variants are replaced by the
+default set when `--force` is used.
 
 Credentials are read from `options.apiKey` or OpenCode's auth store. API keys
 are never printed. With `--all`, synchronization continues through every

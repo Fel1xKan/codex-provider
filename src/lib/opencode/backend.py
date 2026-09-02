@@ -85,6 +85,11 @@ class OpenCodeBackend(BaseBackend):
                             action="store_true",
                             help="Sync models for every configured provider",
                         ),
+                        ArgSpec(
+                            ("--force",),
+                            action="store_true",
+                            help="Refresh default variants for every synced model",
+                        ),
                     ),
                 ),
             ),
@@ -96,6 +101,7 @@ class OpenCodeBackend(BaseBackend):
             args.provider,
             getattr(args, "dry_run", False),
             getattr(args, "all", False),
+            getattr(args, "force", False),
         ),
     }
 
@@ -230,8 +236,9 @@ class OpenCodeBackend(BaseBackend):
         provider: str | None,
         dry_run: bool,
         all_providers: bool,
+        force: bool = False,
     ) -> int:
-        return models_command(command, provider, dry_run, all_providers)
+        return models_command(command, provider, dry_run, all_providers, force)
 
 
 BACKEND = OpenCodeBackend()
