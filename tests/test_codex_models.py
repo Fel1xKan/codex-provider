@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -77,7 +78,10 @@ def test_models_sync_creates_catalog_and_pointer(
     state = cp.ensure_provider_state(read_only=True)
     assert MODEL_CATALOG_FIELD in state.providers["alpha"]
     runtime = (codex_paths["codex_dir"] / "config.toml").read_text(encoding="utf-8")
-    assert "catalogs/alpha.json" in runtime
+    runtime_data = tomllib.loads(runtime)
+    catalog_path = Path(runtime_data.get("model_catalog_json", ""))
+    assert catalog_path.name == "alpha.json"
+    assert catalog_path.parent.name == "catalogs"
 
 
 def test_models_sync_preserves_existing_metadata(
