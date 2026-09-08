@@ -45,7 +45,8 @@ validation, safe writes, and dry-run previews.
 - **Isolate the official Codex login** - snapshot it as a provider and remove managed API-provider entries when switching back.
 - **Keep secrets out of terminal output** - inspect authentication metadata and redacted configuration without printing credential values.
 - **Verify the entire path** - probe `/models` endpoints or run a minimal command through Codex, OpenCode, or Antigravity.
-- **Manage OpenCode models** - discover remote model IDs, sync new models without deleting metadata, and choose a model while switching.
+- **Manage Codex models** - discover remote model IDs into per-provider catalog files and set the default model independently of the endpoint.
+- **Manage OpenCode models** - discover remote model IDs, sync new models without deleting metadata, and set the default model independently of switching.
 - **Manage Claude providers and models** - snapshot a local gateway or official endpoint from `settings.json`, sync provider model lists, and switch the default model independently of the endpoint.
 - **Manage Antigravity accounts** - log in, import account snapshots, switch accounts, and inspect 5-hour and weekly quota remaining.
 - **Manage Cursor accounts and models** - snapshot signed-in Cursor accounts, swap auth rows in the Cursor SQLite database, and switch models across every Composer surface.
@@ -67,9 +68,9 @@ The previous `codex-provider`/`opencode-provider`/`agy-provider`/`cursor-provide
 `claude-provider` names were removed in v1.4.0. Use the short names above.
 
 The Codex, OpenCode, and Claude CLIs intentionally share command names and behavior for
-their common operations. Codex adds `official` plus focused `config set` and
-catalog options; OpenCode adds `models`; Antigravity adds `login` and `usage`;
-Cursor adds `model` because those workflows are backend-specific.
+their common operations. Codex adds `official` plus focused `config set`,
+catalog options, and `models`; OpenCode adds `models`; Antigravity adds `login`
+and `usage`; Cursor adds `model` because those workflows are backend-specific.
 
 ## When to Use
 
@@ -155,8 +156,12 @@ appear first. `doctor` checks stored configuration and authentication, while
 ### Use backend-specific capabilities
 
 ```bash
+cpx models list my-provider
+cpx models sync my-provider --dry-run
+cpx models set my-model my-provider
 opx models list my-provider
 opx models sync my-provider --dry-run
+opx models set my-model my-provider
 apx login work-account
 apx usage work-account
 cupx add work --from-current
@@ -166,9 +171,14 @@ cupx models sync deepseek
 cupx models set deepseek-v4-flash
 ```
 
-`models sync` replaces `provider.<id>.models` with the provider's current
-model IDs, keeping metadata for IDs that still exist and dropping IDs the
-provider no longer returns; use `--all` to sync every configured provider.
+Codex `models sync` merges the provider's current `/models` IDs into its
+catalog file (existing entries keep their metadata, new IDs get a minimal
+entry, removed remote IDs are retained); unpointed providers get a new
+`~/.codex-provider/catalogs/<provider>.json` and pointer automatically, and
+`models set` writes the top-level `model` in `~/.codex/config.toml`. OpenCode
+`models sync` adds new IDs to `provider.<id>.models` with the same
+merge-and-retain semantics, and `models set` writes the top-level `model` as
+`provider/model`; use `--all` to sync every configured provider.
 Anthropic-compatible providers (`npm` is `@ai-sdk/anthropic`) are queried with
 Anthropic headers. Antigravity `usage` reports 5-hour and weekly quota without
 switching accounts.

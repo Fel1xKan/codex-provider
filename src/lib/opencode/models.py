@@ -4,10 +4,11 @@ import sys
 from typing import Any
 
 import lib.opencode.admin as adm
+from lib.common.common_store import FileChange, apply_changes
 from lib.common.errors import SwitchError
 from lib.common.network import WireProtocol
 from lib.common.network import fetch_provider_models as fetch_models
-from lib.opencode.patch import patch_provider_models
+from lib.opencode.patch import patch_default_model, patch_provider_models
 from lib.opencode.store import (
     ConfigState,
     load_auth_keys,
@@ -54,6 +55,123 @@ def add_models_parser(subparsers: Any) -> None:
     )
 
 
+VALID_UPDATE_FIELDS = ("name", "limit", "options", "variants")
+
+
+def _parse_field_value(field: str, raw: str) -> Any:
+    if field == "name":
+        return raw
+    if not raw.strip():
+        return {}
+    if field in ("limit", "options", "variants"):
+        import json
+
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise SwitchError(f"invalid JSON for --set {field}: {exc}") from exc
+        if not isinstance(value, dict):
+            raise SwitchError(f"--set {field} must be a JSON object")
+        return value
+    return raw
+
+
+def parse_update_sets(values: list[str] | None) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+    for item in values or []:
+        field, sep, raw = item.partition("=")
+        if not sep or not field:
+            raise SwitchError(f"invalid --set value {item!r}; expected FIELD=VALUE")
+        if field not in VALID_UPDATE_FIELDS:
+            raise SwitchError(
+                f"unknown field '{field}'; available: " + ", ".join(VALID_UPDATE_FIELDS)
+            )
+        if field in updates:
+            raise SwitchError(f"duplicate --set field '{field}'")
+        updates[field] = _parse_field_value(field, raw)
+    return updates
+
+
+def update_provider_model(
+    provider: str | None,
+    model: str,
+    updates: dict[str, Any],
+    dry_run: bool = False,
+) -> int:
+    if not model or not model.strip():
+        raise SwitchError("model must not be empty")
+    model = model.strip()
+    if "/" in model:
+        requested_provider, _, requested_model = model.partition("/")
+        state = load_state()
+        target = provider or state.current_provider
+        if requested_provider != target:
+            raise SwitchError(
+                f"model provider '{requested_provider}' does not match "
+                f"target '{target}'"
+            )
+        model = requested_model
+        if not model:
+            raise SwitchError("model must not be empty")
+    if not updates:
+        raise SwitchError("nothing to update; pass --set FIELD=VALUE")
+    state = load_state()
+    target = provider or state.current_provider
+    if not target:
+        raise SwitchError("no current provider; pass a provider name")
+    if target not in state.providers:
+        raise SwitchError(f"unknown provider '{target}'")
+    models = provider_models(state, target)
+    if model not in models:
+        raise SwitchError(
+            f"unknown model '{target}/{model}', available: " + ", ".join(sorted(models))
+        )
+    entry = dict(models[model])
+    changes: list[str] = []
+    for field, value in updates.items():
+        if field == "name":
+            name = value.strip()
+            if not name:
+                if "name" in entry:
+                    del entry["name"]
+                    changes.append("remove name")
+                else:
+                    changes.append("name remains unset")
+            else:
+                entry["name"] = name
+                changes.append(f"name = {name}")
+        elif field == "variants":
+            if value:
+                entry["variants"] = value
+                changes.append(f"variants = {sorted(value)}")
+            elif "variants" in entry:
+                del entry["variants"]
+                changes.append("remove variants")
+            else:
+                changes.append("variants remains unset")
+        else:
+            import json
+
+            if value:
+                entry[field] = value
+                changes.append(f"{field} = {json.dumps(value, ensure_ascii=False)}")
+            elif field in entry:
+                del entry[field]
+                changes.append(f"remove {field}")
+            else:
+                changes.append(f"{field} remains unset")
+    model_objs = {name: dict(cfg) for name, cfg in models.items()}
+    model_objs[model] = entry
+    updated = patch_provider_models(state.text, target, model_objs)
+    if not dry_run:
+        adm.atomic_write_config(state.path, state.text, updated)
+    action = "would update" if dry_run else "updated"
+    print(f"{action} model: {target}/{model}")
+    for change in changes:
+        print(f"- {change}")
+    return 0
+
+
 def sync_provider_models(
     state: ConfigState, target: str, dry_run: bool, force: bool = False
 ) -> int:
@@ -96,18 +214,76 @@ def sync_all_models(state: ConfigState, dry_run: bool, force: bool = False) -> i
     return 0 if failures == 0 else 1
 
 
+def set_provider_model(provider: str | None, model: str, dry_run: bool = False) -> int:
+    from lib.common.recent import record_recent_provider
+    from lib.opencode.store import recent_path
+
+    if not model or not model.strip():
+        raise SwitchError("model must not be empty")
+    model = model.strip()
+    state = load_state()
+    target = provider or state.current_provider
+    if not target:
+        raise SwitchError("no current provider; pass a provider name")
+    if target not in state.providers:
+        raise SwitchError(f"unknown provider '{target}'")
+    if "/" in model:
+        requested_provider, _, requested_model = model.partition("/")
+        if requested_provider != target:
+            raise SwitchError(
+                f"model provider '{requested_provider}' does not match "
+                f"target '{target}'"
+            )
+        model = requested_model
+        if not model:
+            raise SwitchError("model must not be empty")
+    models = provider_models(state, target)
+    if not models:
+        raise SwitchError(
+            f"provider '{target}' has no configured models; run "
+            f"opx models sync {target}"
+        )
+    if model not in models:
+        raise SwitchError(
+            f"unknown model '{target}/{model}', available: " + ", ".join(sorted(models))
+        )
+    desired = f"{target}/{model}"
+    if state.data.get("model") == desired:
+        print(f"already using default model: {desired}")
+        return 0
+    updated = patch_default_model(state.text, desired)
+    if not dry_run:
+        apply_changes([FileChange(state.path, updated.encode("utf-8"))])
+        record_recent_provider(recent_path(), target)
+    action = "would set" if dry_run else "set"
+    print(f"{action} model: {desired}")
+    return 0
+
+
 def models_command(
     command: str,
     provider: str | None,
+    model: str | None = None,
     dry_run: bool = False,
     all_providers: bool = False,
     force: bool = False,
+    update_sets: list[str] | None = None,
 ) -> int:
     state = load_state()
     if command == "sync" and all_providers:
         if provider is not None:
             raise SwitchError("--all cannot be combined with a provider")
         return sync_all_models(state, dry_run, force)
+    if command == "set":
+        if not model:
+            raise SwitchError("models set requires a model ID")
+        return set_provider_model(provider, model, dry_run)
+    if command == "update":
+        if not model:
+            raise SwitchError("models update requires a model ID")
+        return update_provider_model(
+            provider, model, parse_update_sets(update_sets), dry_run
+        )
     target = provider or state.current_provider
     if not target:
         raise SwitchError("no current provider; pass a provider name")

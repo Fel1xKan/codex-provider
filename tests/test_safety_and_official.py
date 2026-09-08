@@ -705,7 +705,7 @@ def test_upgrade_check_reports_up_to_date(
 
     assert cp.main(["upgrade", "--check"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.4.2" in output
+    assert "current: 1.5.0" in output
     assert "latest:  1.1.0" in output
     assert "up to date" in output
 
@@ -717,13 +717,13 @@ def test_upgrade_dry_run_reports_newer_version(
     monkeypatch.setattr(
         self_upgrade,
         "fetch_latest_release",
-        lambda repo: _release_payload("v1.5.0"),
+        lambda repo: _release_payload("v1.6.0"),
     )
 
     assert cp.main(["upgrade", "--dry-run"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.4.2" in output
-    assert "latest:  1.5.0" in output
+    assert "current: 1.5.0" in output
+    assert "latest:  1.6.0" in output
     assert "would upgrade" in output
 
 

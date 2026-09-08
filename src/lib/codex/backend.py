@@ -14,6 +14,7 @@ from lib.codex.doctor import (
 from lib.codex.doctor import (
     run_codex_ping as default_run_codex_ping,
 )
+from lib.codex.models import models_command
 from lib.codex.switch import switch_provider
 from lib.common.backend import BaseBackend, TestTarget
 from lib.common.cli import (
@@ -152,6 +153,80 @@ class CodexBackend(BaseBackend):
     }
     extra_commands = (
         CommandSpec(
+            "models",
+            handler="models",
+            summary="Manage provider models",
+            subcommands=(
+                SubcommandSpec(
+                    "list",
+                    dest="models_command",
+                    help="List models in the provider catalog",
+                    args=(
+                        ArgSpec(
+                            ("provider",),
+                            nargs="?",
+                            help="Provider name",
+                        ),
+                    ),
+                ),
+                SubcommandSpec(
+                    "sync",
+                    dest="models_command",
+                    help="Sync models from provider API into the catalog",
+                    args=(
+                        ArgSpec(
+                            ("provider",),
+                            nargs="?",
+                            help="Provider name",
+                        ),
+                        DRY_RUN,
+                        ArgSpec(
+                            ("--all",),
+                            action="store_true",
+                            help="Sync models for every configured provider",
+                        ),
+                    ),
+                ),
+                SubcommandSpec(
+                    "set",
+                    dest="models_command",
+                    help="Set the default model for a provider",
+                    args=(
+                        ArgSpec(("model",), help="Model ID"),
+                        ArgSpec(
+                            ("provider",),
+                            nargs="?",
+                            help="Provider name",
+                        ),
+                        DRY_RUN,
+                    ),
+                ),
+                SubcommandSpec(
+                    "update",
+                    dest="models_command",
+                    help="Update stored fields for a catalog model",
+                    args=(
+                        ArgSpec(("model",), help="Model ID"),
+                        ArgSpec(
+                            ("provider",),
+                            nargs="?",
+                            help="Provider name",
+                        ),
+                        ArgSpec(
+                            ("--set",),
+                            action="append",
+                            metavar="FIELD=VALUE",
+                            help=(
+                                "Set a catalog field; repeatable "
+                                "(display_name, context_window, variants, ...)"
+                            ),
+                        ),
+                        DRY_RUN,
+                    ),
+                ),
+            ),
+        ),
+        CommandSpec(
             "official",
             handler="official",
             summary="Manage the official Codex login provider",
@@ -179,6 +254,14 @@ class CodexBackend(BaseBackend):
         ),
     )
     extra_handlers = {
+        "models": lambda args: models_command(
+            args.models_command,
+            args.provider,
+            getattr(args, "model", None),
+            getattr(args, "dry_run", False),
+            getattr(args, "all", False),
+            getattr(args, "set", None),
+        ),
         "official": lambda args: edit.add_official_provider(
             args.provider, args.display_name, args.dry_run
         ),

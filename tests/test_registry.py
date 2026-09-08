@@ -43,7 +43,7 @@ def test_capability_commands_only_on_declaring_backends() -> None:
     cursor_commands = set(parser_commands(cursor.build_parser()))
     claude_commands = set(parser_commands(claude.build_parser()))
 
-    assert "models" not in codex_commands
+    assert "models" in codex_commands
     assert "models" not in agy_commands
     assert "models" in opencode_commands
     assert "usage" not in codex_commands

@@ -196,6 +196,28 @@ class ClaudeBackend(BaseBackend):
                         ),
                     ),
                 ),
+                SubcommandSpec(
+                    "update",
+                    dest="models_command",
+                    help="Update stored fields for a synced model",
+                    args=(
+                        ArgSpec(("model",), help="Model ID"),
+                        ArgSpec(("provider",), nargs="?", help="Provider name"),
+                        ArgSpec(
+                            ("--set",),
+                            action="append",
+                            metavar="FIELD=VALUE",
+                            help=(
+                                "Set a model field (name, limit, options); repeatable"
+                            ),
+                        ),
+                        ArgSpec(
+                            ("--dry-run",),
+                            action="store_true",
+                            help="Preview changes without writing files",
+                        ),
+                    ),
+                ),
             ),
         ),
     )
@@ -207,6 +229,7 @@ class ClaudeBackend(BaseBackend):
             getattr(args, "dry_run", False),
             getattr(args, "all", False),
             getattr(args, "remote", False),
+            getattr(args, "set", None),
         ),
     }
 

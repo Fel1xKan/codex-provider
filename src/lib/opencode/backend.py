@@ -92,6 +92,43 @@ class OpenCodeBackend(BaseBackend):
                         ),
                     ),
                 ),
+                SubcommandSpec(
+                    "set",
+                    dest="models_command",
+                    help="Set the default model for a provider",
+                    args=(
+                        ArgSpec(("model",), help="Model ID"),
+                        ArgSpec(("provider",), nargs="?", help="Provider name"),
+                        ArgSpec(
+                            ("--dry-run",),
+                            action="store_true",
+                            help="Perform a dry run",
+                        ),
+                    ),
+                ),
+                SubcommandSpec(
+                    "update",
+                    dest="models_command",
+                    help="Update stored fields for a synced model",
+                    args=(
+                        ArgSpec(("model",), help="Model ID"),
+                        ArgSpec(("provider",), nargs="?", help="Provider name"),
+                        ArgSpec(
+                            ("--set",),
+                            action="append",
+                            metavar="FIELD=VALUE",
+                            help=(
+                                "Set a model field (name, limit, options, "
+                                "variants); repeatable"
+                            ),
+                        ),
+                        ArgSpec(
+                            ("--dry-run",),
+                            action="store_true",
+                            help="Perform a dry run",
+                        ),
+                    ),
+                ),
             ),
         ),
     )
@@ -99,9 +136,11 @@ class OpenCodeBackend(BaseBackend):
         "models": lambda args: models_command(
             args.models_command,
             args.provider,
+            getattr(args, "model", None),
             getattr(args, "dry_run", False),
             getattr(args, "all", False),
             getattr(args, "force", False),
+            getattr(args, "set", None),
         ),
     }
 
@@ -234,11 +273,15 @@ class OpenCodeBackend(BaseBackend):
         self,
         command: str,
         provider: str | None,
-        dry_run: bool,
-        all_providers: bool,
+        model: str | None = None,
+        dry_run: bool = False,
+        all_providers: bool = False,
         force: bool = False,
+        update_sets: list[str] | None = None,
     ) -> int:
-        return models_command(command, provider, dry_run, all_providers, force)
+        return models_command(
+            command, provider, model, dry_run, all_providers, force, update_sets
+        )
 
 
 BACKEND = OpenCodeBackend()

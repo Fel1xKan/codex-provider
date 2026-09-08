@@ -1100,3 +1100,158 @@ def test_opencode_export_and_import(
     assert "* alpha" in status_out
     assert "beta" in status_out
     assert "default provider: alpha" in status_out
+
+
+def test_models_set_updates_default_model(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(opencode_paths)
+
+    assert op.main(["models", "set", "model-b", "beta"]) == 0
+    assert json.loads(config.read_text())["model"] == "beta/model-b"
+    assert "set model: beta/model-b" in capsys.readouterr().out
+
+
+def test_models_set_accepts_provider_prefixed_id(
+    opencode_paths: Path,
+) -> None:
+    config = write_config(opencode_paths)
+
+    assert op.main(["models", "set", "beta/model-a", "beta"]) == 0
+    assert json.loads(config.read_text())["model"] == "beta/model-a"
+
+
+def test_models_set_rejects_unknown_model(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(opencode_paths)
+    before = config.read_bytes()
+
+    assert op.main(["models", "set", "nope", "beta"]) == 1
+    assert config.read_bytes() == before
+    assert "unknown model 'beta/nope'" in capsys.readouterr().err
+
+
+def test_models_set_rejects_mismatched_provider_prefix(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_config(opencode_paths)
+
+    assert op.main(["models", "set", "alpha/gpt-5", "beta"]) == 1
+    assert "does not match target 'beta'" in capsys.readouterr().err
+
+
+def test_models_set_requires_synced_models(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(opencode_paths)
+    data = json.loads(config.read_text())
+    data["provider"]["empty"] = {"models": {}}
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    assert op.main(["models", "set", "anything", "empty"]) == 1
+    assert "has no configured models" in capsys.readouterr().err
+
+
+def test_models_set_dry_run_does_not_write(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(opencode_paths)
+    before = config.read_bytes()
+
+    assert op.main(["models", "set", "model-a", "beta", "--dry-run"]) == 0
+    assert config.read_bytes() == before
+    assert "would set model: beta/model-a" in capsys.readouterr().out
+
+
+def test_models_update_sets_name_limit_options(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(opencode_paths)
+
+    assert (
+        op.main(
+            [
+                "models",
+                "update",
+                "model-a",
+                "beta",
+                "--set",
+                "name=Model A+",
+                "--set",
+                'limit={"context": 200000, "output": 16000}',
+                "--set",
+                'options={"temperature": 0.2}',
+            ]
+        )
+        == 0
+    )
+    entry = json5.loads(config.read_text())["provider"]["beta"]["models"]["model-a"]
+    assert entry["name"] == "Model A+"
+    assert entry["limit"] == {"context": 200000, "output": 16000}
+    assert entry["options"] == {"temperature": 0.2}
+    assert "updated model: beta/model-a" in capsys.readouterr().out
+
+
+def test_models_update_replaces_variants_with_json(
+    opencode_paths: Path,
+) -> None:
+    config = write_config(opencode_paths)
+
+    assert (
+        op.main(
+            [
+                "models",
+                "update",
+                "model-a",
+                "beta",
+                "--set",
+                'variants={"low": {"reasoningEffort": "low"}}',
+            ]
+        )
+        == 0
+    )
+    entry = json5.loads(config.read_text())["provider"]["beta"]["models"]["model-a"]
+    assert entry["variants"] == {"low": {"reasoningEffort": "low"}}
+
+
+def test_models_update_rejects_unknown_field(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_config(opencode_paths)
+
+    assert op.main(["models", "update", "model-a", "beta", "--set", "nope=1"]) == 1
+    assert "unknown field 'nope'" in capsys.readouterr().err
+
+
+def test_models_update_rejects_unknown_model(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_config(opencode_paths)
+
+    assert op.main(["models", "update", "ghost", "beta", "--set", "name=X"]) == 1
+    assert "unknown model 'beta/ghost'" in capsys.readouterr().err
+
+
+def test_models_update_dry_run_does_not_write(
+    opencode_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(opencode_paths)
+    before = config.read_bytes()
+
+    assert (
+        op.main(["models", "update", "model-a", "beta", "--set", "name=X", "--dry-run"])
+        == 0
+    )
+    assert config.read_bytes() == before
+    assert "would update model: beta/model-a" in capsys.readouterr().out
+
+
+def test_models_update_empty_name_clears_field(
+    opencode_paths: Path,
+) -> None:
+    config = write_config(opencode_paths)
+
+    assert op.main(["models", "update", "model-a", "beta", "--set", "name="]) == 0
+    entry = json5.loads(config.read_text())["provider"]["beta"]["models"]["model-a"]
+    assert "name" not in entry

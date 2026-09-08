@@ -21,6 +21,7 @@ def claude_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, P
     monkeypatch.setattr(cp, "AUTH_STORE_DIR", tool_home / "auth")
     monkeypatch.setattr(cp, "RECENT_PATH", tool_home / "recent.json")
     monkeypatch.setattr(cp, "DEFAULT_SETTINGS_PATH", settings_file)
+    monkeypatch.setattr(cp, "MODELS_DIR", tool_home / "models")
     return {
         "tool_home": tool_home,
         "settings": settings_file,
@@ -402,3 +403,189 @@ def test_models_set_updates_env_and_settings(
     assert data["env"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "model-b"
     state = cl_st.load_provider_state()
     assert state.providers["alpha"]["model"] == "model-b"
+
+
+def _write_models_file(claude_paths: dict[str, Path], models: list) -> None:
+    models_path = claude_paths["tool_home"] / "models" / "alpha.json"
+    models_path.parent.mkdir(parents=True, exist_ok=True)
+    models_path.write_text(
+        json.dumps({"provider": "alpha", "models": models}),
+        encoding="utf-8",
+    )
+
+
+def test_models_sync_preserves_update_fields(
+    claude_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _add_provider(
+        claude_paths,
+        monkeypatch,
+        name="alpha",
+        base_url="https://alpha.example.com/v1",
+        key="placeholder-alpha-key",
+    )
+    _write_models_file(
+        claude_paths,
+        [{"id": "model-a", "name": "Model A", "limit": {"context": 1}}],
+    )
+    import lib.claude.models as cl_models
+
+    monkeypatch.setattr(
+        cl_models,
+        "fetch_provider_models",
+        lambda base_url, api_key, protocol, models_url_override=None: [
+            "model-a",
+            "model-b",
+        ],
+    )
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    data = json.loads(
+        (claude_paths["tool_home"] / "models" / "alpha.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    by_id = {
+        item["id"] if isinstance(item, dict) else item: item for item in data["models"]
+    }
+    assert by_id["model-a"] == {
+        "id": "model-a",
+        "name": "Model A",
+        "limit": {"context": 1},
+    }
+    assert by_id["model-b"] == "model-b"
+
+
+def test_models_update_sets_name_limit_options(
+    claude_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _add_provider(
+        claude_paths,
+        monkeypatch,
+        name="alpha",
+        base_url="https://alpha.example.com/v1",
+        key="placeholder-alpha-key",
+    )
+    _write_models_file(claude_paths, ["model-a", "model-b"])
+
+    assert (
+        cp.main(
+            [
+                "models",
+                "update",
+                "model-a",
+                "alpha",
+                "--set",
+                "name=Model A+",
+                "--set",
+                'limit={"context": 200000, "output": 16000}',
+                "--set",
+                'options={"temperature": 0.2}',
+            ]
+        )
+        == 0
+    )
+    data = json.loads(
+        (claude_paths["tool_home"] / "models" / "alpha.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    by_id = {
+        item["id"] if isinstance(item, dict) else item: item for item in data["models"]
+    }
+    assert by_id["model-a"] == {
+        "id": "model-a",
+        "name": "Model A+",
+        "limit": {"context": 200000, "output": 16000},
+        "options": {"temperature": 0.2},
+    }
+    assert by_id["model-b"] == "model-b"
+    assert "updated model: alpha/model-a" in capsys.readouterr().out
+
+
+def test_models_update_rejects_unknown_field(
+    claude_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _add_provider(
+        claude_paths,
+        monkeypatch,
+        name="alpha",
+        base_url="https://alpha.example.com/v1",
+        key="placeholder-alpha-key",
+    )
+    _write_models_file(claude_paths, ["model-a"])
+
+    assert cp.main(["models", "update", "model-a", "alpha", "--set", "nope=1"]) == 1
+    assert "unknown field 'nope'" in capsys.readouterr().err
+
+
+def test_models_update_rejects_unknown_model(
+    claude_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _add_provider(
+        claude_paths,
+        monkeypatch,
+        name="alpha",
+        base_url="https://alpha.example.com/v1",
+        key="placeholder-alpha-key",
+    )
+    _write_models_file(claude_paths, ["model-a"])
+
+    assert cp.main(["models", "update", "ghost", "alpha", "--set", "name=X"]) == 1
+    assert "unknown model 'ghost'" in capsys.readouterr().err
+
+
+def test_models_update_dry_run_writes_nothing(
+    claude_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _add_provider(
+        claude_paths,
+        monkeypatch,
+        name="alpha",
+        base_url="https://alpha.example.com/v1",
+        key="placeholder-alpha-key",
+    )
+    _write_models_file(claude_paths, ["model-a"])
+    models_file = claude_paths["tool_home"] / "models" / "alpha.json"
+    before = models_file.read_bytes()
+
+    assert (
+        cp.main(
+            ["models", "update", "model-a", "alpha", "--set", "name=X", "--dry-run"]
+        )
+        == 0
+    )
+    assert models_file.read_bytes() == before
+    assert "would update model: alpha/model-a" in capsys.readouterr().out
+
+
+def test_models_update_empty_name_clears_field(
+    claude_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _add_provider(
+        claude_paths,
+        monkeypatch,
+        name="alpha",
+        base_url="https://alpha.example.com/v1",
+        key="placeholder-alpha-key",
+    )
+    _write_models_file(claude_paths, [{"id": "model-a", "name": "Model A"}])
+
+    assert cp.main(["models", "update", "model-a", "alpha", "--set", "name="]) == 0
+    data = json.loads(
+        (claude_paths["tool_home"] / "models" / "alpha.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert data["models"] == ["model-a"]

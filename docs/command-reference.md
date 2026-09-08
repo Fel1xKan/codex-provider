@@ -1,7 +1,7 @@
 # Command Reference
 
 This document covers `codex-provider`, `opencode-provider`, `agy-provider`,
-`cursor-provider`, and `claude-provider` version 1.4.2. Run `<command> --help`
+`cursor-provider`, and `claude-provider` version 1.5.0. Run `<command> --help`
 in your installed version for the exact parser surface.
 
 ## Command Matrix
@@ -21,7 +21,9 @@ in your installed version for the exact parser surface.
 | `rename [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Rename a provider or account |
 | `export` / `import` | Yes | Yes | Yes | Yes | Yes | Back up or restore configuration and auth |
 | `upgrade [--check] [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Update the binary from the latest GitHub release |
-| `models list` / `models sync` | No | Yes | No | No | Yes | Discover and synchronize OpenCode/Claude models |
+| `models list` / `models sync` | Yes | Yes | No | No | Yes | Discover and synchronize Codex/OpenCode/Claude models |
+| `models set` | Yes | Yes | No | No | Yes | Set the default model for a provider |
+| `models update` | Yes | Yes | No | No | Yes | Update stored fields for a synced model |
 | `models list` / `models set` | No | No | No | Yes | No | List or switch the Cursor model selection |
 | `models sync` | No | No | No | Yes | No | Import models from a custom Cursor provider |
 | `official add` | Yes | No | No | No | No | Save the current Codex login as a switchable official provider |
@@ -117,15 +119,20 @@ clpx models sync --all
 clpx models list cistern
 clpx models list cistern --remote
 clpx models set claude-sonnet-5 cistern
+clpx models update claude-sonnet-5 cistern --set name="Sonnet 5" --set limit='{"context": 200000}'
 ```
 
 `models sync` fetches the model IDs exposed by a provider and stores them at
-`~/.claude-provider/models/<provider>.json`. `models list` shows the cached
-list, or fetches live with `--remote`. `models set <model> [provider]` updates
-the provider's model env keys (`ANTHROPIC_MODEL`,
-`ANTHROPIC_DEFAULT_*_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`) and re-renders
-`~/.claude/settings.json` so the new default model applies immediately without
-changing the active provider or endpoint.
+`~/.claude-provider/models/<provider>.json`, preserving per-model fields
+(`name`, `limit`, `options`) for IDs that still exist and retaining removed
+remote IDs. `models list` shows the cached list, or fetches live with
+`--remote`. `models set <model> [provider]` updates the provider's model env
+keys (`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL`,
+`CLAUDE_CODE_SUBAGENT_MODEL`) and re-renders `~/.claude/settings.json` so the
+new default model applies immediately without changing the active provider or
+endpoint. `models update <model> [provider] --set FIELD=VALUE` edits stored
+fields of one synced model (`name` plain text; `limit`/`options` JSON
+objects; empty value clears the field; `--dry-run` previews).
 
 ## Authentication and Configuration
 
@@ -287,6 +294,47 @@ rejected.
 `--all` continues after individual failures and returns status 1 if any check
 fails.
 
+## Codex Models
+
+```bash
+cpx models list my-provider
+cpx models sync my-provider
+cpx models sync my-provider --dry-run
+cpx models sync --all
+cpx models set my-model my-provider
+cpx models set my-model my-provider --dry-run
+cpx models update my-model my-provider --set context_window=200000 --set variants=low,medium,high
+```
+
+`models list` shows the model IDs in the provider catalog file without
+changing config. `models sync` fetches IDs from the OpenAI-compatible
+`base_url/models` endpoint and merges them into the catalog: existing entries
+keep their metadata, newly discovered IDs receive a minimal catalog entry
+(cloned from the `glm-5.3-flash` shape with the new `slug`/`display_name`),
+and removed remote IDs are retained, never deleted. The catalog path is the
+provider's `provider_model_catalog_json` pointer when set; otherwise sync
+creates `~/.codex-provider/catalogs/<provider>.json`, records the pointer,
+and re-renders the runtime config when the target is active. `models set
+<model> [provider]` validates the ID against the catalog and writes the
+top-level `model` field in `~/.codex/config.toml` (bare model ID; use
+`--dry-run` to preview). With `--all`, synchronization continues through
+every provider and returns status 1 if any provider cannot be queried.
+
+`models update <model> [provider] --set FIELD=VALUE` edits one catalog entry
+in place (repeat `--set` for multiple fields; `--dry-run` previews). Text
+fields (`display_name`, `description`, `default_reasoning_level`,
+`default_verbosity`, `default_service_tier`, `default_reasoning_summary`)
+take plain values (empty clears). Integer fields (`context_window`,
+`max_context_window`, `effective_context_window_percent` clamped to 1-100,
+`auto_compact_token_limit`, `priority`) take non-negative integers.
+Booleans (`support_verbosity`, `supports_reasoning_summaries`,
+`supports_parallel_tool_calls`, `supports_search_tool`, `prefer_websockets`,
+`use_responses_lite`) accept `true`/`false`. `input_modalities` takes a
+comma-separated list, `truncation_policy` takes a JSON object, and `variants`
+takes a comma-separated effort subset of `low,medium,high,xhigh,max`
+(e.g. `--set variants=low,medium,high`). Unknown models and fields are
+rejected with the available values listed.
+
 ## OpenCode Models
 
 ```bash
@@ -294,6 +342,9 @@ opx models list my-provider
 opx models sync my-provider
 opx models sync my-provider --dry-run
 opx models sync --all
+opx models set my-model my-provider
+opx models set my-model my-provider --dry-run
+opx models update my-model my-provider --set name="My Model" --set limit='{"context": 200000}'
 ```
 
 `models list` fetches IDs from the OpenAI-compatible
@@ -311,6 +362,18 @@ default set when `--force` is used.
 Credentials are read from `options.apiKey` or OpenCode's auth store. API keys
 are never printed. With `--all`, synchronization continues through every
 provider and returns status 1 if any provider cannot be queried.
+
+`models set <model> [provider]` validates the ID against the provider's
+synced models and writes the top-level `model` field as `provider/model`
+(bare `provider/model` prefixes must match the target; `--dry-run` previews
+without writing).
+
+`models update <model> [provider] --set FIELD=VALUE` edits one synced model
+entry in place (repeat `--set` for multiple fields; `--dry-run` previews).
+Available fields are `name` (plain text, empty clears), `limit` and `options`
+(JSON objects, empty clears), and `variants` (JSON object mapping variant
+names to variant configs). Unknown models and fields are rejected with the
+available values listed.
 
 ## Delete and Rename
 
@@ -496,9 +559,14 @@ not modified.
 ~/.codex-provider/config.toml
 ~/.codex-provider/auth/
 ~/.codex-provider/backups/
+~/.codex-provider/catalogs/
 ~/.codex-provider/recent.json
 ~/.codex-provider/.lock
 ```
+
+Synced Codex model catalogs live in `~/.codex-provider/catalogs/` (one JSON
+file per provider, referenced by the provider's
+`provider_model_catalog_json` pointer).
 
 ### OpenCode
 

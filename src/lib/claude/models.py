@@ -30,23 +30,47 @@ def models_path(provider: str, *, create: bool = False) -> Path:
 
 
 def load_provider_models(provider: str) -> list[str]:
+    return sorted(load_model_entries(provider))
+
+
+def load_model_entries(provider: str) -> dict[str, dict[str, Any]]:
     path = models_path(provider)
     if not path.exists():
-        return []
+        return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SwitchError(f"invalid models file: {path}: {exc}") from exc
     if not isinstance(data, dict) or not isinstance(data.get("models"), list):
         raise SwitchError(f"models file must contain a models list: {path}")
-    return [str(m) for m in data["models"]]
+    entries: dict[str, dict[str, Any]] = {}
+    for item in data["models"]:
+        if isinstance(item, str):
+            entries[item] = {}
+        elif isinstance(item, dict) and isinstance(item.get("id"), str):
+            entry = {k: v for k, v in item.items() if k != "id"}
+            entries[item["id"]] = entry
+        else:
+            raise SwitchError(f"models file must contain a models list: {path}")
+    return entries
 
 
 def save_provider_models(provider: str, models: list[str]) -> Path:
+    return save_model_entries(provider, {m: {} for m in models})
+
+
+def save_model_entries(provider: str, entries: dict[str, dict[str, Any]]) -> Path:
     path = models_path(provider, create=True)
+    items: list[Any] = []
+    for model_id in sorted(entries):
+        extra = entries[model_id]
+        if extra:
+            items.append({"id": model_id, **extra})
+        else:
+            items.append(model_id)
     payload = (
         json.dumps(
-            {"provider": provider, "models": sorted(models)},
+            {"provider": provider, "models": items},
             indent=2,
             ensure_ascii=False,
         )
@@ -84,6 +108,9 @@ def _provider_api_key(provider: str) -> str:
     return payload.get("ANTHROPIC_AUTH_TOKEN") or payload.get("ANTHROPIC_API_KEY", "")
 
 
+VALID_UPDATE_FIELDS = ("name", "limit", "options")
+
+
 def sync_provider_models(provider: str | None, dry_run: bool = False) -> int:
     target = _resolve_target(provider)
     state = st.ensure_provider_state(read_only=True)
@@ -97,7 +124,12 @@ def sync_provider_models(provider: str | None, dry_run: bool = False) -> int:
         models_url_override=models_url or None,
     )
     if not dry_run:
-        path = save_provider_models(target, models)
+        existing = load_model_entries(target)
+        merged = {m: dict(existing.get(m, {})) for m in models}
+        for model_id, extra in existing.items():
+            if model_id not in merged:
+                merged[model_id] = dict(extra)
+        path = save_model_entries(target, merged)
         action = "synced"
         print(f"{action} models for provider '{target}': {len(models)} models")
         print(f"models file: {path}")
@@ -203,6 +235,88 @@ def set_provider_model(
     return 0
 
 
+def _parse_field_value(field: str, raw: str) -> Any:
+    if field == "name":
+        return raw
+    if not raw.strip():
+        return {}
+    if field in ("limit", "options"):
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise SwitchError(f"invalid JSON for --set {field}: {exc}") from exc
+        if not isinstance(value, dict):
+            raise SwitchError(f"--set {field} must be a JSON object")
+        return value
+    return raw
+
+
+def parse_update_sets(values: list[str] | None) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+    for item in values or []:
+        field, sep, raw = item.partition("=")
+        if not sep or not field:
+            raise SwitchError(f"invalid --set value {item!r}; expected FIELD=VALUE")
+        if field not in VALID_UPDATE_FIELDS:
+            raise SwitchError(
+                f"unknown field '{field}'; available: " + ", ".join(VALID_UPDATE_FIELDS)
+            )
+        if field in updates:
+            raise SwitchError(f"duplicate --set field '{field}'")
+        updates[field] = _parse_field_value(field, raw)
+    return updates
+
+
+def update_provider_model(
+    provider: str | None,
+    model: str,
+    updates: dict[str, Any],
+    dry_run: bool = False,
+) -> int:
+    if not model or not model.strip():
+        raise SwitchError("model must not be empty")
+    model = model.strip()
+    if not updates:
+        raise SwitchError("nothing to update; pass --set FIELD=VALUE")
+    entries = load_model_entries(_resolve_target(provider))
+    target = _resolve_target(provider)
+    if model not in entries:
+        known = sorted(entries)
+        hint = f", available: {', '.join(known)}" if known else ""
+        raise SwitchError(f"unknown model '{model}' for provider '{target}'{hint}")
+    entry = dict(entries[model])
+    changes: list[str] = []
+    for field, value in updates.items():
+        if field == "name":
+            name = value.strip()
+            if not name:
+                if "name" in entry:
+                    del entry["name"]
+                    changes.append("remove name")
+                else:
+                    changes.append("name remains unset")
+            else:
+                entry["name"] = name
+                changes.append(f"name = {name}")
+        else:
+            if value:
+                entry[field] = value
+                changes.append(f"{field} = {json.dumps(value, ensure_ascii=False)}")
+            elif field in entry:
+                del entry[field]
+                changes.append(f"remove {field}")
+            else:
+                changes.append(f"{field} remains unset")
+    entries[model] = entry
+    if not dry_run:
+        save_model_entries(target, entries)
+    action = "would update" if dry_run else "updated"
+    print(f"{action} model: {target}/{model}")
+    for change in changes:
+        print(f"- {change}")
+    return 0
+
+
 def models_command(
     command: str,
     provider: str | None,
@@ -210,6 +324,7 @@ def models_command(
     dry_run: bool,
     all_providers: bool,
     remote: bool,
+    update_sets: list[str] | None = None,
 ) -> int:
     if command == "sync" and all_providers:
         if provider is not None:
@@ -223,4 +338,10 @@ def models_command(
         if not model:
             raise SwitchError("models set requires a model ID")
         return set_provider_model(provider, model, dry_run)
+    if command == "update":
+        if not model:
+            raise SwitchError("models update requires a model ID")
+        return update_provider_model(
+            provider, model, parse_update_sets(update_sets), dry_run
+        )
     return 0

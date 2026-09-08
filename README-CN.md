@@ -40,7 +40,8 @@ OpenAI 兼容 API 提供商或多个 Antigravity 账号之间切换，手动编�
 - **按提供商设置 Codex 选项**：可免编辑器配置联网搜索、模型目录和 fast 模式，切换时自动渲染到运行时配置。
 - **避免在终端泄露秘密**：可以查看认证字段元数据和脱敏配置，不会打印凭据值。
 - **验证完整调用链**：既能探测 `/models` 接口，也能通过 Codex、OpenCode 或 Antigravity 执行最小命令。
-- **管理 OpenCode 模型**：发现远端模型 ID、只同步新增模型，并在切换提供商时选择默认模型。
+- **管理 Codex 模型**：把远端模型 ID 同步到按提供商存放的模型目录文件，并可独立设置默认模型。
+- **管理 OpenCode 模型**：发现远端模型 ID、只同步新增模型，并可独立设置默认模型。
 - **管理 Antigravity 账号**：登录、导入账号快照、切换账号，并查看 5 小时和每周配额余量。
 - **管理 Cursor 账号和模型**：快照当前登录的 Cursor 账号，直接改写 Cursor SQLite 数据库中的认证行，并可在所有 Composer 场景间切换模型。
 - **预览和恢复变更**：修改类命令支持预演，Codex 会保留最近十份变更前快照，也支持 JSON 导出或导入。
@@ -59,7 +60,7 @@ OpenAI 兼容 API 提供商或多个 Antigravity 账号之间切换，手动编�
 旧的长命令名（`codex-provider` 等）已在 v1.4.0 移除，请使用上面的短命令名。
 
 Codex、OpenCode 与 Claude CLI 的公共操作会保持命令名称和行为一致。Codex 额外提供 `official`、
-`config set` 和模型目录选项，OpenCode 额外提供 `models`，Antigravity 额外提供 `login`
+`config set`、模型目录选项和 `models`，OpenCode 额外提供 `models`，Antigravity 额外提供 `login`
 和 `usage`，Cursor 额外提供 `model`，用于各自特有的工作流。
 
 ## 适用场景
@@ -118,8 +119,12 @@ cpx test my-provider
 ### 使用后端专属能力
 
 ```bash
+cpx models list my-provider
+cpx models sync my-provider --dry-run
+cpx models set my-model my-provider
 opx models list my-provider
 opx models sync my-provider --dry-run
+opx models set my-model my-provider
 apx login work-account
 apx usage work-account
 cupx add work --from-current
@@ -129,7 +134,11 @@ cupx models sync deepseek
 cupx models set deepseek-v4-flash
 ```
 
-OpenCode 模型同步只添加新 ID，并保留现有元数据。Antigravity `usage` 会在不切换账号的
+Codex `models sync` 会把提供商当前的 `/models` ID 合并进模型目录文件（保留已有条目
+元数据、新 ID 使用最小条目、远端已删除的 ID 也会保留）；未设置目录指针的提供商会自动
+新建 `~/.codex-provider/catalogs/<provider>.json` 并记录指针，`models set` 则写入
+`~/.codex/config.toml` 顶层 `model`。OpenCode 模型同步只添加新 ID，并保留现有元数据，
+`models set` 写入顶层 `model`（`provider/model` 形式）。Antigravity `usage` 会在不切换账号的
 情况下显示 5 小时和每周配额。Cursor `switch` 会改写 Cursor SQLite 数据库中的认证行，
 `models set` 会把一个模型 ID 应用到所有 Composer 场景。Cursor `provider` 命令管理
 Cursor 数据库中的自定义 OpenAI 兼容提供商（如 DeepSeek），`models sync` 会把提供商
