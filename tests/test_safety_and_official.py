@@ -705,7 +705,7 @@ def test_upgrade_check_reports_up_to_date(
 
     assert cp.main(["upgrade", "--check"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.5.1" in output
+    assert "current: 1.5.2" in output
     assert "latest:  1.1.0" in output
     assert "up to date" in output
 
@@ -722,7 +722,7 @@ def test_upgrade_dry_run_reports_newer_version(
 
     assert cp.main(["upgrade", "--dry-run"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.5.1" in output
+    assert "current: 1.5.2" in output
     assert "latest:  1.6.0" in output
     assert "would upgrade" in output
 
@@ -806,11 +806,11 @@ def test_build_upgrade_plan_selects_platform_asset(
         "Fel1xKan/codex-provider",
         "cpx",
         "1.1.0",
-        _release_payload("v1.5.1", program="cpx"),
+        _release_payload("v1.5.2", program="cpx"),
     )
     assert plan.update_available
     expected_suffix = ".exe" if os.name == "nt" else ""
-    expected_name = f"cpx-1.5.1-{self_upgrade._platform_key()}{expected_suffix}"
+    expected_name = f"cpx-1.5.2-{self_upgrade._platform_key()}{expected_suffix}"
     assert plan.asset_name == expected_name
     assert plan.sha256_url.endswith(".sha256")
 

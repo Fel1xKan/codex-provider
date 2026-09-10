@@ -1,7 +1,7 @@
 # Command Reference
 
 This document covers `codex-provider`, `opencode-provider`, `agy-provider`,
-`cursor-provider`, and `claude-provider` version 1.5.1. Run `<command> --help`
+`cursor-provider`, and `claude-provider` version 1.5.2. Run `<command> --help`
 in your installed version for the exact parser surface.
 
 ## Command Matrix
