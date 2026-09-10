@@ -168,6 +168,9 @@ class BaseBackend:
         raise NotImplementedError
 
     def upgrade(self, check: bool, dry_run: bool) -> int:
+        progress = self_upgrade.UpgradeProgress()
+        if not check and not dry_run:
+            progress.status("checking latest release...")
         payload = self_upgrade.fetch_latest_release(self_upgrade.DEFAULT_REPOSITORY)
         plan = self_upgrade.build_upgrade_plan(
             self_upgrade.DEFAULT_REPOSITORY,
@@ -186,4 +189,4 @@ class BaseBackend:
                 print("would upgrade" if dry_run else "update available")
             return 0
         target = self_upgrade.current_executable()
-        return self_upgrade.perform_upgrade(plan, target)
+        return self_upgrade.perform_upgrade(plan, target, progress)

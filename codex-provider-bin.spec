@@ -1,5 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+
+APP_ICON = (
+    'assets/icons/codex-provider.icns'
+    if sys.platform == 'darwin'
+    else 'assets/icons/codex-provider.ico'
+)
 
 a = Analysis(
     ['src/cli/codex_provider.py'],
@@ -35,4 +42,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=APP_ICON,
 )

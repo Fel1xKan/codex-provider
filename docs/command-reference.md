@@ -480,6 +480,9 @@ the asset against its published SHA-256 checksum, and atomically replaces the
 executable. `--check` only reports whether a newer version exists; `--dry-run`
 prints what would be downloaded without replacing anything. The command is
 available in every provider CLI and targets that CLI's own release asset.
+During an actual upgrade, interactive terminals show download progress and all
+other environments receive concise status lines for download, checksum, and
+installation stages.
 
 Standalone binaries are published per platform as
 `<tool>-<version>-<platform>`. Source installations managed with pip should use

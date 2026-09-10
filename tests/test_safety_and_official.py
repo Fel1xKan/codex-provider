@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import tomllib
@@ -748,7 +749,9 @@ def test_upgrade_downloads_verifies_and_replaces(
     monkeypatch.setattr(
         self_upgrade,
         "_download",
-        lambda url, dest: dest.write_bytes(b"new-binary"),
+        lambda url, dest, progress=None, display_name=None: dest.write_bytes(
+            b"new-binary"
+        ),
     )
     monkeypatch.setattr(
         self_upgrade,
@@ -785,7 +788,9 @@ def test_upgrade_checksum_mismatch_aborts(
     monkeypatch.setattr(
         self_upgrade,
         "_download",
-        lambda url, dest: dest.write_bytes(b"new-binary"),
+        lambda url, dest, progress=None, display_name=None: dest.write_bytes(
+            b"new-binary"
+        ),
     )
     monkeypatch.setattr(
         self_upgrade,
@@ -796,6 +801,75 @@ def test_upgrade_checksum_mismatch_aborts(
     with pytest.raises(SwitchError, match="checksum mismatch"):
         self_upgrade.perform_upgrade(plan, target)
     assert target.read_bytes() == b"old-binary"
+
+
+class _DownloadResponse:
+    def __init__(self, chunks: list[bytes], content_length: str | None) -> None:
+        self.chunks = iter(chunks)
+        self.headers = {}
+        if content_length is not None:
+            self.headers["Content-Length"] = content_length
+
+    def read(self, size: int) -> bytes:
+        return next(self.chunks, b"")
+
+    def __enter__(self) -> _DownloadResponse:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+
+class _InteractiveStream(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+def test_upgrade_download_reports_tty_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        self_upgrade.urllib.request,
+        "urlopen",
+        lambda request, timeout: _DownloadResponse([b"abc", b"def"], "6"),
+    )
+    stream = _InteractiveStream()
+    progress = self_upgrade.UpgradeProgress(stream)
+    target = tmp_path / "cpx.upgrade"
+
+    self_upgrade._download(
+        "https://example.com/cpx",
+        target,
+        progress,
+        "cpx-1.2.0-linux-x86_64",
+    )
+
+    assert target.read_bytes() == b"abcdef"
+    assert "downloading cpx-1.2.0-linux-x86_64: 6 B / 6 B (100%)" in stream.getvalue()
+    assert stream.getvalue().endswith("\n")
+
+
+def test_upgrade_download_uses_plain_status_without_a_tty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        self_upgrade.urllib.request,
+        "urlopen",
+        lambda request, timeout: _DownloadResponse([b"abc"], None),
+    )
+    stream = io.StringIO()
+    progress = self_upgrade.UpgradeProgress(stream)
+    target = tmp_path / "cpx.upgrade"
+
+    self_upgrade._download(
+        "https://example.com/cpx",
+        target,
+        progress,
+        "cpx-1.2.0-linux-x86_64",
+    )
+
+    assert target.read_bytes() == b"abc"
+    assert stream.getvalue() == "downloading cpx-1.2.0-linux-x86_64...\n"
 
 
 def test_build_upgrade_plan_selects_platform_asset(

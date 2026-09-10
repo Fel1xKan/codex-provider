@@ -7,11 +7,12 @@ import platform
 import re
 import shutil
 import sys
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from lib.common.common_store import atomic_write_bytes
 from lib.common.errors import SwitchError
@@ -19,6 +20,8 @@ from lib.common.errors import SwitchError
 DEFAULT_REPOSITORY = "Fel1xKan/codex-provider"
 GITHUB_API_RELEASES = "https://api.github.com/repos/{repo}/releases"
 RELEASE_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
+DOWNLOAD_CHUNK_SIZE = 1024 * 1024
+PROGRESS_UPDATE_INTERVAL = 0.1
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,81 @@ class UpgradePlan:
     asset_url: str
     sha256_url: str | None
     update_available: bool
+
+
+def _format_size(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    units = ("KiB", "MiB", "GiB")
+    value = float(size)
+    for unit in units:
+        value /= 1024
+        if value < 1024 or unit == units[-1]:
+            return f"{value:.1f} {unit}"
+    return f"{value:.1f} GiB"
+
+
+class UpgradeProgress:
+    """Report concise upgrade stages and TTY-safe download progress."""
+
+    def __init__(self, stream: TextIO | None = None) -> None:
+        self.stream = stream or sys.stderr
+        self.interactive = bool(getattr(self.stream, "isatty", lambda: False)())
+        self._dynamic_line = False
+        self._last_update = 0.0
+
+    def _finish_dynamic_line(self) -> None:
+        if self._dynamic_line:
+            print(file=self.stream, flush=True)
+            self._dynamic_line = False
+
+    def status(self, message: str) -> None:
+        self._finish_dynamic_line()
+        print(message, file=self.stream, flush=True)
+
+    def download_started(self, asset_name: str, total: int | None) -> None:
+        if self.interactive:
+            self.download_progress(asset_name, 0, total, force=True)
+            return
+        detail = f" ({_format_size(total)})" if total is not None else ""
+        self.status(f"downloading {asset_name}{detail}...")
+
+    def download_progress(
+        self,
+        asset_name: str,
+        downloaded: int,
+        total: int | None,
+        *,
+        force: bool = False,
+    ) -> None:
+        if not self.interactive:
+            return
+        now = time.monotonic()
+        if not force and now - self._last_update < PROGRESS_UPDATE_INTERVAL:
+            return
+        self._last_update = now
+        if total is not None and total > 0:
+            percent = min(100, downloaded * 100 // total)
+            detail = f"{_format_size(downloaded)} / {_format_size(total)} ({percent}%)"
+        else:
+            detail = _format_size(downloaded)
+        print(
+            f"\rdownloading {asset_name}: {detail}",
+            end="",
+            file=self.stream,
+            flush=True,
+        )
+        self._dynamic_line = True
+
+    def download_finished(
+        self, asset_name: str, downloaded: int, total: int | None
+    ) -> None:
+        if self.interactive:
+            self.download_progress(asset_name, downloaded, total, force=True)
+            self._finish_dynamic_line()
+
+    def finish(self) -> None:
+        self._finish_dynamic_line()
 
 
 def _platform_key() -> str:
@@ -129,12 +207,41 @@ def build_upgrade_plan(
     )
 
 
-def _download(url: str, dest: Path) -> None:
+def _download(
+    url: str,
+    dest: Path,
+    progress: UpgradeProgress | None = None,
+    display_name: str | None = None,
+) -> None:
     request = urllib.request.Request(url, headers={"User-Agent": "codex-provider"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
-            atomic_write_bytes(dest, response.read(), secret=False)
+            name = display_name or dest.name
+            raw_total = response.headers.get("Content-Length")
+            try:
+                total = int(raw_total) if raw_total else None
+            except ValueError:
+                total = None
+            if total is not None and total < 0:
+                total = None
+
+            if progress is not None:
+                progress.download_started(name, total)
+
+            chunks = []
+            downloaded = 0
+            while chunk := response.read(DOWNLOAD_CHUNK_SIZE):
+                chunks.append(chunk)
+                downloaded += len(chunk)
+                if progress is not None:
+                    progress.download_progress(name, downloaded, total)
+
+            if progress is not None:
+                progress.download_finished(name, downloaded, total)
+            atomic_write_bytes(dest, b"".join(chunks), secret=False)
     except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
+        if progress is not None:
+            progress.finish()
         raise SwitchError(f"failed to download {url}: {exc}") from exc
 
 
@@ -179,18 +286,27 @@ def _replace_binary(dest: Path, temp: Path) -> None:
         os.replace(temp, dest)
 
 
-def perform_upgrade(plan: UpgradePlan, target: Path) -> int:
+def perform_upgrade(
+    plan: UpgradePlan,
+    target: Path,
+    progress: UpgradeProgress | None = None,
+) -> int:
     if not plan.update_available:
         print(f"up to date: {plan.current_version}")
         return 0
 
+    reporter = progress or UpgradeProgress()
     temp = target.with_name(f".{target.name}.upgrade")
     try:
-        _download(plan.asset_url, temp)
+        _download(plan.asset_url, temp, reporter, plan.asset_name)
+        reporter.status("fetching SHA-256 checksum...")
         expected = _sha256_expected_from_release(plan.asset_url)
+        reporter.status("verifying SHA-256 checksum...")
         verify_sha256(temp, expected)
+        reporter.status("installing update...")
         _replace_binary(target, temp)
     except Exception:
+        reporter.finish()
         temp.unlink(missing_ok=True)
         raise
 
