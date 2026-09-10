@@ -39,9 +39,7 @@ def test_every_cli_exposes_shared_registry_commands() -> None:
 def test_provider_export_conversion_is_not_exposed_by_apx() -> None:
     def option_strings(parser: argparse.ArgumentParser) -> set[str]:
         return {
-            option
-            for action in parser._actions
-            for option in action.option_strings
+            option for action in parser._actions for option in action.option_strings
         }
 
     for parser in (

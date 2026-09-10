@@ -62,6 +62,7 @@ def build_interoperable_export(
         }
 
     if target_tool == "opx":
+
         def opencode_models(value: Any) -> dict[str, Any]:
             if isinstance(value, dict):
                 return value
