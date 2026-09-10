@@ -36,6 +36,24 @@ def test_every_cli_exposes_shared_registry_commands() -> None:
         assert shared <= set(parser_commands(parser))
 
 
+def test_provider_export_conversion_is_not_exposed_by_apx() -> None:
+    def option_strings(parser: argparse.ArgumentParser) -> set[str]:
+        return {
+            option
+            for action in parser._actions
+            for option in action.option_strings
+        }
+
+    for parser in (
+        codex.build_parser(),
+        op.build_parser(),
+        claude.build_parser(),
+        cursor.build_parser(),
+    ):
+        assert "--for" in option_strings(parser_commands(parser)["export"])
+    assert "--for" not in option_strings(parser_commands(agy.build_parser())["export"])
+
+
 def test_capability_commands_only_on_declaring_backends() -> None:
     codex_commands = set(parser_commands(codex.build_parser()))
     opencode_commands = set(parser_commands(op.build_parser()))

@@ -10,14 +10,16 @@ from lib.common.common_store import SECRET_FILE_MODE, atomic_write_bytes
 from lib.common.errors import SwitchError
 from lib.common.toml_config import render_tool_config, validate_provider_name
 from lib.common.transfer import (
+    build_interoperable_export,
     read_import_data,
     validate_export,
     write_export,
 )
 
 
-def export_command(file_path: str | None) -> int:
+def export_command(file_path: str | None, target_tool: str | None = None) -> int:
     state = st.ensure_provider_state(read_only=True)
+    normalized_providers = {}
     export_data = {
         "type": "codex-provider",
         "version": 1,
@@ -36,9 +38,24 @@ def export_command(file_path: str | None) -> int:
             except Exception:
                 pass
         export_data["providers"][provider] = {"config": pconfig, "auth": auth_data}
+        api_key = auth_data.get("OPENAI_API_KEY")
+        normalized_providers[provider] = {
+            "base_url": pconfig.get("base_url"),
+            "name": pconfig.get("name"),
+            "api_key": api_key if isinstance(api_key, str) else "",
+            "models": None,
+        }
+
+    if target_tool:
+        export_data = build_interoperable_export(
+            target_tool,
+            state.active_provider,
+            normalized_providers,
+        )
 
     payload = json.dumps(export_data, indent=2, ensure_ascii=False) + "\n"
-    write_export(payload, file_path, "Codex")
+    label = target_tool or "Codex"
+    write_export(payload, file_path, label)
     return 0
 
 

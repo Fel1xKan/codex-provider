@@ -44,6 +44,7 @@ OpenAI 兼容 API 提供商或多个 Antigravity 账号之间切换，手动编�
 - **管理 OpenCode 模型**：发现远端模型 ID、只同步新增模型，并可独立设置默认模型。
 - **管理 Antigravity 账号**：登录、导入账号快照、切换账号，并查看 5 小时和每周配额余量。
 - **管理 Cursor 账号和模型**：快照当前登录的 Cursor 账号，直接改写 Cursor SQLite 数据库中的认证行，并可在所有 Composer 场景间切换模型。
+- **在工具之间迁移 API 提供商**：可将 Codex、OpenCode、Claude 或 Cursor 的 OpenAI 兼容 provider 配置导出为另一个 CLI 可直接导入的格式。
 - **预览和恢复变更**：修改类命令支持预演，Codex 会保留最近十份变更前快照，也支持 JSON 导出或导入。
 - **快速返回最近使用项**：交互式选择器和列表会优先显示最近使用的提供商或账号。
 

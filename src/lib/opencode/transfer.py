@@ -7,6 +7,7 @@ import lib.opencode.store as st
 from lib.common.common_store import SECRET_FILE_MODE, atomic_write_bytes
 from lib.common.errors import SwitchError
 from lib.common.transfer import (
+    build_interoperable_export,
     read_import_data,
     validate_export,
     write_export,
@@ -19,7 +20,7 @@ from lib.opencode.patch import (
 )
 
 
-def export_command(file_path: str | None) -> int:
+def export_command(file_path: str | None, target_tool: str | None = None) -> int:
     state = st.load_state()
     auth_keys = {}
     apath = st.auth_path()
@@ -39,8 +40,29 @@ def export_command(file_path: str | None) -> int:
         p_auth = auth_keys.get(provider, {})
         export_data["providers"][provider] = {"config": pconfig, "auth": p_auth}
 
+    if target_tool:
+        normalized_providers = {}
+        for provider, pconfig in state.providers.items():
+            options = pconfig.get("options")
+            base_url = options.get("baseURL") if isinstance(options, dict) else None
+            p_auth = auth_keys.get(provider, {})
+            api_key = p_auth.get("key") if isinstance(p_auth, dict) else ""
+            normalized_providers[provider] = {
+                "base_url": base_url,
+                "name": pconfig.get("name"),
+                "api_key": api_key if isinstance(api_key, str) else "",
+                "models": pconfig.get("models"),
+            }
+        export_data = build_interoperable_export(
+            target_tool,
+            state.current_provider,
+            normalized_providers,
+            active_model=state.current_model,
+        )
+
     payload = json.dumps(export_data, indent=2, ensure_ascii=False) + "\n"
-    write_export(payload, file_path, "OpenCode")
+    label = target_tool or "OpenCode"
+    write_export(payload, file_path, label)
     return 0
 
 

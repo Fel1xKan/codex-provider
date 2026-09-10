@@ -448,10 +448,10 @@ class CodexBackend(BaseBackend):
         state = st.load_provider_state()
         return [f"current provider: {state.active_provider}", f"ping provider: {name}"]
 
-    def export(self, file_path: str | None) -> int:
+    def export(self, file_path: str | None, target_tool: str | None = None) -> int:
         import lib.codex.transfer as transfer
 
-        return transfer.export_command(file_path)
+        return transfer.export_command(file_path, target_tool)
 
     def import_(self, file_path: str | None, dry_run: bool) -> int:
         import lib.codex.transfer as transfer

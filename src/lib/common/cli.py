@@ -137,7 +137,7 @@ def _handle_ping(backend: Any, args: Any) -> int:
 
 
 def _handle_export(backend: Any, args: Any) -> int:
-    return backend.export(args.file)
+    return backend.export(args.file, getattr(args, "target_tool", None))
 
 
 def _handle_import(backend: Any, args: Any) -> int:

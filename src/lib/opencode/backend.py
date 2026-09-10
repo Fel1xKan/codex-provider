@@ -273,10 +273,10 @@ class OpenCodeBackend(BaseBackend):
     def ping_error_lines(self, name: str, prompt: str) -> list[str]:
         return [f"pinging provider '{name}' with prompt: {prompt}..."]
 
-    def export(self, file_path: str | None) -> int:
+    def export(self, file_path: str | None, target_tool: str | None = None) -> int:
         import lib.opencode.transfer as transfer
 
-        return transfer.export_command(file_path)
+        return transfer.export_command(file_path, target_tool)
 
     def import_(self, file_path: str | None, dry_run: bool) -> int:
         import lib.opencode.transfer as transfer

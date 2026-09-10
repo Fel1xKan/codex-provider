@@ -161,7 +161,7 @@ class BaseBackend:
         print(f"available: {available}/{len(results)}")
         return 0 if available == len(results) else 1
 
-    def export(self, file_path: str | None) -> int:
+    def export(self, file_path: str | None, target_tool: str | None = None) -> int:
         raise NotImplementedError
 
     def import_(self, file_path: str | None, dry_run: bool) -> int:

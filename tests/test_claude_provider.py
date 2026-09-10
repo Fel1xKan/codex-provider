@@ -138,6 +138,42 @@ def test_parser_exposes_shared_registry_commands() -> None:
     assert shared <= commands
 
 
+def test_imports_interoperable_provider_export(
+    claude_paths: dict[str, Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import_file = claude_paths["tool_home"] / "from-opencode.json"
+    import_file.write_text(
+        json.dumps(
+            {
+                "type": "claude-provider",
+                "version": 1,
+                "active_provider": "alpha",
+                "providers": {
+                    "alpha": {
+                        "config": {
+                            "base_url": "https://alpha.example.com/v1",
+                            "name": "Alpha",
+                            "model": "gpt-5",
+                        },
+                        "auth": {"ANTHROPIC_AUTH_TOKEN": "placeholder-alpha-key"},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert cp.main(["import", str(import_file)]) == 0
+
+    config = json.loads(claude_paths["config"].read_text(encoding="utf-8"))
+    assert config["active_provider"] == "alpha"
+    assert config["providers"]["alpha"]["base_url"] == "https://alpha.example.com/v1"
+    auth = json.loads((claude_paths["auth"] / "alpha.json").read_text(encoding="utf-8"))
+    assert auth["ANTHROPIC_AUTH_TOKEN"] == "placeholder-alpha-key"
+    assert "switched default provider: alpha" in capsys.readouterr().out
+
+
 def test_doctor_detects_missing_auth_profile(
     claude_paths: dict[str, Path],
     monkeypatch: pytest.MonkeyPatch,

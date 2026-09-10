@@ -13,7 +13,11 @@ from lib.common.transfer import (
 )
 
 
-def export_command(file_path: str | None) -> int:
+def export_command(file_path: str | None, target_tool: str | None = None) -> int:
+    if target_tool:
+        raise SwitchError(
+            "Antigravity account exports cannot be converted to API provider settings"
+        )
     store = st.load_store()
     accounts_data = {}
     for name, a in store.accounts.items():

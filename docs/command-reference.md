@@ -432,14 +432,24 @@ one operation.
 ```bash
 cpx export backup.json
 cpx export -
-opx import backup.json --dry-run
-opx import backup.json
+cpx export opencode-providers.json --for opx
+opx import opencode-providers.json --dry-run
+opx import opencode-providers.json
 ```
 
 Omit the file or use `-` to write an export to standard output or read an import
 from standard input. `import --dry-run` validates and previews changes without
 writing files. Exported data can contain credentials and must be protected as a
 secret.
+
+`cpx`, `opx`, `clpx`, and `cupx` can convert OpenAI-compatible provider
+settings for another tool with `export --for <target>`, where `<target>` is
+`cpx`, `opx`, `clpx`, or `cupx`. The generated file is consumed by the target
+CLI's normal `import` command. Conversion carries provider names, base URLs,
+API keys, compatible model metadata, and the active provider when the target
+can represent it. Tool-specific fields are not converted. `cupx` conversion
+only handles custom API providers, never Cursor sign-in accounts. Antigravity
+account exports remain separate and do not provide `--for`.
 
 ## Automatic Snapshots
 

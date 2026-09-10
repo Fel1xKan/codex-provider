@@ -459,6 +459,38 @@ def test_export_and_import(
     assert "* acc_a" in capsys.readouterr().out
 
 
+def test_imports_provider_only_interoperable_export(
+    cursor_paths: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import_file = cursor_paths / "providers.json"
+    import_file.write_text(
+        json.dumps(
+            {
+                "type": "cursor-provider",
+                "version": 1,
+                "current_provider": "alpha",
+                "providers": {
+                    "alpha": {
+                        "base_url": "https://alpha.example.com/v1",
+                        "api_key": "placeholder-alpha-key",
+                        "api_key_cipher": "",
+                        "models": ["gpt-5"],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert cp.main(["import", str(import_file)]) == 0
+
+    state = json.loads(cp.STATE_PATH.read_text(encoding="utf-8"))
+    assert state["accounts"] == {}
+    assert state["current_provider"] == "alpha"
+    assert state["providers"]["alpha"]["api_key"] == "placeholder-alpha-key"
+    assert "added/updated provider: alpha" in capsys.readouterr().out
+
+
 def test_switch_unknown_account_fails(
     cursor_paths: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

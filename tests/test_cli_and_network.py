@@ -118,6 +118,22 @@ def test_all_tests_every_provider_and_prints_summary(
     assert "available: 1/2" in output
 
 
+def test_codex_export_for_opencode_uses_opencode_import_format(
+    initialized_registry: IsolatedPaths,
+) -> None:
+    export_file = initialized_registry.home / "opencode-export.json"
+
+    assert cp.main(["export", str(export_file), "--for", "opx"]) == 0
+
+    exported = json.loads(export_file.read_text(encoding="utf-8"))
+    assert exported["type"] == "opencode-provider"
+    assert exported["current_provider"] == "alpha"
+    assert exported["providers"]["alpha"]["config"]["options"]["baseURL"] == (
+        "https://alpha.example.com/v1"
+    )
+    assert exported["providers"]["alpha"]["auth"]["key"] == "placeholder-alpha-key"
+
+
 def test_all_continues_when_provider_auth_is_missing(
     initialized_registry: IsolatedPaths,
     monkeypatch: pytest.MonkeyPatch,

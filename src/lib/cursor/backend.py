@@ -327,10 +327,10 @@ class CursorBackend(BaseBackend):
     def ping_all_providers(self, timeout: float, model: str | None, prompt: str) -> int:
         return adm.ping_all_accounts(timeout, model, prompt)
 
-    def export(self, file_path: str | None) -> int:
+    def export(self, file_path: str | None, target_tool: str | None = None) -> int:
         import lib.cursor.transfer as transfer
 
-        return transfer.export_command(file_path)
+        return transfer.export_command(file_path, target_tool)
 
     def import_(self, file_path: str | None, dry_run: bool) -> int:
         import lib.cursor.transfer as transfer

@@ -51,6 +51,13 @@ class AgyBackend(BaseBackend):
         "rename": "Rename an account",
     }
     command_args = {
+        "export": (
+            ArgSpec(
+                ("file",),
+                nargs="?",
+                help="Output file path; prints to stdout if omitted or '-'",
+            ),
+        ),
         "add": (
             ArgSpec(("account",), nargs="?", help="Account name"),
             ArgSpec(("base_url",), nargs="?", hidden=True),
@@ -186,10 +193,10 @@ class AgyBackend(BaseBackend):
     def ping_all_providers(self, timeout: float, model: str | None, prompt: str) -> int:
         return ping_all_accounts(timeout, model, prompt)
 
-    def export(self, file_path: str | None) -> int:
+    def export(self, file_path: str | None, target_tool: str | None = None) -> int:
         import lib.agy.transfer as transfer
 
-        return transfer.export_command(file_path)
+        return transfer.export_command(file_path, target_tool)
 
     def import_(self, file_path: str | None, dry_run: bool) -> int:
         import lib.agy.transfer as transfer

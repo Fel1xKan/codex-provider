@@ -51,6 +51,7 @@ validation, safe writes, and dry-run previews.
 - **Manage Antigravity accounts** - log in, import account snapshots, switch accounts, and inspect 5-hour and weekly quota remaining.
 - **Manage Cursor accounts and models** - snapshot signed-in Cursor accounts, swap auth rows in the Cursor SQLite database, and switch models across every Composer surface.
 - **Manage Claude providers** - switch the base URL, auth token, and optional default model written into `~/.claude/settings.json`.
+- **Move API providers between tools** - export OpenAI-compatible provider settings from Codex, OpenCode, Claude, or Cursor into another CLI's import format.
 - **Preview and recover changes** - use dry runs, import pre-change snapshots retained by Codex provider mutations, and export or import provider data as JSON.
 - **Move quickly between recent providers** - interactive pickers and list output prioritize recently used entries.
 

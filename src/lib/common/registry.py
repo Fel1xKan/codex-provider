@@ -430,6 +430,15 @@ COMMON_COMMANDS: tuple[CommandSpec, ...] = (
                 nargs="?",
                 help="Output file path; prints to stdout if omitted or '-'",
             ),
+            _opt(
+                "--for",
+                dest="target_tool",
+                choices=("cpx", "opx", "clpx", "cupx"),
+                help=(
+                    "Convert OpenAI-compatible provider settings into the "
+                    "named tool's import format"
+                ),
+            ),
         ),
     ),
     CommandSpec(
