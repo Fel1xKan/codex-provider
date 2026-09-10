@@ -8,6 +8,8 @@ from typing import Any
 import lib.claude.store as st
 from lib.common.common_store import atomic_write_bytes
 from lib.common.errors import SwitchError
+from lib.common.model_catalog import load_model_catalog, merge_metadata
+from lib.common.model_metadata import extract_model_metadata, model_record_map
 from lib.common.network import (
     WireProtocol,
     fetch_provider_models,
@@ -111,21 +113,74 @@ def _provider_api_key(provider: str) -> str:
 VALID_UPDATE_FIELDS = ("name", "limit", "options")
 
 
+def _remote_metadata(result: Any) -> dict[str, dict[str, Any]]:
+    return {
+        model_id: extract_model_metadata(record)
+        for model_id, record in model_record_map(result).items()
+    }
+
+
+def _catalog_metadata() -> dict[str, dict[str, Any]]:
+    result = load_model_catalog(st.tool_home() / "model-catalog-cache.json")
+    return result.entries | {
+        alias: result.entries[canonical]
+        for alias, canonical in result.aliases.items()
+        if canonical in result.entries
+    }
+
+
+def _apply_remote_metadata(
+    entry: dict[str, Any],
+    metadata: dict[str, Any],
+    *,
+    is_new: bool,
+) -> dict[str, Any]:
+    next_entry = dict(entry)
+    display_name = metadata.get("display_name")
+    if display_name and (is_new or "name" not in next_entry):
+        next_entry["name"] = display_name
+
+    context_window = metadata.get("context_window")
+    max_output_tokens = metadata.get("max_output_tokens")
+    if context_window or max_output_tokens:
+        raw_limit = next_entry.get("limit")
+        limit = dict(raw_limit) if isinstance(raw_limit, dict) else {}
+        if context_window and "context" not in limit:
+            limit["context"] = context_window
+        if max_output_tokens and "output" not in limit:
+            limit["output"] = max_output_tokens
+        next_entry["limit"] = limit
+    return next_entry
+
+
 def sync_provider_models(provider: str | None, dry_run: bool = False) -> int:
     target = _resolve_target(provider)
     state = st.ensure_provider_state(read_only=True)
     config = state.providers[target]
     base_url, models_url = _provider_endpoint(config)
     api_key = _provider_api_key(target)
-    models = fetch_provider_models(
+    fetched = fetch_provider_models(
         base_url,
         api_key,
         WireProtocol.ANTHROPIC,
         models_url_override=models_url or None,
     )
+    models = list(fetched)
+    remote_metadata = _remote_metadata(fetched)
+    catalog_metadata = _catalog_metadata()
     if not dry_run:
         existing = load_model_entries(target)
-        merged = {m: dict(existing.get(m, {})) for m in models}
+        merged = {
+            m: _apply_remote_metadata(
+                dict(existing.get(m, {})),
+                merge_metadata(
+                    catalog_metadata.get(m, {}),
+                    remote_metadata.get(m, {}),
+                ),
+                is_new=m not in existing,
+            )
+            for m in models
+        }
         for model_id, extra in existing.items():
             if model_id not in merged:
                 merged[model_id] = dict(extra)
@@ -178,6 +233,8 @@ def set_provider_model(
     provider: str | None,
     model: str,
     dry_run: bool = False,
+    context_window: int | None = None,
+    max_output_tokens: int | None = None,
 ) -> int:
     if not model or not model.strip():
         raise SwitchError("model must not be empty")
@@ -190,6 +247,26 @@ def set_provider_model(
             f"unknown model '{model}' for provider '{target}', available: "
             + ", ".join(known)
         )
+    limit_updates = {
+        "context": context_window,
+        "output": max_output_tokens,
+    }
+    limit_updates = {
+        key: value for key, value in limit_updates.items() if value is not None
+    }
+    option_names = {"context": "--context-window", "output": "--max-output-tokens"}
+    for field, value in limit_updates.items():
+        if value <= 0:
+            raise SwitchError(f"{option_names[field]} must be > 0")
+
+    entries = load_model_entries(target)
+    model_entry = dict(entries.get(model, {}))
+    if limit_updates:
+        raw_limit = model_entry.get("limit")
+        limit = dict(raw_limit) if isinstance(raw_limit, dict) else {}
+        limit.update(limit_updates)
+        model_entry["limit"] = limit
+        entries[model] = model_entry
 
     providers = dict(state.providers)
     config = dict(providers[target])
@@ -218,6 +295,8 @@ def set_provider_model(
     render_config["auth_token"] = _provider_api_key(target)
     settings_payload = _render_settings_payload(state, target, render_config)
     if not dry_run:
+        if limit_updates:
+            save_model_entries(target, entries)
         atomic_write_bytes(
             st.tool_config_path(),
             tool_payload,
@@ -232,6 +311,8 @@ def set_provider_model(
 
     action = "would set" if dry_run else "set"
     print(f"{action} model: {target}/{model}")
+    for field, value in limit_updates.items():
+        print(f"- limit.{field} = {value}")
     return 0
 
 
@@ -325,6 +406,8 @@ def models_command(
     all_providers: bool,
     remote: bool,
     update_sets: list[str] | None = None,
+    context_window: int | None = None,
+    max_output_tokens: int | None = None,
 ) -> int:
     if command == "sync" and all_providers:
         if provider is not None:
@@ -337,7 +420,13 @@ def models_command(
     if command == "set":
         if not model:
             raise SwitchError("models set requires a model ID")
-        return set_provider_model(provider, model, dry_run)
+        return set_provider_model(
+            provider,
+            model,
+            dry_run,
+            context_window,
+            max_output_tokens,
+        )
     if command == "update":
         if not model:
             raise SwitchError("models update requires a model ID")

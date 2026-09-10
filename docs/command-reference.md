@@ -119,20 +119,31 @@ clpx models sync --all
 clpx models list cistern
 clpx models list cistern --remote
 clpx models set claude-sonnet-5 cistern
+clpx models set claude-sonnet-5 cistern --context-window 200000 --max-output-tokens 16000
 clpx models update claude-sonnet-5 cistern --set name="Sonnet 5" --set limit='{"context": 200000}'
 ```
 
 `models sync` fetches the model IDs exposed by a provider and stores them at
 `~/.claude-provider/models/<provider>.json`, preserving per-model fields
 (`name`, `limit`, `options`) for IDs that still exist and retaining removed
-remote IDs. `models list` shows the cached list, or fetches live with
-`--remote`. `models set <model> [provider]` updates the provider's model env
-keys (`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL`,
+remote IDs. When the provider includes explicit model metadata, sync also
+imports display name, context window, and maximum output into missing fields;
+it never guesses capabilities from a model ID or overwrites manual values.
+For providers whose `/models` response contains only IDs, sync also consults
+the versioned GitHub catalog at `data/model-catalog.json` and caches a
+successful copy under `~/.claude-provider/model-catalog-cache.json`. Catalog
+network failures fall back to that cache, or leave unknown limits at defaults
+when no cache exists.
+`models list` shows the cached list, or fetches live with `--remote`.
+`models set <model> [provider]` updates the provider's model env keys
+(`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL`,
 `CLAUDE_CODE_SUBAGENT_MODEL`) and re-renders `~/.claude/settings.json` so the
 new default model applies immediately without changing the active provider or
-endpoint. `models update <model> [provider] --set FIELD=VALUE` edits stored
-fields of one synced model (`name` plain text; `limit`/`options` JSON
-objects; empty value clears the field; `--dry-run` previews).
+endpoint. `--context-window` and `--max-output-tokens` can be passed to
+`models set` to write the selected model's `limit` fields in the same
+operation. `models update <model> [provider] --set FIELD=VALUE` edits stored
+fields of one synced model (`name` plain text; `limit`/`options` JSON objects;
+empty value clears the field; `--dry-run` previews).
 
 ## Authentication and Configuration
 
@@ -303,6 +314,7 @@ cpx models sync my-provider --dry-run
 cpx models sync --all
 cpx models set my-model my-provider
 cpx models set my-model my-provider --dry-run
+cpx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
 cpx models update my-model my-provider --set context_window=200000 --set variants=low,medium,high
 ```
 
@@ -311,22 +323,31 @@ changing config. `models sync` fetches IDs from the OpenAI-compatible
 `base_url/models` endpoint and merges them into the catalog: existing entries
 keep their metadata, newly discovered IDs receive a minimal catalog entry
 (cloned from the `glm-5.3-flash` shape with the new `slug`/`display_name`),
-and removed remote IDs are retained, never deleted. The catalog path is the
-provider's `provider_model_catalog_json` pointer when set; otherwise sync
-creates `~/.codex-provider/catalogs/<provider>.json`, records the pointer,
-and re-renders the runtime config when the target is active. `models set
-<model> [provider]` validates the ID against the catalog and writes the
-top-level `model` field in `~/.codex/config.toml` (bare model ID; use
-`--dry-run` to preview). With `--all`, synchronization continues through
-every provider and returns status 1 if any provider cannot be queried.
+and removed remote IDs are retained, never deleted. If the response includes
+explicit display name, context, maximum output, or input modality fields,
+sync fills the corresponding default entry fields; manual catalog values are
+preserved. The catalog path is the provider's
+`provider_model_catalog_json` pointer when set; otherwise sync creates
+`~/.codex-provider/catalogs/<provider>.json`, records the pointer, and
+re-renders the runtime config when the target is active. `models set <model>
+[provider]` validates the ID against the catalog and writes the top-level
+`model` field in `~/.codex/config.toml` (bare model ID; use `--dry-run` to
+preview). `--context-window` updates both Codex context window fields, and
+`--max-output-tokens` stores the explicit output limit in the catalog. With
+`--all`, synchronization continues through every provider and returns status 1
+if any provider cannot be queried. When `/models` exposes only IDs, sync uses
+the versioned GitHub metadata catalog and caches it under
+`~/.codex-provider/model-catalog-cache.json`; metadata fetch failures never
+block provider model synchronization.
 
 `models update <model> [provider] --set FIELD=VALUE` edits one catalog entry
 in place (repeat `--set` for multiple fields; `--dry-run` previews). Text
 fields (`display_name`, `description`, `default_reasoning_level`,
 `default_verbosity`, `default_service_tier`, `default_reasoning_summary`)
 take plain values (empty clears). Integer fields (`context_window`,
-`max_context_window`, `effective_context_window_percent` clamped to 1-100,
-`auto_compact_token_limit`, `priority`) take non-negative integers.
+`max_context_window`, `max_output_tokens`, `effective_context_window_percent`
+clamped to 1-100, `auto_compact_token_limit`, `priority`) take non-negative
+integers.
 Booleans (`support_verbosity`, `supports_reasoning_summaries`,
 `supports_parallel_tool_calls`, `supports_search_tool`, `prefer_websockets`,
 `use_responses_lite`) accept `true`/`false`. `input_modalities` takes a
@@ -344,16 +365,24 @@ opx models sync my-provider --dry-run
 opx models sync --all
 opx models set my-model my-provider
 opx models set my-model my-provider --dry-run
+opx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
 opx models update my-model my-provider --set name="My Model" --set limit='{"context": 200000}'
 ```
 
 `models list` fetches IDs from the OpenAI-compatible
 `options.baseURL/models` endpoint without changing config. `models sync` adds
 new IDs to `provider.<id>.models`, retains existing model metadata, and never
-removes models. Newly discovered models receive default `variants` named
-`low`, `medium`, `high`, `xhigh`, and `max`; each variant sets the matching
-`reasoningEffort` value. Existing model entries and custom variants are left
-unchanged.
+removes models. When explicit provider metadata is present, newly discovered
+models also receive their display name and `limit.context`/`limit.output`
+values; existing manual values are left unchanged. Models without those
+fields retain the existing provider defaults. Newly discovered models receive
+default `variants` named `low`, `medium`, `high`, `xhigh`, and `max`; each
+variant sets the matching `reasoningEffort` value. Existing model entries and
+custom variants are left unchanged.
+If the provider returns only IDs, sync supplements them from the versioned
+GitHub metadata catalog and caches the successful copy under the OpenCode
+state directory. A failed metadata fetch falls back to the cache or leaves
+the provider defaults unchanged.
 
 Pass `--force` to refresh the five default variants for every synchronized
 model. Other model metadata is preserved; custom variants are replaced by the
@@ -366,7 +395,8 @@ provider and returns status 1 if any provider cannot be queried.
 `models set <model> [provider]` validates the ID against the provider's
 synced models and writes the top-level `model` field as `provider/model`
 (bare `provider/model` prefixes must match the target; `--dry-run` previews
-without writing).
+without writing). `--context-window` and `--max-output-tokens` update the
+selected model's `limit` fields in the same operation.
 
 `models update <model> [provider] --set FIELD=VALUE` edits one synced model
 entry in place (repeat `--set` for multiple fields; `--dry-run` previews).

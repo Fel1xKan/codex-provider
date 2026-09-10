@@ -13,6 +13,8 @@ from lib.codex.switch import switch_provider
 from lib.common.common_store import FileChange, apply_changes
 from lib.common.constants import MODE_OFFICIAL
 from lib.common.errors import SwitchError
+from lib.common.model_catalog import load_model_catalog, merge_metadata
+from lib.common.model_metadata import extract_model_metadata, model_record_map
 from lib.common.network import WireProtocol, fetch_provider_models
 from lib.common.toml_config import (
     MODEL_CATALOG_FIELD,
@@ -48,6 +50,7 @@ VALID_UPDATE_FIELDS = (
     "description",
     "context_window",
     "max_context_window",
+    "max_output_tokens",
     "effective_context_window_percent",
     "auto_compact_token_limit",
     "default_reasoning_level",
@@ -71,6 +74,7 @@ _VARIANT_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 _SCALAR_INT_FIELDS = {
     "context_window",
     "max_context_window",
+    "max_output_tokens",
     "effective_context_window_percent",
     "auto_compact_token_limit",
     "priority",
@@ -224,7 +228,7 @@ def catalog_pointer_path(config: dict[str, Any]) -> Path | None:
     return None
 
 
-def _fetch_ids(target: str, config: dict[str, Any]) -> list[str]:
+def _fetch_models(target: str, config: dict[str, Any]) -> Any:
     if config.get("mode") == MODE_OFFICIAL:
         raise SwitchError(
             f"provider '{target}' uses official Codex login; models sync does not apply"
@@ -237,6 +241,57 @@ def _fetch_ids(target: str, config: dict[str, Any]) -> list[str]:
         raise SwitchError(f"auth profile is missing for provider '{target}': {profile}")
     api_key = load_auth_json(profile).get("OPENAI_API_KEY", "")
     return fetch_provider_models(base_url, api_key, WireProtocol.OPENAI)
+
+
+def _fetch_ids(target: str, config: dict[str, Any]) -> list[str]:
+    return list(_fetch_models(target, config))
+
+
+def _remote_metadata(result: Any) -> dict[str, dict[str, Any]]:
+    return {
+        model_id: extract_model_metadata(record)
+        for model_id, record in model_record_map(result).items()
+    }
+
+
+def _catalog_metadata() -> dict[str, dict[str, Any]]:
+    result = load_model_catalog(st.tool_home() / "model-catalog-cache.json")
+    return result.entries | {
+        alias: result.entries[canonical]
+        for alias, canonical in result.aliases.items()
+        if canonical in result.entries
+    }
+
+
+def _apply_remote_metadata(
+    entry: dict[str, Any],
+    metadata: dict[str, Any],
+    *,
+    is_new: bool,
+) -> dict[str, Any]:
+    next_entry = dict(entry)
+    model_id = str(next_entry.get("slug", ""))
+    display_name = metadata.get("display_name")
+    if display_name and (is_new or next_entry.get("display_name") in (None, model_id)):
+        next_entry["display_name"] = display_name
+
+    context_window = metadata.get("context_window")
+    default_context = minimal_catalog_entry(model_id)["context_window"]
+    if context_window and (
+        is_new or next_entry.get("context_window") == default_context
+    ):
+        next_entry["context_window"] = context_window
+        if is_new or next_entry.get("max_context_window") == default_context:
+            next_entry["max_context_window"] = context_window
+
+    max_output_tokens = metadata.get("max_output_tokens")
+    if max_output_tokens and (is_new or "max_output_tokens" not in next_entry):
+        next_entry["max_output_tokens"] = max_output_tokens
+
+    input_modalities = metadata.get("input_modalities")
+    if input_modalities and (is_new or next_entry.get("input_modalities") == ["text"]):
+        next_entry["input_modalities"] = input_modalities
+    return next_entry
 
 
 def _resolve_catalog_path(
@@ -256,16 +311,33 @@ def sync_provider_models(target: str, dry_run: bool) -> int:
         if target not in state.providers:
             raise SwitchError(f"unknown provider '{target}'")
         config = state.providers[target]
-        model_ids = _fetch_ids(target, config)
+        fetched = _fetch_models(target, config)
+        model_ids = list(fetched)
+        remote_metadata = _remote_metadata(fetched)
+        catalog_metadata = _catalog_metadata()
         catalog_path, catalog_exists = _resolve_catalog_path(target, config, state)
         existing = load_catalog(catalog_path) if catalog_exists else {}
         merged: dict[str, dict[str, Any]] = {}
         added = 0
         for model_id in model_ids:
             if model_id in existing:
-                merged[model_id] = existing[model_id]
+                merged[model_id] = _apply_remote_metadata(
+                    existing[model_id],
+                    merge_metadata(
+                        catalog_metadata.get(model_id, {}),
+                        remote_metadata.get(model_id, {}),
+                    ),
+                    is_new=False,
+                )
             else:
-                merged[model_id] = minimal_catalog_entry(model_id)
+                merged[model_id] = _apply_remote_metadata(
+                    minimal_catalog_entry(model_id),
+                    merge_metadata(
+                        catalog_metadata.get(model_id, {}),
+                        remote_metadata.get(model_id, {}),
+                    ),
+                    is_new=True,
+                )
                 added += 1
         for model_id, entry in existing.items():
             if model_id not in merged:
@@ -351,7 +423,13 @@ def _runtime_model_path(state: st.ProviderState) -> tuple[Path, str, dict[str, A
     return runtime_config, text, data
 
 
-def set_provider_model(provider: str | None, model: str, dry_run: bool = False) -> int:
+def set_provider_model(
+    provider: str | None,
+    model: str,
+    dry_run: bool = False,
+    context_window: int | None = None,
+    max_output_tokens: int | None = None,
+) -> int:
     if not model or not model.strip():
         raise SwitchError("model must not be empty")
     model = model.strip()
@@ -373,6 +451,46 @@ def set_provider_model(provider: str | None, model: str, dry_run: bool = False) 
                 f"unknown model '{model}' for provider '{target}', available: "
                 + ", ".join(known)
             )
+        limit_updates = {
+            "context_window": context_window,
+            "max_output_tokens": max_output_tokens,
+        }
+        limit_updates = {
+            field: value for field, value in limit_updates.items() if value is not None
+        }
+        for field, value in limit_updates.items():
+            if value <= 0:
+                raise SwitchError(f"--{field} must be > 0")
+
+        catalog_changes: list[str] = []
+        catalog_payload: bytes | None = None
+        if limit_updates:
+            if not catalog_exists:
+                raise SwitchError(
+                    f"no catalog for provider '{target}'; run cpx models sync {target}"
+                )
+            entries = load_catalog(catalog_path)
+            if model not in entries:
+                raise SwitchError(
+                    f"unknown model '{model}' for provider '{target}', available: "
+                    + ", ".join(sorted(entries))
+                )
+            entry = dict(entries[model])
+            if context_window is not None:
+                entry["context_window"] = context_window
+                entry["max_context_window"] = context_window
+                catalog_changes.extend(
+                    [
+                        f"context_window = {context_window}",
+                        f"max_context_window = {context_window}",
+                    ]
+                )
+            if max_output_tokens is not None:
+                entry["max_output_tokens"] = max_output_tokens
+                catalog_changes.append(f"max_output_tokens = {max_output_tokens}")
+            entries[model] = entry
+            catalog_payload = render_catalog(entries)
+
         runtime_config, base_text, _ = _runtime_model_path(state)
         import tomlkit
 
@@ -390,10 +508,15 @@ def set_provider_model(provider: str | None, model: str, dry_run: bool = False) 
             raise SwitchError(f"generated runtime TOML is invalid: {exc}") from exc
         if not dry_run:
             create_snapshot("models-set", target, state=state)
-            apply_changes([FileChange(runtime_config, rendered.encode("utf-8"))])
+            changes = [FileChange(runtime_config, rendered.encode("utf-8"))]
+            if catalog_payload is not None:
+                changes.insert(0, FileChange(catalog_path, catalog_payload))
+            apply_changes(changes)
 
     action = "would set" if dry_run else "set"
     print(f"{action} model: {target}/{model}")
+    for change in catalog_changes:
+        print(f"- {change}")
     return 0
 
 
@@ -482,6 +605,8 @@ def models_command(
     dry_run: bool = False,
     all_providers: bool = False,
     update_sets: list[str] | None = None,
+    context_window: int | None = None,
+    max_output_tokens: int | None = None,
 ) -> int:
     if command == "sync" and all_providers:
         if provider is not None:
@@ -494,7 +619,13 @@ def models_command(
     if command == "set":
         if not model:
             raise SwitchError("models set requires a model ID")
-        return set_provider_model(provider, model, dry_run)
+        return set_provider_model(
+            provider,
+            model,
+            dry_run,
+            context_window,
+            max_output_tokens,
+        )
     if command == "update":
         if not model:
             raise SwitchError("models update requires a model ID")

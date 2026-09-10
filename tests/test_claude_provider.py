@@ -8,6 +8,8 @@ import pytest
 
 import cli.claude_provider as cp
 import lib.claude.store as cl_st
+from lib.common.model_catalog import CatalogResult
+from lib.common.network import ProviderModelList
 
 
 @pytest.fixture
@@ -456,6 +458,144 @@ def test_models_sync_preserves_update_fields(
         "limit": {"context": 1},
     }
     assert by_id["model-b"] == "model-b"
+
+
+def test_models_sync_imports_remote_metadata(
+    claude_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _add_provider(
+        claude_paths,
+        monkeypatch,
+        name="alpha",
+        base_url="https://alpha.example.com/v1",
+        key="placeholder-alpha-key",
+    )
+    import lib.claude.models as cl_models
+
+    monkeypatch.setattr(
+        cl_models,
+        "fetch_provider_models",
+        lambda *args, **kwargs: ProviderModelList(
+            [
+                {
+                    "id": "model-a",
+                    "display_name": "Model A",
+                    "max_input_tokens": 200000,
+                    "max_tokens": 16000,
+                    "capabilities": {
+                        "image_input": {"supported": True},
+                        "thinking": {"supported": True},
+                    },
+                }
+            ]
+        ),
+    )
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    data = json.loads(
+        (claude_paths["tool_home"] / "models" / "alpha.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert data["models"] == [
+        {
+            "id": "model-a",
+            "name": "Model A",
+            "limit": {"context": 200000, "output": 16000},
+        }
+    ]
+
+
+def test_models_sync_uses_github_catalog_for_id_only_response(
+    claude_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _add_provider(
+        claude_paths,
+        monkeypatch,
+        name="alpha",
+        base_url="https://alpha.example.com/v1",
+        key="placeholder-alpha-key",
+    )
+    import lib.claude.models as cl_models
+
+    monkeypatch.setattr(
+        cl_models,
+        "fetch_provider_models",
+        lambda *args, **kwargs: ["gpt-test"],
+    )
+    monkeypatch.setattr(
+        cl_models,
+        "load_model_catalog",
+        lambda path: CatalogResult(
+            {
+                "gpt-test": {
+                    "display_name": "GPT Test",
+                    "context_window": 128000,
+                    "max_output_tokens": 8192,
+                }
+            },
+            {},
+            "test",
+            "remote",
+        ),
+    )
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    data = json.loads(
+        (claude_paths["tool_home"] / "models" / "alpha.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert data["models"] == [
+        {
+            "id": "gpt-test",
+            "name": "GPT Test",
+            "limit": {"context": 128000, "output": 8192},
+        }
+    ]
+
+
+def test_models_set_can_update_limits_while_selecting(
+    claude_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _add_provider(
+        claude_paths,
+        monkeypatch,
+        name="alpha",
+        base_url="https://alpha.example.com/v1",
+        key="placeholder-alpha-key",
+    )
+    _write_models_file(claude_paths, ["model-a"])
+
+    assert (
+        cp.main(
+            [
+                "models",
+                "set",
+                "model-a",
+                "alpha",
+                "--context-window",
+                "200000",
+                "--max-output-tokens",
+                "16000",
+            ]
+        )
+        == 0
+    )
+
+    data = json.loads(
+        (claude_paths["tool_home"] / "models" / "alpha.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert data["models"] == [
+        {"id": "model-a", "limit": {"context": 200000, "output": 16000}}
+    ]
 
 
 def test_models_update_sets_name_limit_options(

@@ -11,6 +11,8 @@ import pytest
 
 import cli.codex_provider as codex
 import cli.opencode_provider as op
+import lib.opencode.models as op_models
+from lib.common.model_catalog import CatalogResult
 
 
 @pytest.fixture
@@ -307,6 +309,89 @@ def test_models_sync_adds_missing_ids_and_preserves_existing_config(
     }
 
 
+def test_models_sync_imports_remote_metadata_and_retains_stale_models(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write_config(opencode_paths)
+    monkeypatch.setattr(
+        op.urllib.request,
+        "urlopen",
+        lambda request, timeout: ModelsResponse(
+            json.dumps(
+                {
+                    "data": [
+                        {
+                            "id": "gpt-5",
+                            "context_length": 200000,
+                            "max_output_tokens": 16000,
+                        },
+                        {
+                            "id": "gpt-5-new",
+                            "name": "GPT 5 Remote",
+                            "context_length": 128000,
+                            "max_output_tokens": 8192,
+                        },
+                    ]
+                }
+            ).encode()
+        ),
+    )
+    data = json.loads(config.read_text())
+    data["provider"]["alpha"]["models"]["stale-model"] = {
+        "name": "Keep me",
+        "limit": {"context": 1},
+    }
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    assert op.main(["models", "sync", "alpha"]) == 0
+
+    updated = json5.loads(config.read_text())
+    models = updated["provider"]["alpha"]["models"]
+    assert models["gpt-5"]["name"] == "GPT 5"
+    assert models["gpt-5"]["limit"] == {"context": 200000, "output": 16000}
+    assert models["gpt-5-new"]["name"] == "GPT 5 Remote"
+    assert models["gpt-5-new"]["limit"] == {"context": 128000, "output": 8192}
+    assert models["stale-model"] == {
+        "name": "Keep me",
+        "limit": {"context": 1},
+    }
+
+
+def test_models_sync_uses_github_catalog_for_id_only_response(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write_config(opencode_paths)
+    monkeypatch.setattr(
+        op.urllib.request,
+        "urlopen",
+        lambda request, timeout: ModelsResponse(
+            json.dumps({"data": [{"id": "gpt-test"}]}).encode()
+        ),
+    )
+    monkeypatch.setattr(
+        op_models,
+        "load_model_catalog",
+        lambda path: CatalogResult(
+            {
+                "gpt-test": {
+                    "display_name": "GPT Test",
+                    "context_window": 128000,
+                    "max_output_tokens": 8192,
+                }
+            },
+            {},
+            "test",
+            "remote",
+        ),
+    )
+
+    assert op.main(["models", "sync", "alpha"]) == 0
+
+    model = json5.loads(config.read_text())["provider"]["alpha"]["models"]["gpt-test"]
+    assert model["name"] == "GPT Test"
+    assert model["limit"] == {"context": 128000, "output": 8192}
+
+
 def test_models_sync_adds_first_model_to_empty_models_object(
     opencode_paths: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -476,8 +561,12 @@ def test_models_sync_all_syncs_every_provider(
     assert op.main(["models", "sync", "--all"]) == 0
 
     updated = json5.loads(config.read_text())
-    assert list(updated["provider"]["alpha"]["models"]) == ["alpha-model"]
-    assert list(updated["provider"]["beta"]["models"]) == ["beta-model"]
+    assert list(updated["provider"]["alpha"]["models"]) == ["alpha-model", "gpt-5"]
+    assert list(updated["provider"]["beta"]["models"]) == [
+        "beta-model",
+        "model-a",
+        "model-b",
+    ]
 
 
 def test_models_sync_all_continues_after_failure(
@@ -511,7 +600,11 @@ def test_models_sync_all_continues_after_failure(
     assert "HTTP 403" in err
     updated = json5.loads(config.read_text())
     assert list(updated["provider"]["alpha"]["models"]) == ["gpt-5"]
-    assert list(updated["provider"]["beta"]["models"]) == ["beta-model"]
+    assert list(updated["provider"]["beta"]["models"]) == [
+        "beta-model",
+        "model-a",
+        "model-b",
+    ]
 
 
 def test_models_sync_all_rejects_provider(
@@ -1162,6 +1255,35 @@ def test_models_set_dry_run_does_not_write(
     assert op.main(["models", "set", "model-a", "beta", "--dry-run"]) == 0
     assert config.read_bytes() == before
     assert "would set model: beta/model-a" in capsys.readouterr().out
+
+
+def test_models_set_can_update_limits_while_selecting(
+    opencode_paths: Path,
+) -> None:
+    config = write_config(opencode_paths)
+
+    assert (
+        op.main(
+            [
+                "models",
+                "set",
+                "model-a",
+                "beta",
+                "--context-window",
+                "200000",
+                "--max-output-tokens",
+                "16000",
+            ]
+        )
+        == 0
+    )
+
+    data = json5.loads(config.read_text())
+    assert data["model"] == "beta/model-a"
+    assert data["provider"]["beta"]["models"]["model-a"]["limit"] == {
+        "context": 200000,
+        "output": 16000,
+    }
 
 
 def test_models_update_sets_name_limit_options(

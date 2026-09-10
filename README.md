@@ -159,9 +159,11 @@ appear first. `doctor` checks stored configuration and authentication, while
 cpx models list my-provider
 cpx models sync my-provider --dry-run
 cpx models set my-model my-provider
+cpx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
 opx models list my-provider
 opx models sync my-provider --dry-run
 opx models set my-model my-provider
+opx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
 apx login work-account
 apx usage work-account
 cupx add work --from-current
@@ -173,12 +175,21 @@ cupx models set deepseek-v4-flash
 
 Codex `models sync` merges the provider's current `/models` IDs into its
 catalog file (existing entries keep their metadata, new IDs get a minimal
-entry, removed remote IDs are retained); unpointed providers get a new
+entry, removed remote IDs are retained). When a provider exposes explicit
+model metadata, sync also fills missing display name, context, output, and
+input modality fields without guessing from the model ID. `--context-window`
+and `--max-output-tokens` on `models set` write the selected model's limits
+while setting the default. Unpointed providers get a new
 `~/.codex-provider/catalogs/<provider>.json` and pointer automatically, and
 `models set` writes the top-level `model` in `~/.codex/config.toml`. OpenCode
 `models sync` adds new IDs to `provider.<id>.models` with the same
-merge-and-retain semantics, and `models set` writes the top-level `model` as
-`provider/model`; use `--all` to sync every configured provider.
+merge-and-retain semantics, imports explicit `limit.context`/`limit.output`
+metadata, and `models set` writes the top-level `model` as `provider/model`;
+use `--all` to sync every configured provider. If a provider's `/models`
+response contains only IDs, all three CLIs consult the versioned
+`data/model-catalog.json` hosted in this repository and cache it locally;
+catalog failures fall back to the cache or leave unknown model limits at
+their normal defaults.
 Anthropic-compatible providers (`npm` is `@ai-sdk/anthropic`) are queried with
 Anthropic headers. Antigravity `usage` reports 5-hour and weekly quota without
 switching accounts.

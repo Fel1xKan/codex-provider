@@ -3,6 +3,11 @@ PRIVATE_DIR_MODE = 0o700
 SECRET_FILE_MODE = 0o600
 DEFAULT_FILE_MODE = 0o644
 MAX_HTTP_BODY_BYTES = 2 * 1024 * 1024
+MODEL_CATALOG_MAX_BYTES = 2 * 1024 * 1024
+MODEL_CATALOG_URL = (
+    "https://raw.githubusercontent.com/"
+    "Fel1xKan/codex-provider/master/data/model-catalog.json"
+)
 
 PROVIDER_PREFIX = "model_providers."
 RUNTIME_PROVIDER_ID = "codex-provider"

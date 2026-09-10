@@ -6,6 +6,8 @@ from typing import Any
 import lib.opencode.admin as adm
 from lib.common.common_store import FileChange, apply_changes
 from lib.common.errors import SwitchError
+from lib.common.model_catalog import load_model_catalog, merge_metadata
+from lib.common.model_metadata import extract_model_metadata, model_record_map
 from lib.common.network import WireProtocol
 from lib.common.network import fetch_provider_models as fetch_models
 from lib.opencode.patch import patch_default_model, patch_provider_models
@@ -14,6 +16,7 @@ from lib.opencode.store import (
     load_auth_keys,
     load_state,
     provider_models,
+    state_dir,
 )
 
 # OpenCode accepts provider-specific options in each model variant.  These
@@ -26,6 +29,46 @@ DEFAULT_VARIANT_NAMES = ("low", "medium", "high", "xhigh", "max")
 def default_model_variants() -> dict[str, dict[str, str]]:
     """Return fresh default variants for a newly discovered model."""
     return {name: {"reasoningEffort": name} for name in DEFAULT_VARIANT_NAMES}
+
+
+def _remote_metadata(result: Any) -> dict[str, dict[str, Any]]:
+    return {
+        model_id: extract_model_metadata(record)
+        for model_id, record in model_record_map(result).items()
+    }
+
+
+def _catalog_metadata() -> dict[str, dict[str, Any]]:
+    result = load_model_catalog(state_dir() / "model-catalog-cache.json")
+    return result.entries | {
+        alias: result.entries[canonical]
+        for alias, canonical in result.aliases.items()
+        if canonical in result.entries
+    }
+
+
+def _apply_remote_metadata(
+    entry: dict[str, Any],
+    metadata: dict[str, Any],
+    *,
+    is_new: bool,
+) -> dict[str, Any]:
+    next_entry = dict(entry)
+    display_name = metadata.get("display_name")
+    if display_name and (is_new or "name" not in next_entry):
+        next_entry["name"] = display_name
+
+    context_window = metadata.get("context_window")
+    max_output_tokens = metadata.get("max_output_tokens")
+    if context_window or max_output_tokens:
+        raw_limit = next_entry.get("limit")
+        limit = dict(raw_limit) if isinstance(raw_limit, dict) else {}
+        if context_window and "context" not in limit:
+            limit["context"] = context_window
+        if max_output_tokens and "output" not in limit:
+            limit["output"] = max_output_tokens
+        next_entry["limit"] = limit
+    return next_entry
 
 
 def fetch_provider_models(
@@ -183,16 +226,36 @@ def sync_provider_models(
     keys = load_auth_keys().get(target, [])
     api_key = keys[0] if keys else ""
     anthropic = config.get("npm") == "@ai-sdk/anthropic"
-    models_list = fetch_provider_models(base_url, api_key, anthropic)
+    fetched = fetch_provider_models(base_url, api_key, anthropic)
+    models_list = list(fetched)
+    remote_metadata = _remote_metadata(fetched)
+    catalog_metadata = _catalog_metadata()
     existing_models = provider_models(state, target)
     model_objs: dict[str, dict[str, Any]] = {}
     for m in models_list:
         if m in existing_models and isinstance(existing_models[m], dict):
-            model_objs[m] = dict(existing_models[m])
+            model_objs[m] = _apply_remote_metadata(
+                dict(existing_models[m]),
+                merge_metadata(
+                    catalog_metadata.get(m, {}),
+                    remote_metadata.get(m, {}),
+                ),
+                is_new=False,
+            )
             if force:
                 model_objs[m]["variants"] = default_model_variants()
         else:
-            model_objs[m] = {"variants": default_model_variants()}
+            model_objs[m] = _apply_remote_metadata(
+                {"variants": default_model_variants()},
+                merge_metadata(
+                    catalog_metadata.get(m, {}),
+                    remote_metadata.get(m, {}),
+                ),
+                is_new=True,
+            )
+    for model_id, entry in existing_models.items():
+        if model_id not in model_objs:
+            model_objs[model_id] = dict(entry)
     updated = patch_provider_models(state.text, target, model_objs)
 
     if not dry_run:
@@ -214,7 +277,13 @@ def sync_all_models(state: ConfigState, dry_run: bool, force: bool = False) -> i
     return 0 if failures == 0 else 1
 
 
-def set_provider_model(provider: str | None, model: str, dry_run: bool = False) -> int:
+def set_provider_model(
+    provider: str | None,
+    model: str,
+    dry_run: bool = False,
+    context_window: int | None = None,
+    max_output_tokens: int | None = None,
+) -> int:
     from lib.common.recent import record_recent_provider
     from lib.opencode.store import recent_path
 
@@ -248,15 +317,44 @@ def set_provider_model(provider: str | None, model: str, dry_run: bool = False) 
             f"unknown model '{target}/{model}', available: " + ", ".join(sorted(models))
         )
     desired = f"{target}/{model}"
-    if state.data.get("model") == desired:
+    limit_updates = {
+        "context": context_window,
+        "output": max_output_tokens,
+    }
+    limit_updates = {
+        key: value for key, value in limit_updates.items() if value is not None
+    }
+    option_names = {"context": "--context-window", "output": "--max-output-tokens"}
+    for field, value in limit_updates.items():
+        if value <= 0:
+            raise SwitchError(f"{option_names[field]} must be > 0")
+
+    if state.data.get("model") == desired and not limit_updates:
         print(f"already using default model: {desired}")
         return 0
+
+    updated_models = {name: dict(config) for name, config in models.items()}
+    changes: list[str] = []
+    if limit_updates:
+        entry = dict(updated_models[model])
+        raw_limit = entry.get("limit")
+        limit = dict(raw_limit) if isinstance(raw_limit, dict) else {}
+        for field, value in limit_updates.items():
+            limit[field] = value
+            changes.append(f"limit.{field} = {value}")
+        entry["limit"] = limit
+        updated_models[model] = entry
+
     updated = patch_default_model(state.text, desired)
+    if limit_updates:
+        updated = patch_provider_models(updated, target, updated_models)
     if not dry_run:
         apply_changes([FileChange(state.path, updated.encode("utf-8"))])
         record_recent_provider(recent_path(), target)
     action = "would set" if dry_run else "set"
     print(f"{action} model: {desired}")
+    for change in changes:
+        print(f"- {change}")
     return 0
 
 
@@ -268,6 +366,8 @@ def models_command(
     all_providers: bool = False,
     force: bool = False,
     update_sets: list[str] | None = None,
+    context_window: int | None = None,
+    max_output_tokens: int | None = None,
 ) -> int:
     state = load_state()
     if command == "sync" and all_providers:
@@ -277,7 +377,13 @@ def models_command(
     if command == "set":
         if not model:
             raise SwitchError("models set requires a model ID")
-        return set_provider_model(provider, model, dry_run)
+        return set_provider_model(
+            provider,
+            model,
+            dry_run,
+            context_window,
+            max_output_tokens,
+        )
     if command == "update":
         if not model:
             raise SwitchError("models update requires a model ID")

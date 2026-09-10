@@ -194,6 +194,18 @@ class ClaudeBackend(BaseBackend):
                             action="store_true",
                             help="Preview changes without writing files",
                         ),
+                        ArgSpec(
+                            ("--context-window",),
+                            type=int,
+                            metavar="TOKENS",
+                            help="Set this model's context limit while selecting it",
+                        ),
+                        ArgSpec(
+                            ("--max-output-tokens",),
+                            type=int,
+                            metavar="TOKENS",
+                            help="Set this model's output limit while selecting it",
+                        ),
                     ),
                 ),
                 SubcommandSpec(
@@ -230,6 +242,8 @@ class ClaudeBackend(BaseBackend):
             getattr(args, "all", False),
             getattr(args, "remote", False),
             getattr(args, "set", None),
+            getattr(args, "context_window", None),
+            getattr(args, "max_output_tokens", None),
         ),
     }
 

@@ -219,6 +219,47 @@ def test_models_url_is_built_structurally() -> None:
     )
 
 
+def test_fetch_provider_models_keeps_explicit_model_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "data": [
+            {
+                "id": "model-a",
+                "name": "Model A",
+                "context_length": 128000,
+                "top_provider": {"max_completion_tokens": 8192},
+            }
+        ]
+    }
+    monkeypatch.setattr(
+        network.urllib.request,
+        "urlopen",
+        lambda request, timeout: FakeResponse(json.dumps(payload).encode()),
+    )
+
+    models = network.fetch_provider_models("https://example.com/v1", "key")
+
+    assert list(models) == ["model-a"]
+    assert models.records["model-a"]["context_length"] == 128000
+    assert models.records["model-a"]["top_provider"]["max_completion_tokens"] == 8192
+
+
+def test_fetch_provider_models_rejects_unsafe_model_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        network.urllib.request,
+        "urlopen",
+        lambda request, timeout: FakeResponse(
+            json.dumps({"data": [{"id": "model-\u001b[31m"}]}).encode()
+        ),
+    )
+
+    with pytest.raises(cp.SwitchError, match="control characters"):
+        network.fetch_provider_models("https://example.com/v1", "key")
+
+
 def test_models_test_rejects_non_openai_json(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

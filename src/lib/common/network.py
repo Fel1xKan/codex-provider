@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 import json
+import re
 import ssl
 import sys
 import urllib.error
@@ -16,6 +17,27 @@ from lib.common.errors import SwitchError
 class WireProtocol(enum.Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+
+
+MAX_MODEL_COUNT = 5000
+MAX_MODEL_ID_LENGTH = 256
+_UNSAFE_MODEL_ID = re.compile(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+
+
+class ProviderModelList(list[str]):
+    """Model IDs with the original /models entries attached.
+
+    Existing callers only need the list behavior. Model sync commands can use
+    ``records`` when a provider exposes optional capability metadata.
+    """
+
+    def __init__(self, records: list[dict[str, Any]]) -> None:
+        self.records = {
+            item["id"]: dict(item)
+            for item in records
+            if isinstance(item.get("id"), str)
+        }
+        super().__init__(sorted(self.records))
 
 
 def get_request_module() -> Any:
@@ -84,12 +106,12 @@ def _request_headers(api_key: str, protocol: WireProtocol) -> dict[str, str]:
     return headers
 
 
-def fetch_provider_models(
+def _fetch_provider_model_records(
     base_url: str,
     api_key: str,
     protocol: WireProtocol = WireProtocol.OPENAI,
     models_url_override: str | None = None,
-) -> list[str]:
+) -> list[dict[str, Any]]:
     base_url = normalize_base_url(base_url)
     models_url = (
         models_url_override.strip().rstrip("/")
@@ -103,7 +125,12 @@ def fetch_provider_models(
     )
     try:
         with req_mod.urlopen(req, timeout=10) as resp:
-            raw_body = resp.read()
+            raw_body = resp.read(MAX_HTTP_BODY_BYTES + 1)
+            if len(raw_body) > MAX_HTTP_BODY_BYTES:
+                raise SwitchError(
+                    f"failed to fetch models from {models_url}: "
+                    f"response body exceeds {MAX_HTTP_BODY_BYTES} bytes limit"
+                )
             data = json.loads(raw_body.decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body = exc.read()
@@ -112,6 +139,8 @@ def fetch_provider_models(
         raise SwitchError(
             f"failed to fetch models from {models_url}: HTTP {exc.code}{detail}"
         ) from exc
+    except SwitchError:
+        raise
     except Exception as exc:
         raise SwitchError(f"failed to fetch models from {models_url}: {exc}") from exc
     if not isinstance(data, dict) or not isinstance(data.get("data"), list):
@@ -119,8 +148,28 @@ def fetch_provider_models(
             f"invalid models response from {models_url}: "
             "expected an object with a data list"
         )
+    if len(data["data"]) > MAX_MODEL_COUNT:
+        raise SwitchError(
+            f"invalid models response from {models_url}: "
+            f"more than {MAX_MODEL_COUNT} models returned"
+        )
+
+    for item in data["data"]:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            continue
+        model_id = item["id"]
+        if not model_id or len(model_id) > MAX_MODEL_ID_LENGTH:
+            raise SwitchError(
+                f"invalid models response from {models_url}: "
+                f"model ID must be 1-{MAX_MODEL_ID_LENGTH} characters"
+            )
+        if _UNSAFE_MODEL_ID.search(model_id):
+            raise SwitchError(
+                f"invalid models response from {models_url}: "
+                "model ID contains control characters"
+            )
     models = [
-        m["id"]
+        dict(m)
         for m in data["data"]
         if isinstance(m, dict) and isinstance(m.get("id"), str)
     ]
@@ -128,7 +177,23 @@ def fetch_provider_models(
         raise SwitchError(
             f"invalid models response from {models_url}: no model ids found"
         )
-    return sorted(models)
+    return sorted(models, key=lambda item: item["id"])
+
+
+def fetch_provider_models(
+    base_url: str,
+    api_key: str,
+    protocol: WireProtocol = WireProtocol.OPENAI,
+    models_url_override: str | None = None,
+) -> ProviderModelList:
+    return ProviderModelList(
+        _fetch_provider_model_records(
+            base_url,
+            api_key,
+            protocol,
+            models_url_override,
+        )
+    )
 
 
 def run_models_test(

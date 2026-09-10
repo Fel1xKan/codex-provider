@@ -104,6 +104,18 @@ class OpenCodeBackend(BaseBackend):
                             action="store_true",
                             help="Perform a dry run",
                         ),
+                        ArgSpec(
+                            ("--context-window",),
+                            type=int,
+                            metavar="TOKENS",
+                            help="Set this model's context limit while selecting it",
+                        ),
+                        ArgSpec(
+                            ("--max-output-tokens",),
+                            type=int,
+                            metavar="TOKENS",
+                            help="Set this model's output limit while selecting it",
+                        ),
                     ),
                 ),
                 SubcommandSpec(
@@ -141,6 +153,8 @@ class OpenCodeBackend(BaseBackend):
             getattr(args, "all", False),
             getattr(args, "force", False),
             getattr(args, "set", None),
+            getattr(args, "context_window", None),
+            getattr(args, "max_output_tokens", None),
         ),
     }
 
@@ -278,9 +292,19 @@ class OpenCodeBackend(BaseBackend):
         all_providers: bool = False,
         force: bool = False,
         update_sets: list[str] | None = None,
+        context_window: int | None = None,
+        max_output_tokens: int | None = None,
     ) -> int:
         return models_command(
-            command, provider, model, dry_run, all_providers, force, update_sets
+            command,
+            provider,
+            model,
+            dry_run,
+            all_providers,
+            force,
+            update_sets,
+            context_window,
+            max_output_tokens,
         )
 
 

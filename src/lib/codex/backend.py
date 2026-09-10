@@ -199,6 +199,18 @@ class CodexBackend(BaseBackend):
                             help="Provider name",
                         ),
                         DRY_RUN,
+                        ArgSpec(
+                            ("--context-window",),
+                            type=int,
+                            metavar="TOKENS",
+                            help="Set this model's context limit while selecting it",
+                        ),
+                        ArgSpec(
+                            ("--max-output-tokens",),
+                            type=int,
+                            metavar="TOKENS",
+                            help="Set this model's output limit while selecting it",
+                        ),
                     ),
                 ),
                 SubcommandSpec(
@@ -261,6 +273,8 @@ class CodexBackend(BaseBackend):
             getattr(args, "dry_run", False),
             getattr(args, "all", False),
             getattr(args, "set", None),
+            getattr(args, "context_window", None),
+            getattr(args, "max_output_tokens", None),
         ),
         "official": lambda args: edit.add_official_provider(
             args.provider, args.display_name, args.dry_run

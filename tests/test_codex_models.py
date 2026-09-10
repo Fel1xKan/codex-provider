@@ -8,6 +8,8 @@ import pytest
 
 import cli.codex_provider as cp
 import lib.codex.models as models
+from lib.common.model_catalog import CatalogResult
+from lib.common.network import ProviderModelList
 from lib.common.toml_config import MODEL_CATALOG_FIELD
 
 
@@ -103,6 +105,74 @@ def test_models_sync_preserves_existing_metadata(
     by_slug = {entry["slug"]: entry for entry in updated["models"]}
     assert by_slug["m-a"]["display_name"] == "Custom"
     assert by_slug["m-new"]["display_name"] == "m-new"
+
+
+def test_models_sync_imports_explicit_remote_metadata(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(
+        models,
+        "fetch_provider_models",
+        lambda *args, **kwargs: ProviderModelList(
+            [
+                {
+                    "id": "m-a",
+                    "name": "Model A",
+                    "context_length": 128000,
+                    "top_provider": {"max_completion_tokens": 8192},
+                    "architecture": {"input_modalities": ["text", "image"]},
+                }
+            ]
+        ),
+    )
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert entry["display_name"] == "Model A"
+    assert entry["context_window"] == 128000
+    assert entry["max_context_window"] == 128000
+    assert entry["max_output_tokens"] == 8192
+    assert entry["input_modalities"] == ["text", "image"]
+
+
+def test_models_sync_uses_github_catalog_for_id_only_response(
+    codex_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["gpt-test"]))
+    monkeypatch.setattr(
+        models,
+        "load_model_catalog",
+        lambda path: CatalogResult(
+            {
+                "gpt-test": {
+                    "display_name": "GPT Test",
+                    "context_window": 128000,
+                    "max_output_tokens": 8192,
+                    "input_modalities": ["text", "image"],
+                }
+            },
+            {},
+            "test",
+            "remote",
+        ),
+    )
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    entry = json.loads(
+        (codex_paths["tool_home"] / "catalogs" / "alpha.json").read_text(
+            encoding="utf-8"
+        )
+    )["models"][0]
+    assert entry["display_name"] == "GPT Test"
+    assert entry["context_window"] == 128000
+    assert entry["max_output_tokens"] == 8192
+    assert entry["input_modalities"] == ["text", "image"]
 
 
 def test_models_sync_reuses_existing_pointer(
@@ -216,6 +286,36 @@ def test_models_set_dry_run_writes_nothing(
     assert cp.main(["models", "set", "m-a", "alpha", "--dry-run"]) == 0
     assert runtime.read_bytes() == before
     assert "would set model: alpha/m-a" in capsys.readouterr().out
+
+
+def test_models_set_can_update_limits_while_selecting(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    assert (
+        cp.main(
+            [
+                "models",
+                "set",
+                "m-a",
+                "alpha",
+                "--context-window",
+                "128000",
+                "--max-output-tokens",
+                "8192",
+            ]
+        )
+        == 0
+    )
+
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert entry["context_window"] == 128000
+    assert entry["max_context_window"] == 128000
+    assert entry["max_output_tokens"] == 8192
 
 
 def test_models_update_sets_scalar_and_bool_fields(

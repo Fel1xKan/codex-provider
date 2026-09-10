@@ -122,9 +122,11 @@ cpx test my-provider
 cpx models list my-provider
 cpx models sync my-provider --dry-run
 cpx models set my-model my-provider
+cpx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
 opx models list my-provider
 opx models sync my-provider --dry-run
 opx models set my-model my-provider
+opx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
 apx login work-account
 apx usage work-account
 cupx add work --from-current
@@ -135,10 +137,16 @@ cupx models set deepseek-v4-flash
 ```
 
 Codex `models sync` 会把提供商当前的 `/models` ID 合并进模型目录文件（保留已有条目
-元数据、新 ID 使用最小条目、远端已删除的 ID 也会保留）；未设置目录指针的提供商会自动
-新建 `~/.codex-provider/catalogs/<provider>.json` 并记录指针，`models set` 则写入
-`~/.codex/config.toml` 顶层 `model`。OpenCode 模型同步只添加新 ID，并保留现有元数据，
-`models set` 写入顶层 `model`（`provider/model` 形式）。Antigravity `usage` 会在不切换账号的
+元数据、新 ID 使用最小条目、远端已删除的 ID 也会保留）。如果上游模型条目明确提供了
+显示名、上下文、最大输出或输入模态，sync 会补齐缺失字段，但不会根据模型 ID 猜能力，也
+不会覆盖手工值。`models set` 可通过 `--context-window` 和 `--max-output-tokens` 在选择模型
+时同时写入限制。未设置目录指针的提供商会自动新建
+`~/.codex-provider/catalogs/<provider>.json` 并记录指针，`models set` 则写入
+`~/.codex/config.toml` 顶层 `model`。OpenCode 模型同步会添加新 ID、保留旧模型和手工元数据，
+并导入明确的 `limit.context`/`limit.output`；`models set` 写入顶层 `model`（`provider/model`
+形式）。如果 provider 的 `/models` 只返回模型 ID，三个 CLI 还会查询本仓库托管的版本化
+`data/model-catalog.json`，成功后缓存到各自状态目录；目录请求失败时使用缓存，完全没有缓存
+时也不会阻断模型 ID 同步。Antigravity `usage` 会在不切换账号的
 情况下显示 5 小时和每周配额。Cursor `switch` 会改写 Cursor SQLite 数据库中的认证行，
 `models set` 会把一个模型 ID 应用到所有 Composer 场景。Cursor `provider` 命令管理
 Cursor 数据库中的自定义 OpenAI 兼容提供商（如 DeepSeek），`models sync` 会把提供商
