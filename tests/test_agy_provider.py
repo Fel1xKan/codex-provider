@@ -304,6 +304,68 @@ def test_agy_usage_defaults_to_current_account_without_refresh(
     assert "weekly limit: 10.00% remaining" in output
 
 
+def test_agy_usage_refreshes_new_token_format_without_id_token(
+    agy_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # agy 1.2.0 stores the refreshable token without an id_token.  The
+    # Antigravity client must therefore be selected from the current default.
+    token_data = {
+        "auth_method": "consumer",
+        "token": {
+            "access_token": "expired-access",
+            "refresh_token": "new-format-refresh",
+            "token_type": "Bearer",
+            "expiry": "2000-01-01T00:00:00Z",
+        },
+    }
+    agy.OAUTH_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    agy.OAUTH_TOKEN_PATH.write_text(json.dumps(token_data), encoding="utf-8")
+    assert agy.main(["add", "new_format", "--from-current"]) == 0
+
+    def fake_urlopen(request: Any, timeout: float) -> FakeResponse:
+        assert timeout == agy_usage.REQUEST_TIMEOUT
+        if request.full_url == agy_usage.TOKEN_URL:
+            form = parse_qs(request.data.decode("ascii"))
+            assert form["client_id"] == [agy_usage.DEFAULT_OAUTH_CLIENT_ID]
+            assert form["refresh_token"] == ["new-format-refresh"]
+            return FakeResponse({"access_token": "fresh-access", "expires_in": 3599})
+        if request.full_url == agy_usage.LOAD_CODE_ASSIST_URL:
+            assert request.headers["Authorization"] == "Bearer fresh-access"
+            return FakeResponse({"cloudaicompanionProject": "new-format-project"})
+        assert request.full_url == agy_usage.QUOTA_URL
+        assert request.headers["Authorization"] == "Bearer fresh-access"
+        assert json.loads(request.data) == {"project": "new-format-project"}
+        return FakeResponse(
+            {
+                "groups": [
+                    {
+                        "displayName": "Gemini Models",
+                        "buckets": [
+                            {"window": "5h", "remainingFraction": 0.8},
+                            {"window": "weekly", "remainingFraction": 0.6},
+                        ],
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(agy_usage.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        agy_usage,
+        "_antigravity_user_agent",
+        lambda: "antigravity/1.2.0 linux/amd64",
+    )
+
+    capsys.readouterr()
+    assert agy.main(["usage", "new_format"]) == 0
+    output = capsys.readouterr().out
+    assert "Account: new_format" in output
+    assert "5h limit: 80.00% remaining" in output
+    assert "weekly limit: 60.00% remaining" in output
+
+
 def test_agy_usage_user_agent_tracks_installed_cli(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

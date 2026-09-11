@@ -36,6 +36,9 @@ OAUTH_CLIENTS = {
         "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"
     ),
 }
+DEFAULT_OAUTH_CLIENT_ID = (
+    "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
+)
 
 
 def _antigravity_user_agent() -> str:
@@ -76,6 +79,45 @@ def _oauth_token(token_data: dict[str, Any]) -> dict[str, Any]:
     if isinstance(nested, dict):
         return nested
     return token_data
+
+
+def _oauth_client_id(token_data: dict[str, Any]) -> str | None:
+    oauth_token = _oauth_token(token_data)
+
+    # Recent agy versions no longer persist id_token in
+    # antigravity-oauth-token.  Keep supporting older snapshots and also
+    # tolerate id_token/client_id being nested in the token object.
+    for source in (token_data, oauth_token):
+        for key in ("client_id", "clientId", "oauth_client_id", "oauthClientId"):
+            client_id = source.get(key)
+            if isinstance(client_id, str) and client_id:
+                return client_id
+
+    for source in (token_data, oauth_token):
+        for key in ("id_token", "idToken"):
+            id_token = source.get(key)
+            if not isinstance(id_token, str):
+                continue
+            claims = parse_jwt_claims(id_token)
+            if not claims:
+                continue
+
+            audience = claims.get("aud")
+            audiences = audience if isinstance(audience, list) else [audience]
+            first_audience = None
+            for value in audiences:
+                if isinstance(value, str) and value:
+                    first_audience = first_audience or value
+                    if value in OAUTH_CLIENTS:
+                        return value
+
+            authorized_party = claims.get("azp")
+            if isinstance(authorized_party, str) and authorized_party:
+                return authorized_party
+            if first_audience:
+                return first_audience
+
+    return None
 
 
 def _token_expired(expiry: Any) -> bool:
@@ -132,15 +174,17 @@ def _request_json(request: urllib.request.Request) -> dict[str, Any]:
 
 
 def _oauth_client(token_data: dict[str, Any]) -> tuple[str, str]:
-    id_token = token_data.get("id_token")
-    claims = parse_jwt_claims(id_token) if isinstance(id_token, str) else None
-    audience = claims.get("aud") if claims else None
-    if not isinstance(audience, str) or audience not in OAUTH_CLIENTS:
+    client_id = _oauth_client_id(token_data)
+    if client_id is None:
+        # agy 1.2.0 stores a refreshable OAuth token without an id_token.
+        # Its CLI uses the current Antigravity client below for refreshes.
+        client_id = DEFAULT_OAUTH_CLIENT_ID
+    if client_id not in OAUTH_CLIENTS:
         raise SwitchError(
             "cannot refresh this account: unsupported Antigravity OAuth client; "
             "log in again with a current agy CLI"
         )
-    return audience, OAUTH_CLIENTS[audience]
+    return client_id, OAUTH_CLIENTS[client_id]
 
 
 def _refresh_access_token(token_data: dict[str, Any]) -> str:
