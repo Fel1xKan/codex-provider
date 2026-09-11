@@ -706,7 +706,7 @@ def test_upgrade_check_reports_up_to_date(
 
     assert cp.main(["upgrade", "--check"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.5.2" in output
+    assert "current: 1.5.3" in output
     assert "latest:  1.1.0" in output
     assert "up to date" in output
 
@@ -723,7 +723,7 @@ def test_upgrade_dry_run_reports_newer_version(
 
     assert cp.main(["upgrade", "--dry-run"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.5.2" in output
+    assert "current: 1.5.3" in output
     assert "latest:  1.6.0" in output
     assert "would upgrade" in output
 
