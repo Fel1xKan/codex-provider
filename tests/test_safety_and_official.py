@@ -803,6 +803,85 @@ def test_upgrade_checksum_mismatch_aborts(
     assert target.read_bytes() == b"old-binary"
 
 
+def test_replace_binary_windows_renames_existing_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(self_upgrade.os, "name", "nt")
+    dest = tmp_path / "cpx.exe"
+    dest.write_bytes(b"running-version")
+    temp = tmp_path / ".cpx.exe.upgrade"
+    temp.write_bytes(b"new-version")
+
+    self_upgrade._replace_binary(dest, temp)
+
+    assert dest.read_bytes() == b"new-version"
+    assert not temp.exists()
+    backup = tmp_path / ".cpx.exe.old"
+    assert backup.exists()
+    assert backup.read_bytes() == b"running-version"
+
+
+def test_replace_binary_windows_cleans_up_stale_backups(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(self_upgrade.os, "name", "nt")
+    dest = tmp_path / "cpx.exe"
+    dest.write_bytes(b"current-version")
+    stale_backup1 = tmp_path / ".cpx.exe.old"
+    stale_backup1.write_bytes(b"stale-1")
+    stale_backup2 = tmp_path / ".cpx.exe.99999.old"
+    stale_backup2.write_bytes(b"stale-2")
+    temp = tmp_path / ".cpx.exe.upgrade"
+    temp.write_bytes(b"new-version")
+
+    self_upgrade._replace_binary(dest, temp)
+
+    assert dest.read_bytes() == b"new-version"
+    assert not stale_backup2.exists()
+    assert stale_backup1.exists()
+    assert stale_backup1.read_bytes() == b"current-version"
+
+
+def test_replace_binary_windows_rolls_back_on_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(self_upgrade.os, "name", "nt")
+    dest = tmp_path / "cpx.exe"
+    dest.write_bytes(b"original-content")
+    temp = tmp_path / ".cpx.exe.upgrade"
+    temp.write_bytes(b"new-content")
+
+    def _failing_replace(src: Path, dst: Path) -> None:
+        raise OSError("simulated disk error")
+
+    monkeypatch.setattr(self_upgrade.os, "replace", _failing_replace)
+
+    with pytest.raises(OSError, match="simulated disk error"):
+        self_upgrade._replace_binary(dest, temp)
+
+    assert dest.exists()
+    assert dest.read_bytes() == b"original-content"
+
+
+def test_replace_binary_windows_nonexistent_dest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(self_upgrade.os, "name", "nt")
+    dest = tmp_path / "cpx.exe"
+    temp = tmp_path / ".cpx.exe.upgrade"
+    temp.write_bytes(b"new-content")
+
+    self_upgrade._replace_binary(dest, temp)
+
+    assert dest.exists()
+    assert dest.read_bytes() == b"new-content"
+    assert not temp.exists()
+
+
 class _DownloadResponse:
     def __init__(self, chunks: list[bytes], content_length: str | None) -> None:
         self.chunks = iter(chunks)

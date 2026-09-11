@@ -5,11 +5,11 @@ import json
 import os
 import platform
 import re
-import shutil
 import sys
 import time
 import urllib.error
 import urllib.request
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
@@ -277,10 +277,33 @@ def current_executable() -> Path:
     return Path(sys.argv[0]).resolve()
 
 
+def _cleanup_old_backups(target: Path) -> None:
+    if os.name != "nt":
+        return
+    with suppress(OSError):
+        for old_path in target.parent.glob(f".{target.name}*.old"):
+            with suppress(OSError):
+                old_path.unlink(missing_ok=True)
+
+
 def _replace_binary(dest: Path, temp: Path) -> None:
     if os.name == "nt":
-        shutil.copy2(temp, dest)
-        temp.unlink(missing_ok=True)
+        _cleanup_old_backups(dest)
+        if dest.exists():
+            backup = dest.with_name(f".{dest.name}.old")
+            try:
+                backup.unlink(missing_ok=True)
+            except OSError:
+                backup = dest.with_name(f".{dest.name}.{os.getpid()}.old")
+            dest.rename(backup)
+            try:
+                os.replace(temp, dest)
+            except Exception:
+                with suppress(Exception):
+                    backup.rename(dest)
+                raise
+        else:
+            os.replace(temp, dest)
     else:
         temp.chmod(dest.stat().st_mode if dest.exists() else 0o755)
         os.replace(temp, dest)
@@ -295,6 +318,7 @@ def perform_upgrade(
         print(f"up to date: {plan.current_version}")
         return 0
 
+    _cleanup_old_backups(target)
     reporter = progress or UpgradeProgress()
     temp = target.with_name(f".{target.name}.upgrade")
     try:
