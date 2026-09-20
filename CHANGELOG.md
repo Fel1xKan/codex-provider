@@ -9,7 +9,7 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
-## [1.5.4] - 2026-09-11
+## [1.5.4] - 2026-09-20
 
 - `cpx upgrade` shows what's new before it installs, and `cpx upgrade --notes`
   prints the newest notes on their own.
