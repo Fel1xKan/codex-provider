@@ -12,6 +12,7 @@ from conftest import IsolatedPaths
 import cli.codex_provider as cp
 from lib.common import self_upgrade
 from lib.common.common_store import FileLockManager, inspect_file_lock
+from lib.common.constants import VERSION
 from lib.common.errors import SwitchError
 from lib.common.toml_config import parse_provider_section
 
@@ -706,7 +707,7 @@ def test_upgrade_check_reports_up_to_date(
 
     assert cp.main(["upgrade", "--check"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.5.3" in output
+    assert f"current: {VERSION}" in output
     assert "latest:  1.1.0" in output
     assert "up to date" in output
 
@@ -723,7 +724,7 @@ def test_upgrade_dry_run_reports_newer_version(
 
     assert cp.main(["upgrade", "--dry-run"]) == 0
     output = capsys.readouterr().out
-    assert "current: 1.5.3" in output
+    assert f"current: {VERSION}" in output
     assert "latest:  1.6.0" in output
     assert "would upgrade" in output
 

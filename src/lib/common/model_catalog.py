@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,11 +15,25 @@ from lib.common.errors import SwitchError
 from lib.common.network import get_request_module
 
 CATALOG_SCHEMA_VERSION = 1
+# Reasoning-effort names Codex and OpenCode understand, in ascending order.
+# `none` means the model has no selectable reasoning levels.
+REASONING_EFFORTS: tuple[str, ...] = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra",
+)
 _MODEL_FIELDS = (
     "display_name",
     "context_window",
     "max_output_tokens",
     "input_modalities",
+    "reasoning_levels",
+    "reasoning_default",
 )
 
 
@@ -53,6 +68,71 @@ def _string_list(value: Any) -> list[str] | None:
     return values or None
 
 
+def _reasoning_levels(value: Any) -> list[str] | None:
+    """Normalize a catalog reasoning ladder.
+
+    Unknown effort names are dropped so a newer catalog stays readable by an
+    older CLI, and the order the catalog author chose (ascending effort) is
+    preserved.
+    """
+
+    if not isinstance(value, list):
+        return None
+    levels: list[str] = []
+    for item in value:
+        name = _reasoning_level_name(item)
+        if name is None:
+            continue
+        if name in REASONING_EFFORTS and name not in levels:
+            levels.append(name)
+    return levels or None
+
+
+def _reasoning_level_name(item: Any) -> str | None:
+    """Read one ladder entry, accepting `"high"` or `{"effort": "high"}`."""
+
+    if isinstance(item, str):
+        text = item.strip().lower()
+        return text or None
+    if isinstance(item, Mapping):
+        effort = item.get("effort")
+        if isinstance(effort, str):
+            text = effort.strip().lower()
+            return text or None
+    return None
+
+
+def _reasoning_level_details(value: Any) -> list[dict[str, str]] | None:
+    """Normalize a ladder, keeping any per-level description the catalog set.
+
+    Level descriptions are vendor-facing wording such as "Thinking disabled",
+    so they travel with the level rather than living in a CLI string table.
+    """
+
+    if not isinstance(value, list):
+        return None
+    levels: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in value:
+        name = _reasoning_level_name(item)
+        if name is None or name in seen or name not in REASONING_EFFORTS:
+            continue
+        seen.add(name)
+        level: dict[str, str] = {"effort": name}
+        description = item.get("description") if isinstance(item, Mapping) else None
+        if isinstance(description, str) and description.strip():
+            level["description"] = description.strip()
+        levels.append(level)
+    return levels or None
+
+
+def _reasoning_default(value: Any, levels: list[str] | None) -> str | None:
+    if not levels or not isinstance(value, str):
+        return None
+    name = value.strip().lower()
+    return name if name in levels else None
+
+
 def _normalize_entry(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
@@ -69,6 +149,15 @@ def _normalize_entry(raw: Any) -> dict[str, Any]:
     input_modalities = _string_list(raw.get("input_modalities"))
     if input_modalities:
         entry["input_modalities"] = input_modalities
+    raw_reasoning = raw.get("reasoning_levels")
+    reasoning_names = _reasoning_levels(raw_reasoning)
+    if reasoning_names:
+        entry["reasoning_levels"] = _reasoning_level_details(raw_reasoning)
+        reasoning_default = _reasoning_default(
+            raw.get("reasoning_default"), reasoning_names
+        )
+        if reasoning_default:
+            entry["reasoning_default"] = reasoning_default
     return entry
 
 

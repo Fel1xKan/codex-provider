@@ -1,127 +1,7 @@
 {
   "schema_version": 1,
-  "catalog_version": "2026-09-10",
+  "catalog_version": "2026-09-11",
   "models": {
-    "gpt-4o": {
-      "display_name": "GPT-4o",
-      "context_window": 128000,
-      "max_output_tokens": 16384,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-4o-mini": {
-      "display_name": "GPT-4o mini",
-      "context_window": 128000,
-      "max_output_tokens": 16384,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-4.1": {
-      "display_name": "GPT-4.1",
-      "context_window": 1047576,
-      "max_output_tokens": 32768,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-4.1-mini": {
-      "display_name": "GPT-4.1 mini",
-      "context_window": 1047576,
-      "max_output_tokens": 32768,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-4.1-nano": {
-      "display_name": "GPT-4.1 nano",
-      "context_window": 1047576,
-      "max_output_tokens": 32768,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5": {
-      "display_name": "GPT-5",
-      "context_window": 400000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5-mini": {
-      "display_name": "GPT-5 mini",
-      "context_window": 400000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5-nano": {
-      "display_name": "GPT-5 nano",
-      "context_window": 400000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "o3": {
-      "display_name": "o3",
-      "context_window": 200000,
-      "max_output_tokens": 100000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "o3-mini": {
-      "display_name": "o3-mini",
-      "context_window": 200000,
-      "max_output_tokens": 100000,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "o4-mini": {
-      "display_name": "o4-mini",
-      "context_window": 200000,
-      "max_output_tokens": 100000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
     "claude-3-5-haiku-latest": {
       "display_name": "Claude 3.5 Haiku",
       "context_window": 200000,
@@ -131,7 +11,11 @@
         "image"
       ],
       "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
     },
     "claude-3-5-sonnet-latest": {
       "display_name": "Claude 3.5 Sonnet",
@@ -142,7 +26,11 @@
         "image"
       ],
       "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
     },
     "claude-3-7-sonnet-latest": {
       "display_name": "Claude 3.7 Sonnet",
@@ -153,21 +41,21 @@
         "image"
       ],
       "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
-    },
-    "claude-sonnet-4-5": {
-      "display_name": "Claude Sonnet 4.5",
-      "context_window": 200000,
-      "max_output_tokens": 64000,
-      "input_modalities": [
-        "text",
-        "image"
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
       ],
-      "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
+      "reasoning_default": "high"
     },
-    "claude-sonnet-4-6": {
-      "display_name": "Claude Sonnet 4.6",
+    "claude-fable-5": {
+      "display_name": "Claude Fable 5",
       "context_window": 1000000,
       "max_output_tokens": 128000,
       "input_modalities": [
@@ -175,376 +63,15 @@
         "image"
       ],
       "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
-    },
-    "claude-opus-4-5": {
-      "display_name": "Claude Opus 4.5",
-      "context_window": 200000,
-      "max_output_tokens": 64000,
-      "input_modalities": [
-        "text",
-        "image"
+      "source": "https://docs.claude.com/en/docs/build-with-claude/effort",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
       ],
-      "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
-    },
-    "claude-opus-4-6": {
-      "display_name": "Claude Opus 4.6",
-      "context_window": 1000000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
-    },
-    "claude-haiku-4-5": {
-      "display_name": "Claude Haiku 4.5",
-      "context_window": 200000,
-      "max_output_tokens": 64000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
-    },
-    "gemini-2.5-flash": {
-      "display_name": "Gemini 2.5 Flash",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
-    },
-    "gemini-2.5-pro": {
-      "display_name": "Gemini 2.5 Pro",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
-    },
-    "gemini-3.1-pro-preview": {
-      "display_name": "Gemini 3.1 Pro Preview",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
-    },
-    "deepseek-chat": {
-      "display_name": "DeepSeek Chat",
-      "context_window": 1000000,
-      "max_output_tokens": 384000,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "deepseek",
-      "source": "https://api-docs.deepseek.com/quick_start/pricing",
-      "source_status": "deprecated-compatibility-id"
-    },
-    "deepseek-reasoner": {
-      "display_name": "DeepSeek Reasoner",
-      "context_window": 1000000,
-      "max_output_tokens": 384000,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "deepseek",
-      "source": "https://api-docs.deepseek.com/quick_start/pricing",
-      "source_status": "deprecated-compatibility-id"
-    },
-    "glm-4.5": {
-      "display_name": "GLM-4.5",
-      "context_window": 131072,
-      "max_output_tokens": 98304,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "zhipu",
-      "source": "https://docs.z.ai/guides/overview/model-introduction"
-    },
-    "glm-5": {
-      "display_name": "GLM-5",
-      "context_window": 204800,
-      "max_output_tokens": 131072,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "zhipu",
-      "source": "https://docs.z.ai/guides/overview/model-introduction"
-    },
-    "qwen3-coder-plus": {
-      "display_name": "Qwen3 Coder Plus",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "qwen",
-      "source": "https://help.aliyun.com/zh/model-studio/models"
-    },
-    "qwen-plus": {
-      "display_name": "Qwen Plus",
-      "context_window": 1000000,
-      "max_output_tokens": 32768,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "qwen",
-      "source": "https://help.aliyun.com/zh/model-studio/models"
-    },
-    "qwen-max": {
-      "display_name": "Qwen Max",
-      "context_window": 32768,
-      "max_output_tokens": 8192,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "qwen",
-      "source": "https://help.aliyun.com/zh/model-studio/models"
-    },
-    "mistral-large-latest": {
-      "display_name": "Mistral Large",
-      "context_window": 262144,
-      "max_output_tokens": 262144,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "mistral",
-      "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
-    },
-    "gpt-6-astra": {
-      "display_name": "GPT-6 Astra",
-      "context_window": 1050000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.6-sol": {
-      "display_name": "GPT-5.6 Sol",
-      "context_window": 1050000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.6-terra": {
-      "display_name": "GPT-5.6 Terra",
-      "context_window": 1050000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.6-luna": {
-      "display_name": "GPT-5.6 Luna",
-      "context_window": 1050000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.6-cyber": {
-      "display_name": "GPT-5.6 Cyber",
-      "context_window": 400000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-daybreak-blue-latest": {
-      "display_name": "GPT Daybreak Blue",
-      "context_window": 1050000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-daybreak-red-latest": {
-      "display_name": "GPT Daybreak Red",
-      "context_window": 400000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.4": {
-      "display_name": "GPT-5.4",
-      "context_window": 1050000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.4-pro": {
-      "display_name": "GPT-5.4 Pro",
-      "context_window": 1050000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.4-mini": {
-      "display_name": "GPT-5.4 mini",
-      "context_window": 400000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.4-nano": {
-      "display_name": "GPT-5.4 nano",
-      "context_window": 400000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.3-codex": {
-      "display_name": "GPT-5.3 Codex",
-      "context_window": 400000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.3-codex-spark": {
-      "display_name": "GPT-5.3 Codex Spark",
-      "context_window": 128000,
-      "max_output_tokens": 32000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.2": {
-      "display_name": "GPT-5.2",
-      "context_window": 400000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.2-chat-latest": {
-      "display_name": "GPT-5.2 Chat",
-      "context_window": 128000,
-      "max_output_tokens": 16384,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-5.1": {
-      "display_name": "GPT-5.1",
-      "context_window": 400000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-realtime-2": {
-      "display_name": "GPT-Realtime-2",
-      "context_window": 128000,
-      "max_output_tokens": 32000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-realtime-2.1": {
-      "display_name": "GPT-Realtime-2.1",
-      "context_window": 128000,
-      "max_output_tokens": 32000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-realtime-2.1-mini": {
-      "display_name": "GPT-Realtime-2.1 mini",
-      "context_window": 128000,
-      "max_output_tokens": 32000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
-    },
-    "gpt-realtime-1.5": {
-      "display_name": "GPT-Realtime-1.5",
-      "context_window": 32000,
-      "max_output_tokens": 4096,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "openai",
-      "source": "https://developers.openai.com/api/docs/models"
+      "reasoning_default": "high"
     },
     "claude-fable-5-1": {
       "display_name": "Claude Fable 5.1",
@@ -555,29 +82,37 @@
         "image"
       ],
       "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "reasoning_default": "high"
     },
-    "claude-opus-5": {
-      "display_name": "Claude Opus 5",
-      "context_window": 1000000,
-      "max_output_tokens": 128000,
+    "claude-haiku-4-5": {
+      "display_name": "Claude Haiku 4.5",
+      "context_window": 200000,
+      "max_output_tokens": 64000,
       "input_modalities": [
         "text",
         "image"
       ],
       "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
-    },
-    "claude-sonnet-5": {
-      "display_name": "Claude Sonnet 5",
-      "context_window": 1000000,
-      "max_output_tokens": 128000,
-      "input_modalities": [
-        "text",
-        "image"
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
       ],
-      "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
+      "reasoning_default": "high"
     },
     "claude-haiku-4-5-20251001": {
       "display_name": "Claude Haiku 4.5",
@@ -588,95 +123,219 @@
         "image"
       ],
       "vendor": "anthropic",
-      "source": "https://platform.claude.com/docs/en/about-claude/models/overview"
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
     },
-    "gemini-3.8-flash": {
-      "display_name": "Gemini 3.8 Flash",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
+    "claude-opus-4-5": {
+      "display_name": "Claude Opus 4.5",
+      "context_window": 200000,
+      "max_output_tokens": 64000,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
+      "vendor": "anthropic",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "high"
     },
-    "gemini-3.7-flash": {
-      "display_name": "Gemini 3.7 Flash",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
+    "claude-opus-4-6": {
+      "display_name": "Claude Opus 4.6",
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
+      "vendor": "anthropic",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "reasoning_default": "high"
     },
-    "gemini-3.6-flash": {
-      "display_name": "Gemini 3.6 Flash",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
+    "claude-opus-4-7": {
+      "display_name": "Claude Opus 4.7",
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
+      "vendor": "anthropic",
+      "source": "https://docs.claude.com/en/docs/build-with-claude/effort",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "reasoning_default": "high"
     },
-    "gemini-3.5-flash": {
-      "display_name": "Gemini 3.5 Flash",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
+    "claude-opus-4-8": {
+      "display_name": "Claude Opus 4.8",
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
+      "vendor": "anthropic",
+      "source": "https://docs.claude.com/en/docs/build-with-claude/effort",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "reasoning_default": "high"
     },
-    "gemini-3-flash-preview": {
-      "display_name": "Gemini 3 Flash Preview",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
+    "claude-opus-5": {
+      "display_name": "Claude Opus 5",
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
+      "vendor": "anthropic",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "reasoning_default": "high"
     },
-    "gemini-3.1-flash-lite": {
-      "display_name": "Gemini 3.1 Flash-Lite",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
+    "claude-sonnet-4-5": {
+      "display_name": "Claude Sonnet 4.5",
+      "context_window": 200000,
+      "max_output_tokens": 64000,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
+      "vendor": "anthropic",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
     },
-    "gemini-3.5-flash-lite": {
-      "display_name": "Gemini 3.5 Flash-Lite",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
+    "claude-sonnet-4-6": {
+      "display_name": "Claude Sonnet 4.6",
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
+      "vendor": "anthropic",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "reasoning_default": "high"
     },
-    "gemini-2.5-flash-lite": {
-      "display_name": "Gemini 2.5 Flash-Lite",
-      "context_window": 1048576,
-      "max_output_tokens": 65536,
+    "claude-sonnet-5": {
+      "display_name": "Claude Sonnet 5",
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "google",
-      "source": "https://ai.google.dev/gemini-api/docs/models"
+      "vendor": "anthropic",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "reasoning_default": "high"
+    },
+    "codestral-latest": {
+      "display_name": "Codestral",
+      "context_window": 256000,
+      "max_output_tokens": 4096,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "deepseek-chat": {
+      "display_name": "DeepSeek Chat",
+      "context_window": 1000000,
+      "max_output_tokens": 384000,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "deepseek",
+      "source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "source_status": "deprecated-compatibility-id",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "reasoning_default": "high"
+    },
+    "deepseek-reasoner": {
+      "display_name": "DeepSeek Reasoner",
+      "context_window": 1000000,
+      "max_output_tokens": 384000,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "deepseek",
+      "source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "source_status": "deprecated-compatibility-id",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "reasoning_default": "high"
     },
     "deepseek-v4-flash": {
       "display_name": "DeepSeek V4 Flash",
@@ -686,17 +345,14 @@
         "text"
       ],
       "vendor": "deepseek",
-      "source": "https://api-docs.deepseek.com/quick_start/pricing"
-    },
-    "deepseek-v4-pro": {
-      "display_name": "DeepSeek V4 Pro",
-      "context_window": 1000000,
-      "max_output_tokens": 384000,
-      "input_modalities": [
-        "text"
+      "source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
       ],
-      "vendor": "deepseek",
-      "source": "https://api-docs.deepseek.com/quick_start/pricing"
+      "reasoning_default": "high"
     },
     "deepseek-v4-flash-vision-exp": {
       "display_name": "DeepSeek V4 Flash Vision Experimental",
@@ -707,40 +363,31 @@
         "image"
       ],
       "vendor": "deepseek",
-      "source": "https://api-docs.deepseek.com/quick_start/pricing"
-    },
-    "mistral-small-2603": {
-      "display_name": "Mistral Small 4",
-      "context_window": 256000,
-      "max_output_tokens": 256000,
-      "input_modalities": [
-        "text",
-        "image"
+      "source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
       ],
-      "vendor": "mistral",
-      "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
+      "reasoning_default": "high"
     },
-    "mistral-medium-2604": {
-      "display_name": "Mistral Medium 3.5",
-      "context_window": 262144,
-      "max_output_tokens": 262144,
+    "deepseek-v4-pro": {
+      "display_name": "DeepSeek V4 Pro",
+      "context_window": 1000000,
+      "max_output_tokens": 384000,
       "input_modalities": [
-        "text",
-        "image"
+        "text"
       ],
-      "vendor": "mistral",
-      "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
-    },
-    "mistral-large-2512": {
-      "display_name": "Mistral Large 3",
-      "context_window": 262144,
-      "max_output_tokens": 262144,
-      "input_modalities": [
-        "text",
-        "image"
+      "vendor": "deepseek",
+      "source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
       ],
-      "vendor": "mistral",
-      "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
+      "reasoning_default": "high"
     },
     "devstral-2512": {
       "display_name": "Devstral 2",
@@ -750,93 +397,420 @@
         "text"
       ],
       "vendor": "mistral",
-      "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
+      "source": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
     },
-    "magistral-medium-latest": {
-      "display_name": "Magistral Medium",
-      "context_window": 128000,
+    "gemini-2.5-flash": {
+      "display_name": "Gemini 2.5 Flash",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gemini-2.5-flash-lite": {
+      "display_name": "Gemini 2.5 Flash-Lite",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "low"
+    },
+    "gemini-2.5-pro": {
+      "display_name": "Gemini 2.5 Pro",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gemini-3-flash-preview": {
+      "display_name": "Gemini 3 Flash Preview",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "gemini-3.1-flash-lite": {
+      "display_name": "Gemini 3.1 Flash-Lite",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gemini-3.1-flash-lite-image": {
+      "display_name": "Gemini 3.1 Flash Lite Image",
+      "context_window": 65536,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/thinking",
+      "reasoning_levels": [
+        "minimal",
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "gemini-3.1-pro-preview": {
+      "display_name": "Gemini 3.1 Pro Preview",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "gemini-3.5-flash": {
+      "display_name": "Gemini 3.5 Flash",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gemini-3.5-flash-lite": {
+      "display_name": "Gemini 3.5 Flash-Lite",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gemini-3.6-flash": {
+      "display_name": "Gemini 3.6 Flash",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gemini-3.7-flash": {
+      "display_name": "Gemini 3.7 Flash",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gemini-3.8-flash": {
+      "display_name": "Gemini 3.8 Flash",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gemini-flash-latest": {
+      "display_name": "Gemini Flash (latest)",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/thinking",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gemini-flash-lite-latest": {
+      "display_name": "Gemini Flash Lite (latest)",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "google",
+      "source": "https://ai.google.dev/gemini-api/docs/thinking",
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "glm-4.5": {
+      "display_name": "GLM-4.5",
+      "context_window": 131072,
+      "max_output_tokens": 98304,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "zhipu",
+      "source": "https://docs.z.ai/guides/overview/model-introduction",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "glm-4.5v": {
+      "display_name": "GLM-4.5V",
+      "context_window": 64000,
       "max_output_tokens": 16384,
       "input_modalities": [
-        "text"
+        "text",
+        "image"
       ],
-      "vendor": "mistral",
-      "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
+      "vendor": "zhipu",
+      "source": "https://docs.z.ai/api-reference/llm/chat-completion",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
     },
-    "codestral-latest": {
-      "display_name": "Codestral",
-      "context_window": 256000,
-      "max_output_tokens": 4096,
+    "glm-4.6": {
+      "display_name": "GLM-4.6",
+      "context_window": 204800,
+      "max_output_tokens": 131072,
       "input_modalities": [
-        "text"
+        "text",
+        "image"
       ],
-      "vendor": "mistral",
-      "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
+      "vendor": "zhipu",
+      "source": "https://docs.z.ai/api-reference/llm/chat-completion",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
     },
-    "pixtral-large-latest": {
-      "display_name": "Pixtral Large",
+    "glm-4.6v": {
+      "display_name": "GLM-4.6V",
       "context_window": 128000,
-      "max_output_tokens": 128000,
+      "max_output_tokens": 32768,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "mistral",
-      "source": "https://docs.mistral.ai/getting-started/models/models_overview/"
-    },
-    "grok-4.6": {
-      "display_name": "Grok 4.6",
-      "context_window": 500000,
-      "max_output_tokens": 500000,
-      "input_modalities": [
-        "text",
-        "image"
+      "vendor": "zhipu",
+      "source": "https://docs.z.ai/api-reference/llm/chat-completion",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
       ],
-      "vendor": "xai",
-      "source": "https://docs.x.ai/docs/models"
+      "reasoning_default": "high"
     },
-    "grok-4.5": {
-      "display_name": "Grok 4.5",
-      "context_window": 500000,
-      "max_output_tokens": 500000,
+    "glm-4.7": {
+      "display_name": "GLM-4.7",
+      "context_window": 204800,
+      "max_output_tokens": 131072,
       "input_modalities": [
-        "text",
-        "image"
+        "text"
       ],
-      "vendor": "xai",
-      "source": "https://docs.x.ai/docs/models"
+      "vendor": "zhipu",
+      "source": "https://docs.z.ai/guides/overview/model-introduction",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
     },
-    "grok-4.3": {
-      "display_name": "Grok 4.3",
+    "glm-4.7-flash": {
+      "display_name": "GLM-4.7 Flash",
+      "context_window": 200000,
+      "max_output_tokens": 131072,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "zhipu",
+      "source": "https://docs.z.ai/guides/overview/model-introduction",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "glm-5": {
+      "display_name": "GLM-5",
+      "context_window": 204800,
+      "max_output_tokens": 131072,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "zhipu",
+      "source": "https://docs.z.ai/guides/overview/model-introduction",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "glm-5.1": {
+      "display_name": "GLM-5.1",
+      "context_window": 200000,
+      "max_output_tokens": 131072,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "zhipu",
+      "source": "https://docs.z.ai/guides/overview/model-introduction",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "glm-5.2": {
+      "display_name": "GLM-5.2",
       "context_window": 1000000,
-      "max_output_tokens": 30000,
+      "max_output_tokens": 131072,
       "input_modalities": [
-        "text",
-        "image"
+        "text"
       ],
-      "vendor": "xai",
-      "source": "https://docs.x.ai/docs/models"
-    },
-    "grok-4.20-0309-reasoning": {
-      "display_name": "Grok 4.20 Reasoning",
-      "context_window": 1000000,
-      "max_output_tokens": 30000,
-      "input_modalities": [
-        "text",
-        "image"
+      "vendor": "zhipu",
+      "source": "https://docs.z.ai/guides/overview/model-introduction",
+      "reasoning_levels": [
+        "none",
+        "high",
+        "max"
       ],
-      "vendor": "xai",
-      "source": "https://docs.x.ai/docs/models"
-    },
-    "grok-4.20-multi-agent-0309": {
-      "display_name": "Grok 4.20 Multi-Agent",
-      "context_window": 1000000,
-      "max_output_tokens": 30000,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "vendor": "xai",
-      "source": "https://docs.x.ai/docs/models"
+      "reasoning_default": "high"
     },
     "glm-5.3": {
       "display_name": "GLM-5.3",
@@ -846,7 +820,13 @@
         "text"
       ],
       "vendor": "zhipu",
-      "source": "https://docs.z.ai/guides/overview/model-introduction"
+      "source": "https://docs.z.ai/guides/overview/model-introduction",
+      "reasoning_levels": [
+        "low",
+        "high",
+        "max"
+      ],
+      "reasoning_default": "high"
     },
     "glm-5.3-flash": {
       "display_name": "GLM-5.3 Flash",
@@ -857,47 +837,13 @@
         "image"
       ],
       "vendor": "zhipu",
-      "source": "https://docs.z.ai/guides/overview/model-introduction"
-    },
-    "glm-5.2": {
-      "display_name": "GLM-5.2",
-      "context_window": 1000000,
-      "max_output_tokens": 131072,
-      "input_modalities": [
-        "text"
+      "source": "https://docs.z.ai/guides/overview/model-introduction",
+      "reasoning_levels": [
+        "low",
+        "high",
+        "max"
       ],
-      "vendor": "zhipu",
-      "source": "https://docs.z.ai/guides/overview/model-introduction"
-    },
-    "glm-5.1": {
-      "display_name": "GLM-5.1",
-      "context_window": 200000,
-      "max_output_tokens": 131072,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "zhipu",
-      "source": "https://docs.z.ai/guides/overview/model-introduction"
-    },
-    "glm-4.7": {
-      "display_name": "GLM-4.7",
-      "context_window": 204800,
-      "max_output_tokens": 131072,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "zhipu",
-      "source": "https://docs.z.ai/guides/overview/model-introduction"
-    },
-    "glm-4.7-flash": {
-      "display_name": "GLM-4.7 Flash",
-      "context_window": 200000,
-      "max_output_tokens": 131072,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "zhipu",
-      "source": "https://docs.z.ai/guides/overview/model-introduction"
+      "reasoning_default": "high"
     },
     "glm-5v-turbo": {
       "display_name": "GLM-5V Turbo",
@@ -908,71 +854,594 @@
         "image"
       ],
       "vendor": "zhipu",
-      "source": "https://docs.z.ai/guides/overview/model-introduction"
-    },
-    "qwen3-max": {
-      "display_name": "Qwen3 Max",
-      "context_window": 262144,
-      "max_output_tokens": 65536,
-      "input_modalities": [
-        "text"
+      "source": "https://docs.z.ai/guides/overview/model-introduction",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
       ],
-      "vendor": "qwen",
-      "source": "https://help.aliyun.com/zh/model-studio/models"
+      "reasoning_default": "high"
     },
-    "qwen3.5-plus": {
-      "display_name": "Qwen3.5 Plus",
-      "context_window": 1000000,
-      "max_output_tokens": 65536,
+    "gpt-4.1": {
+      "display_name": "GPT-4.1",
+      "context_window": 1047576,
+      "max_output_tokens": 32768,
       "input_modalities": [
-        "text"
+        "text",
+        "image"
       ],
-      "vendor": "qwen",
-      "source": "https://help.aliyun.com/zh/model-studio/models"
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
     },
-    "qwen3-omni-flash": {
-      "display_name": "Qwen3-Omni Flash",
-      "context_window": 65536,
+    "gpt-4.1-mini": {
+      "display_name": "GPT-4.1 mini",
+      "context_window": 1047576,
+      "max_output_tokens": 32768,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "gpt-4.1-nano": {
+      "display_name": "GPT-4.1 nano",
+      "context_window": 1047576,
+      "max_output_tokens": 32768,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "gpt-4o": {
+      "display_name": "GPT-4o",
+      "context_window": 128000,
       "max_output_tokens": 16384,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "qwen",
-      "source": "https://help.aliyun.com/zh/model-studio/models"
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
     },
-    "kimi-k3": {
-      "display_name": "Kimi K3",
-      "context_window": 1048576,
-      "max_output_tokens": 131072,
+    "gpt-4o-mini": {
+      "display_name": "GPT-4o mini",
+      "context_window": 128000,
+      "max_output_tokens": 16384,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "moonshot",
-      "source": "https://platform.moonshot.cn/docs/guide/kimi-k2-5-quickstart"
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
     },
-    "kimi-k2.7-code": {
-      "display_name": "Kimi K2.7 Code",
-      "context_window": 262144,
-      "max_output_tokens": 262144,
+    "gpt-5": {
+      "display_name": "GPT-5",
+      "context_window": 400000,
+      "max_output_tokens": 128000,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "moonshot",
-      "source": "https://platform.moonshot.cn/docs/guide/kimi-k2-5-quickstart"
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
     },
-    "kimi-k2.7-code-highspeed": {
-      "display_name": "Kimi K2.7 Code HighSpeed",
-      "context_window": 262144,
-      "max_output_tokens": 262144,
+    "gpt-5-mini": {
+      "display_name": "GPT-5 mini",
+      "context_window": 400000,
+      "max_output_tokens": 128000,
       "input_modalities": [
         "text",
         "image"
       ],
-      "vendor": "moonshot",
-      "source": "https://platform.moonshot.cn/docs/guide/kimi-k2-5-quickstart"
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5-nano": {
+      "display_name": "GPT-5 nano",
+      "context_window": 400000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.1": {
+      "display_name": "GPT-5.1",
+      "context_window": 400000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.2": {
+      "display_name": "GPT-5.2",
+      "context_window": 400000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.2-chat-latest": {
+      "display_name": "GPT-5.2 Chat",
+      "context_window": 128000,
+      "max_output_tokens": 16384,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "gpt-5.3-codex": {
+      "display_name": "GPT-5.3 Codex",
+      "context_window": 400000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.3-codex-spark": {
+      "display_name": "GPT-5.3 Codex Spark",
+      "context_window": 128000,
+      "max_output_tokens": 32000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.4": {
+      "display_name": "GPT-5.4",
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.4-mini": {
+      "display_name": "GPT-5.4 mini",
+      "context_window": 400000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.4-nano": {
+      "display_name": "GPT-5.4 nano",
+      "context_window": 400000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.4-pro": {
+      "display_name": "GPT-5.4 Pro",
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.6-cyber": {
+      "display_name": "GPT-5.6 Cyber",
+      "context_window": 400000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.6-luna": {
+      "display_name": "GPT-5.6 Luna",
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.6-sol": {
+      "display_name": "GPT-5.6 Sol",
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-5.6-terra": {
+      "display_name": "GPT-5.6 Terra",
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-6-astra": {
+      "display_name": "GPT-6 Astra",
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-daybreak-blue-latest": {
+      "display_name": "GPT Daybreak Blue",
+      "context_window": 1050000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-daybreak-red-latest": {
+      "display_name": "GPT Daybreak Red",
+      "context_window": 400000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "reasoning_default": "medium"
+    },
+    "gpt-realtime-1.5": {
+      "display_name": "GPT-Realtime-1.5",
+      "context_window": 32000,
+      "max_output_tokens": 4096,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "gpt-realtime-2": {
+      "display_name": "GPT-Realtime-2",
+      "context_window": 128000,
+      "max_output_tokens": 32000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "gpt-realtime-2.1": {
+      "display_name": "GPT-Realtime-2.1",
+      "context_window": 128000,
+      "max_output_tokens": 32000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "gpt-realtime-2.1-mini": {
+      "display_name": "GPT-Realtime-2.1 mini",
+      "context_window": 128000,
+      "max_output_tokens": 32000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "grok-4.20-0309-reasoning": {
+      "display_name": "Grok 4.20 Reasoning",
+      "context_window": 1000000,
+      "max_output_tokens": 30000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "xai",
+      "source": "https://docs.x.ai/docs/models",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "grok-4.20-multi-agent-0309": {
+      "display_name": "Grok 4.20 Multi-Agent",
+      "context_window": 1000000,
+      "max_output_tokens": 30000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "xai",
+      "source": "https://docs.x.ai/docs/models",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "grok-4.3": {
+      "display_name": "Grok 4.3",
+      "context_window": 1000000,
+      "max_output_tokens": 30000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "xai",
+      "source": "https://docs.x.ai/docs/models",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "grok-4.5": {
+      "display_name": "Grok 4.5",
+      "context_window": 500000,
+      "max_output_tokens": 500000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "xai",
+      "source": "https://docs.x.ai/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "grok-4.6": {
+      "display_name": "Grok 4.6",
+      "context_window": 500000,
+      "max_output_tokens": 500000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "xai",
+      "source": "https://docs.x.ai/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "reasoning_default": "high"
     },
     "kimi-k2.6": {
       "display_name": "Kimi K2.6",
@@ -983,80 +1452,753 @@
         "image"
       ],
       "vendor": "moonshot",
-      "source": "https://platform.moonshot.cn/docs/guide/kimi-k2-5-quickstart"
+      "source": "https://platform.moonshot.cn/docs/guide/kimi-k2-5-quickstart",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "kimi-k2.7-code": {
+      "display_name": "Kimi K2.7 Code",
+      "context_window": 262144,
+      "max_output_tokens": 262144,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "moonshot",
+      "source": "https://platform.moonshot.cn/docs/guide/kimi-k2-5-quickstart",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "kimi-k2.7-code-highspeed": {
+      "display_name": "Kimi K2.7 Code HighSpeed",
+      "context_window": 262144,
+      "max_output_tokens": 262144,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "moonshot",
+      "source": "https://platform.moonshot.cn/docs/guide/kimi-k2-5-quickstart",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "kimi-k3": {
+      "display_name": "Kimi K3",
+      "context_window": 1048576,
+      "max_output_tokens": 131072,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "moonshot",
+      "source": "https://platform.moonshot.cn/docs/guide/kimi-k2-5-quickstart",
+      "reasoning_levels": [
+        "low",
+        "high",
+        "max"
+      ],
+      "reasoning_default": "high"
+    },
+    "magistral-medium-latest": {
+      "display_name": "Magistral Medium",
+      "context_window": 128000,
+      "max_output_tokens": 16384,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "mistral-large-2512": {
+      "display_name": "Mistral Large 3",
+      "context_window": 262144,
+      "max_output_tokens": 262144,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "mistral-large-latest": {
+      "display_name": "Mistral Large",
+      "context_window": 262144,
+      "max_output_tokens": 262144,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "mistral-medium-2604": {
+      "display_name": "Mistral Medium 3.5",
+      "context_window": 262144,
+      "max_output_tokens": 262144,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking omitted (minimal reasoning)"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking streamed before the answer"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "mistral-small-2603": {
+      "display_name": "Mistral Small 4",
+      "context_window": 256000,
+      "max_output_tokens": 256000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking omitted (minimal reasoning)"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking streamed before the answer"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "o3": {
+      "display_name": "o3",
+      "context_window": 200000,
+      "max_output_tokens": 100000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "o3-mini": {
+      "display_name": "o3-mini",
+      "context_window": 200000,
+      "max_output_tokens": 100000,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "o4-mini": {
+      "display_name": "o4-mini",
+      "context_window": 200000,
+      "max_output_tokens": 100000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "openai",
+      "source": "https://developers.openai.com/api/docs/models",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "reasoning_default": "medium"
+    },
+    "pixtral-large-latest": {
+      "display_name": "Pixtral Large",
+      "context_window": 128000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "mistral",
+      "source": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "qwen-flash": {
+      "display_name": "Qwen Flash",
+      "context_window": 1000000,
+      "max_output_tokens": 32768,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen-long": {
+      "display_name": "Qwen Long",
+      "context_window": 10000000,
+      "max_output_tokens": 8192,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "qwen-max": {
+      "display_name": "Qwen Max",
+      "context_window": 32768,
+      "max_output_tokens": 8192,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "qwen-plus": {
+      "display_name": "Qwen Plus",
+      "context_window": 1000000,
+      "max_output_tokens": 32768,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/models",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen-turbo": {
+      "display_name": "Qwen Turbo",
+      "context_window": 1000000,
+      "max_output_tokens": 16384,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3-coder-flash": {
+      "display_name": "Qwen3 Coder Flash",
+      "context_window": 1000000,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "qwen3-coder-plus": {
+      "display_name": "Qwen3 Coder Plus",
+      "context_window": 1048576,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/models",
+      "reasoning_levels": [
+        "none"
+      ],
+      "reasoning_default": "none"
+    },
+    "qwen3-max": {
+      "display_name": "Qwen3 Max",
+      "context_window": 262144,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/models",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3-omni-flash": {
+      "display_name": "Qwen3-Omni Flash",
+      "context_window": 65536,
+      "max_output_tokens": 16384,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/models",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3-vl-235b-a22b": {
+      "display_name": "Qwen3 VL 235B A22B",
+      "context_window": 131072,
+      "max_output_tokens": 32768,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3-vl-235b-a22b-thinking": {
+      "display_name": "Qwen3 VL 235B A22B Thinking",
+      "context_window": 131072,
+      "max_output_tokens": 32768,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3-vl-plus": {
+      "display_name": "Qwen3 VL Plus",
+      "context_window": 262144,
+      "max_output_tokens": 32768,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3.5-flash": {
+      "display_name": "Qwen3.5 Flash",
+      "context_window": 1000000,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3.5-plus": {
+      "display_name": "Qwen3.5 Plus",
+      "context_window": 1000000,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/models",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3.6-flash": {
+      "display_name": "Qwen3.6 Flash",
+      "context_window": 1000000,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3.6-plus": {
+      "display_name": "Qwen3.6 Plus",
+      "context_window": 1000000,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3.7-flash": {
+      "display_name": "Qwen3.7 Flash",
+      "context_window": 1000000,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3.7-max": {
+      "display_name": "Qwen3.7 Max",
+      "context_window": 1000000,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3.7-plus": {
+      "display_name": "Qwen3.7 Plus",
+      "context_window": 1000000,
+      "max_output_tokens": 65536,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3.8-flash": {
+      "display_name": "Qwen3.8 Flash",
+      "context_window": 1000000,
+      "max_output_tokens": 131072,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwen3.8-max": {
+      "display_name": "Qwen3.8 Max",
+      "context_window": 1000000,
+      "max_output_tokens": 131072,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high"
+    },
+    "qwq-plus": {
+      "display_name": "QwQ Plus",
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "input_modalities": [
+        "text"
+      ],
+      "vendor": "qwen",
+      "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high"
     }
   },
   "aliases": {
-    "openai/gpt-4o": "gpt-4o",
-    "openai/gpt-4o-mini": "gpt-4o-mini",
-    "openai/gpt-4.1": "gpt-4.1",
-    "openai/gpt-4.1-mini": "gpt-4.1-mini",
-    "openai/gpt-5": "gpt-5",
-    "openai/gpt-5-mini": "gpt-5-mini",
-    "anthropic/claude-sonnet-4-6": "claude-sonnet-4-6",
-    "anthropic/claude-sonnet-4-5": "claude-sonnet-4-5",
-    "google/gemini-2.5-pro": "gemini-2.5-pro",
-    "google/gemini-2.5-flash": "gemini-2.5-flash",
-    "deepseek/deepseek-chat": "deepseek-chat",
-    "deepseek/deepseek-reasoner": "deepseek-reasoner",
-    "openai/gpt-6-astra": "gpt-6-astra",
-    "openai/gpt-5.6-sol": "gpt-5.6-sol",
-    "openai/gpt-5.6-terra": "gpt-5.6-terra",
-    "openai/gpt-5.6-luna": "gpt-5.6-luna",
     "anthropic/claude-fable-5-1": "claude-fable-5-1",
     "anthropic/claude-opus-5": "claude-opus-5",
+    "anthropic/claude-sonnet-4-5": "claude-sonnet-4-5",
+    "anthropic/claude-sonnet-4-6": "claude-sonnet-4-6",
     "anthropic/claude-sonnet-5": "claude-sonnet-5",
-    "google/gemini-3.8-flash": "gemini-3.8-flash",
-    "google/gemini-3.7-flash": "gemini-3.7-flash",
+    "claude-fable-5-1@default": "claude-fable-5-1",
+    "claude-opus-4-5-20251101": "claude-opus-4-5",
+    "claude-opus-4-6@default": "claude-opus-4-6",
+    "claude-opus-5@default": "claude-opus-5",
+    "claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
+    "claude-sonnet-4-6@default": "claude-sonnet-4-6",
+    "claude-sonnet-5@default": "claude-sonnet-5",
+    "deepseek/deepseek-chat": "deepseek-chat",
+    "deepseek/deepseek-reasoner": "deepseek-reasoner",
     "deepseek/deepseek-v4-flash": "deepseek-v4-flash",
-    "deepseek/deepseek-v4-pro": "deepseek-v4-pro"
+    "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
+    "google/gemini-2.5-flash": "gemini-2.5-flash",
+    "google/gemini-2.5-pro": "gemini-2.5-pro",
+    "google/gemini-3.7-flash": "gemini-3.7-flash",
+    "google/gemini-3.8-flash": "gemini-3.8-flash",
+    "grok-4.20": "grok-4.20-0309-reasoning",
+    "grok-4.20-multi-agent": "grok-4.20-multi-agent-0309",
+    "grok-4.20-multi-agent-latest": "grok-4.20-multi-agent-0309",
+    "grok-4.20-reasoning": "grok-4.20-0309-reasoning",
+    "grok-4.20-reasoning-latest": "grok-4.20-0309-reasoning",
+    "grok-4.3-latest": "grok-4.3",
+    "openai/gpt-4.1": "gpt-4.1",
+    "openai/gpt-4.1-mini": "gpt-4.1-mini",
+    "openai/gpt-4o": "gpt-4o",
+    "openai/gpt-4o-mini": "gpt-4o-mini",
+    "openai/gpt-5": "gpt-5",
+    "openai/gpt-5-mini": "gpt-5-mini",
+    "openai/gpt-5.6-luna": "gpt-5.6-luna",
+    "openai/gpt-5.6-sol": "gpt-5.6-sol",
+    "openai/gpt-5.6-terra": "gpt-5.6-terra",
+    "openai/gpt-6-astra": "gpt-6-astra",
+    "qwen3.5-flash-2026-02-23": "qwen3.5-flash",
+    "qwen3.5-plus-2026-02-15": "qwen3.5-plus",
+    "qwen3.6-flash-2026-04-16": "qwen3.6-flash",
+    "qwen3.6-plus-2026-04-02": "qwen3.6-plus",
+    "qwen3.7-flash-2026-07-15": "qwen3.7-flash",
+    "qwen3.7-max-2026-05-20": "qwen3.7-max",
+    "qwen3.7-max-2026-06-08": "qwen3.7-max",
+    "qwen3.7-plus-2026-05-26": "qwen3.7-plus",
+    "qwen3.8-max-0902": "qwen3.8-max"
   },
-  "updated_at": "2026-09-10",
+  "updated_at": "2026-09-11",
   "sources": {
     "openai": {
       "url": "https://developers.openai.com/api/docs/models",
       "type": "official",
-      "verified_at": "2026-09-10"
+      "verified_at": "2026-09-10",
+      "reasoning": "https://platform.openai.com/docs/guides/reasoning"
     },
     "anthropic": {
       "url": "https://platform.claude.com/docs/en/about-claude/models/overview",
       "type": "official",
-      "verified_at": "2026-09-10"
+      "verified_at": "2026-09-10",
+      "reasoning": "https://docs.claude.com/en/docs/build-with-claude/effort"
     },
     "google": {
       "url": "https://ai.google.dev/gemini-api/docs/models",
       "type": "official",
-      "verified_at": "2026-09-10"
+      "verified_at": "2026-09-10",
+      "reasoning": "https://ai.google.dev/gemini-api/docs/thinking"
     },
     "deepseek": {
       "url": "https://api-docs.deepseek.com/quick_start/pricing",
       "type": "official",
-      "verified_at": "2026-09-10"
+      "verified_at": "2026-09-10",
+      "reasoning": "https://api-docs.deepseek.com/api/create-chat-completion"
     },
     "mistral": {
       "url": "https://docs.mistral.ai/getting-started/models/models_overview/",
       "type": "vendor-reference",
-      "verified_at": "2026-09-10"
+      "verified_at": "2026-09-10",
+      "reasoning": "https://docs.mistral.ai/capabilities/reasoning/"
     },
     "xai": {
       "url": "https://docs.x.ai/docs/models",
       "type": "vendor-reference",
-      "verified_at": "2026-09-10"
+      "verified_at": "2026-09-10",
+      "reasoning": "https://docs.x.ai/developers/model-capabilities/text/reasoning"
     },
     "zhipu": {
       "url": "https://docs.z.ai/guides/overview/model-introduction",
       "type": "vendor-reference",
-      "verified_at": "2026-09-10"
+      "verified_at": "2026-09-10",
+      "reasoning": "https://docs.z.ai/api-reference/llm/chat-completion"
     },
     "qwen": {
       "url": "https://help.aliyun.com/zh/model-studio/models",
       "type": "vendor-reference",
-      "verified_at": "2026-09-10"
+      "verified_at": "2026-09-10",
+      "reasoning": "https://help.aliyun.com/zh/model-studio/deep-thinking"
     },
     "moonshot": {
       "url": "https://platform.moonshot.cn/docs/guide/kimi-k2-5-quickstart",
       "type": "vendor-reference",
-      "verified_at": "2026-09-10"
+      "verified_at": "2026-09-10",
+      "reasoning": "https://platform.moonshot.cn/docs/guide/use-kimi-k2-thinking-model"
     }
   }
 }

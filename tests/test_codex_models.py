@@ -138,6 +138,43 @@ def test_models_sync_imports_explicit_remote_metadata(
     assert entry["input_modalities"] == ["text", "image"]
 
 
+def test_models_sync_narrows_input_modalities_for_codex(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Codex rejects a catalog containing video/pdf modalities."""
+
+    _add_provider()
+    monkeypatch.setattr(
+        models,
+        "fetch_provider_models",
+        lambda *args, **kwargs: ProviderModelList(
+            [
+                {
+                    "id": "m-a",
+                    "architecture": {
+                        "input_modalities": ["text", "image", "video", "file"]
+                    },
+                },
+                {
+                    "id": "m-b",
+                    "architecture": {"input_modalities": ["video", "file"]},
+                },
+            ]
+        ),
+    )
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    by_slug = {
+        entry["slug"]: entry
+        for entry in json.loads(catalog.read_text(encoding="utf-8"))["models"]
+    }
+    assert by_slug["m-a"]["input_modalities"] == ["text", "image"]
+    # A model with no Codex-supported modality falls back to text only.
+    assert by_slug["m-b"]["input_modalities"] == ["text"]
+
+
 def test_models_sync_uses_github_catalog_for_id_only_response(
     codex_paths: dict[str, Path],
     monkeypatch: pytest.MonkeyPatch,
@@ -367,11 +404,454 @@ def test_models_update_variants_from_csv(
     )
     catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
     entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
-    assert entry["variants"] == {
-        "low": {"reasoningEffort": "low"},
-        "high": {"reasoningEffort": "high"},
-        "max": {"reasoningEffort": "max"},
+    assert entry["supported_reasoning_levels"] == models.reasoning_levels(
+        ["low", "high", "max"]
+    )
+    assert "variants" not in entry
+
+
+def test_models_sync_writes_default_reasoning_ladder(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    ]
+    assert all(level["description"] for level in entry["supported_reasoning_levels"])
+    assert entry["default_reasoning_level"] == "medium"
+    # Codex ignores OpenCode's `variants` map, so catalog entries do not carry it.
+    assert "variants" not in entry
+
+
+def test_models_sync_applies_builtin_reasoning_ladder(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(
+        models,
+        "fetch_provider_models",
+        _fake_fetch(["deepseek-v4-pro", "gpt-5.4"]),
+    )
+    # Force the built-in catalog path; the network fetch is not available here.
+    monkeypatch.setattr(
+        models,
+        "_catalog_metadata",
+        lambda: {
+            "deepseek-v4-pro": {
+                "reasoning_levels": ["high", "max"],
+                "reasoning_default": "high",
+            },
+            "gpt-5.4": {"reasoning_levels": ["low", "medium", "high", "xhigh"]},
+        },
+    )
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    by_slug = {
+        entry["slug"]: entry
+        for entry in json.loads(catalog.read_text(encoding="utf-8"))["models"]
     }
+    assert [
+        level["effort"]
+        for level in by_slug["deepseek-v4-pro"]["supported_reasoning_levels"]
+    ] == ["high", "max"]
+    assert by_slug["deepseek-v4-pro"]["default_reasoning_level"] == "high"
+    assert [
+        level["effort"] for level in by_slug["gpt-5.4"]["supported_reasoning_levels"]
+    ] == ["low", "medium", "high", "xhigh"]
+    assert by_slug["gpt-5.4"]["default_reasoning_level"] == "medium"
+
+
+def test_models_sync_upgrades_legacy_three_level_ladder(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    monkeypatch.setattr(
+        models,
+        "_catalog_metadata",
+        lambda: {"m-a": {"reasoning_levels": ["low", "medium", "high", "xhigh"]}},
+    )
+    assert cp.main(["models", "sync", "alpha"]) == 0
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    data = json.loads(catalog.read_text(encoding="utf-8"))
+    # Shape written by codex-provider before it knew model reasoning levels.
+    data["models"][0]["supported_reasoning_levels"] = [
+        {"effort": "low", "description": "Light reasoning"},
+        {"effort": "high", "description": "Enhanced reasoning"},
+        {"effort": "max", "description": "Deep reasoning"},
+    ]
+    data["models"][0]["variants"] = {"low": {"reasoningEffort": "low"}}
+    catalog.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    ]
+    assert entry["default_reasoning_level"] == "medium"
+    assert "variants" not in entry
+
+
+def test_models_sync_upgrades_legacy_ladder_for_unknown_models(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Legacy `low,high,max` ladders are ours, so sync refreshes them."""
+
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    monkeypatch.setattr(models, "_catalog_metadata", dict)
+    assert cp.main(["models", "sync", "alpha"]) == 0
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    data = json.loads(catalog.read_text(encoding="utf-8"))
+    data["models"][0]["supported_reasoning_levels"] = [
+        {"effort": "low", "description": "Light reasoning"},
+        {"effort": "high", "description": "Enhanced reasoning"},
+        {"effort": "max", "description": "Deep reasoning"},
+    ]
+    catalog.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    ]
+    assert entry["default_reasoning_level"] == "medium"
+
+
+def test_models_sync_migrates_retained_models(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Models no longer served by the provider still get the catalog ladder."""
+
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    monkeypatch.setattr(
+        models,
+        "_catalog_metadata",
+        lambda: {"legacy-offer": {"reasoning_levels": ["high", "max"]}},
+    )
+    assert cp.main(["models", "sync", "alpha"]) == 0
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    data = json.loads(catalog.read_text(encoding="utf-8"))
+    stale = dict(data["models"][0])
+    stale["slug"] = "legacy-offer"
+    stale["display_name"] = "legacy-offer"
+    stale["supported_reasoning_levels"] = [
+        {"effort": "low", "description": "Light reasoning"},
+        {"effort": "high", "description": "Enhanced reasoning"},
+        {"effort": "max", "description": "Deep reasoning"},
+    ]
+    data["models"].append(stale)
+    catalog.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    by_slug = {
+        entry["slug"]: entry
+        for entry in json.loads(catalog.read_text(encoding="utf-8"))["models"]
+    }
+    assert "legacy-offer" in by_slug
+    assert [
+        level["effort"]
+        for level in by_slug["legacy-offer"]["supported_reasoning_levels"]
+    ] == ["high", "max"]
+    assert by_slug["legacy-offer"]["default_reasoning_level"] == "high"
+
+
+def test_models_update_supported_reasoning_levels(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    assert (
+        cp.main(
+            [
+                "models",
+                "update",
+                "m-a",
+                "alpha",
+                "--set",
+                "supported_reasoning_levels=low,medium,high",
+            ]
+        )
+        == 0
+    )
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
+        "low",
+        "medium",
+        "high",
+    ]
+
+
+def test_models_update_rejects_unknown_reasoning_levels(
+    codex_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    assert cp.main(["models", "sync", "alpha"]) == 0
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    data = json.loads(catalog.read_text(encoding="utf-8"))
+    data["models"][0]["supported_reasoning_levels"] = [
+        {"effort": "high", "description": "High"},
+        {"effort": "ultra", "description": "Ultra"},
+    ]
+    catalog.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    before = catalog.read_bytes()
+    capsys.readouterr()
+
+    assert cp.main(["models", "update", "m-a", "alpha", "--set", "variants=turbo"]) == 1
+    err = capsys.readouterr().err
+    assert "unknown reasoning level(s) turbo" in err
+    assert "none, minimal, low, medium, high, xhigh, max, ultra" in err
+    assert catalog.read_bytes() == before
+
+
+def test_models_update_rejects_unknown_default_reasoning_level(
+    codex_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    assert cp.main(["models", "sync", "alpha"]) == 0
+    capsys.readouterr()
+
+    assert (
+        cp.main(
+            [
+                "models",
+                "update",
+                "m-a",
+                "alpha",
+                "--set",
+                "default_reasoning_level=turbo",
+            ]
+        )
+        == 1
+    )
+    assert "unknown reasoning level 'turbo'" in capsys.readouterr().err
+
+    assert (
+        cp.main(
+            [
+                "models",
+                "update",
+                "m-a",
+                "alpha",
+                "--set",
+                "default_reasoning_level=high",
+            ]
+        )
+        == 0
+    )
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert entry["default_reasoning_level"] == "high"
+
+
+def test_models_sync_accepts_ultra_and_none_levels(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    assert (
+        cp.main(
+            [
+                "models",
+                "update",
+                "m-a",
+                "alpha",
+                "--set",
+                "supported_reasoning_levels=low,high,max,ultra",
+            ]
+        )
+        == 0
+    )
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
+        "low",
+        "high",
+        "max",
+        "ultra",
+    ]
+
+
+def test_models_sync_keeps_hand_edited_reasoning_levels(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    assert cp.main(["models", "sync", "alpha"]) == 0
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    data = json.loads(catalog.read_text(encoding="utf-8"))
+    custom = [
+        {"effort": "high", "description": "High"},
+        {"effort": "ultra", "description": "Ultra"},
+    ]
+    data["models"][0]["supported_reasoning_levels"] = custom
+    catalog.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert entry["supported_reasoning_levels"] == custom
+
+
+def test_models_sync_keeps_hand_edited_default_reasoning_level(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    monkeypatch.setattr(
+        models,
+        "_catalog_metadata",
+        lambda: {"m-a": {"reasoning_levels": ["low", "medium", "high", "xhigh"]}},
+    )
+    assert cp.main(["models", "sync", "alpha"]) == 0
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    assert (
+        cp.main(
+            [
+                "models",
+                "update",
+                "m-a",
+                "alpha",
+                "--set",
+                "default_reasoning_level=high",
+            ]
+        )
+        == 0
+    )
+
+    assert cp.main(["models", "sync", "alpha"]) == 0
+
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    ]
+    assert entry["default_reasoning_level"] == "high"
+
+
+def test_models_sync_force_resets_hand_edited_reasoning_levels(
+    codex_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    assert cp.main(["models", "sync", "alpha"]) == 0
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    data = json.loads(catalog.read_text(encoding="utf-8"))
+    data["models"][0]["supported_reasoning_levels"] = [
+        {"effort": "high", "description": "High"},
+        {"effort": "ultra", "description": "Ultra"},
+    ]
+    catalog.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    assert cp.main(["models", "sync", "alpha", "--force"]) == 0
+
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    ]
+
+
+def test_models_sync_force_refreshes_reasoning_levels(
+    codex_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    assert cp.main(["models", "sync", "alpha"]) == 0
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    data = json.loads(catalog.read_text(encoding="utf-8"))
+    data["models"][0]["display_name"] = "Custom"
+    data["models"][0]["context_window"] = 200000
+    data["models"][0]["supported_reasoning_levels"] = [
+        {"effort": "low", "description": "Legacy"},
+        {"effort": "high", "description": "Legacy"},
+        {"effort": "max", "description": "Legacy"},
+    ]
+    data["models"][0]["variants"] = {"low": {"reasoningEffort": "low"}}
+    catalog.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert cp.main(["models", "sync", "alpha", "--force"]) == 0
+
+    out = capsys.readouterr().out
+    assert "refreshed reasoning levels for 1 models" in out
+    entry = json.loads(catalog.read_text(encoding="utf-8"))["models"][0]
+    assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    ]
+    assert entry["display_name"] == "Custom"
+    assert entry["context_window"] == 200000
+    assert "variants" not in entry
+
+
+def test_models_sync_force_dry_run_writes_nothing(
+    codex_paths: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _add_provider()
+    monkeypatch.setattr(models, "fetch_provider_models", _fake_fetch(["m-a"]))
+    assert cp.main(["models", "sync", "alpha"]) == 0
+    catalog = codex_paths["tool_home"] / "catalogs" / "alpha.json"
+    data = json.loads(catalog.read_text(encoding="utf-8"))
+    data["models"][0]["supported_reasoning_levels"] = [
+        {"effort": "high", "description": "High"},
+        {"effort": "ultra", "description": "Ultra"},
+    ]
+    catalog.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    before = catalog.read_bytes()
+    capsys.readouterr()
+
+    assert cp.main(["models", "sync", "alpha", "--force", "--dry-run"]) == 0
+
+    out = capsys.readouterr().out
+    assert "would refresh reasoning levels for 1 models" in out
+    assert catalog.read_bytes() == before
 
 
 def test_models_update_rejects_unknown_field(

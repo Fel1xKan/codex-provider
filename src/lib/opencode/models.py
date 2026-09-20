@@ -22,13 +22,41 @@ from lib.opencode.store import (
 # OpenCode accepts provider-specific options in each model variant.  These
 # reasoning-effort names are useful for the OpenAI-compatible providers this
 # CLI manages, while keeping the config shape compatible with OpenCode's
-# built-in variant selector.
+# built-in variant selector. Models documented in the shared metadata catalog
+# use that model's own reasoning ladder instead of this fallback.
 DEFAULT_VARIANT_NAMES = ("low", "medium", "high", "xhigh", "max")
 
 
-def default_model_variants() -> dict[str, dict[str, str]]:
-    """Return fresh default variants for a newly discovered model."""
-    return {name: {"reasoningEffort": name} for name in DEFAULT_VARIANT_NAMES}
+def default_model_variants(
+    levels: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, dict[str, str]]:
+    """Return fresh default variants, one per selectable reasoning level."""
+
+    names = [name for name in levels or DEFAULT_VARIANT_NAMES if name]
+    return {name: {"reasoningEffort": name} for name in names}
+
+
+def _variant_block(levels: list[str] | None) -> dict[str, dict[str, str]]:
+    """Build the variants OpenCode should get for a model.
+
+    A single variant offers no choice — most often `none` for a model with no
+    thinking mode — so the block is omitted and OpenCode keeps its defaults.
+    """
+
+    variants = default_model_variants(levels)
+    return variants if len(variants) > 1 else {}
+
+
+def _catalog_levels(metadata: dict[str, Any]) -> list[str] | None:
+    levels = metadata.get("reasoning_levels")
+    if not isinstance(levels, list):
+        return None
+    names: list[str] = []
+    for level in levels:
+        name = level.get("effort") if isinstance(level, dict) else level
+        if isinstance(name, str) and name.strip() and name not in names:
+            names.append(name)
+    return names or None
 
 
 def _remote_metadata(result: Any) -> dict[str, dict[str, Any]]:
@@ -233,24 +261,28 @@ def sync_provider_models(
     existing_models = provider_models(state, target)
     model_objs: dict[str, dict[str, Any]] = {}
     for m in models_list:
+        metadata = merge_metadata(
+            catalog_metadata.get(m, {}),
+            remote_metadata.get(m, {}),
+        )
+        levels = _catalog_levels(metadata)
+        variants = _variant_block(levels)
         if m in existing_models and isinstance(existing_models[m], dict):
-            model_objs[m] = _apply_remote_metadata(
+            entry = _apply_remote_metadata(
                 dict(existing_models[m]),
-                merge_metadata(
-                    catalog_metadata.get(m, {}),
-                    remote_metadata.get(m, {}),
-                ),
+                metadata,
                 is_new=False,
             )
-            if force:
-                model_objs[m]["variants"] = default_model_variants()
+            if force and variants:
+                entry["variants"] = variants
+            model_objs[m] = entry
         else:
+            initial: dict[str, Any] = {}
+            if variants:
+                initial["variants"] = variants
             model_objs[m] = _apply_remote_metadata(
-                {"variants": default_model_variants()},
-                merge_metadata(
-                    catalog_metadata.get(m, {}),
-                    remote_metadata.get(m, {}),
-                ),
+                initial,
+                metadata,
                 is_new=True,
             )
     for model_id, entry in existing_models.items():

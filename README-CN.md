@@ -122,6 +122,7 @@ cpx test my-provider
 ```bash
 cpx models list my-provider
 cpx models sync my-provider --dry-run
+cpx models sync my-provider --force
 cpx models set my-model my-provider
 cpx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
 opx models list my-provider
@@ -143,7 +144,17 @@ Codex `models sync` 会把提供商当前的 `/models` ID 合并进模型目录�
 不会覆盖手工值。`models set` 可通过 `--context-window` 和 `--max-output-tokens` 在选择模型
 时同时写入限制。未设置目录指针的提供商会自动新建
 `~/.codex-provider/catalogs/<provider>.json` 并记录指针，`models set` 则写入
-`~/.codex/config.toml` 顶层 `model`。OpenCode 模型同步会添加新 ID、保留旧模型和手工元数据，
+`~/.codex/config.toml` 顶层 `model`。目录条目会按同一个版本化元数据目录、依据各家官方文档写入
+Codex `/model` 里真实可选的推理档位。例如 `gpt-5.4` 为 `none,low,medium,high,xhigh`，
+`gpt-5.6-sol` 为 `none,low,medium,high,xhigh,max,ultra`，`claude-opus-5`、`claude-opus-4-7`
+为 `low,medium,high,xhigh,max`，`claude-sonnet-4-6` 到 `max` 为止，`deepseek-v4-pro` 为
+`none,low,high,max`，`glm-5.3` 为 `low,high,max`，`grok-4.6` 为 `low,medium,high,xhigh`。
+只提供「思考开关」的厂商（Qwen、Mistral、Kimi K2.6、旧版 Claude）显示 `none`/`high` 并标注
+开关含义；始终思考且无参数的模型只给一档 `high`；不支持思考的模型（`qwen-max`、
+`qwen3-coder-plus` 等）只有 `none`；未收录的模型回退到 `low,medium,high,xhigh,max`。
+预选档位取 `medium`（档位里没有 `medium` 时取 `high`），`max`、`ultra` 需要手动选择。sync 只刷新仍然是我们自动生成的档位，手工修改过的
+会保留；`cpx models sync <provider> --force` 会重置全部已同步模型，也可用
+`models update --set supported_reasoning_levels=low,medium,high` 为单个模型裁剪档位。OpenCode 模型同步会添加新 ID、保留旧模型和手工元数据，
 并导入明确的 `limit.context`/`limit.output`；`models set` 写入顶层 `model`（`provider/model`
 形式）。如果 provider 的 `/models` 只返回模型 ID，三个 CLI 还会查询本仓库托管的版本化
 `data/model-catalog.json`，成功后缓存到各自状态目录；目录请求失败时使用缓存，完全没有缓存
@@ -170,7 +181,11 @@ Cursor 数据库中的自定义 OpenAI 兼容提供商（如 DeepSeek），`mode
 ```bash
 cpx upgrade
 cpx upgrade --check
+cpx upgrade --notes
 ```
+
+`upgrade` 会在替换二进制之前先打印新版本的 release notes，所以升级前就能看到变化；
+`--notes` 只打印最新说明。说明只列出新增功能、保持简短。
 
 ## 命令参考
 

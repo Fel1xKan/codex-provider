@@ -20,7 +20,7 @@ in your installed version for the exact parser surface.
 | `delete [--full] [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Remove configuration, optionally including auth |
 | `rename [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Rename a provider or account |
 | `export` / `import` | Yes | Yes | Yes | Yes | Yes | Back up or restore configuration and auth |
-| `upgrade [--check] [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Update the binary from the latest GitHub release |
+| `upgrade [--check] [--dry-run] [--notes]` | Yes | Yes | Yes | Yes | Yes | Update the binary and read its release notes |
 | `models list` / `models sync` | Yes | Yes | No | No | Yes | Discover and synchronize Codex/OpenCode/Claude models |
 | `models set` | Yes | Yes | No | No | Yes | Set the default model for a provider |
 | `models update` | Yes | Yes | No | No | Yes | Update stored fields for a synced model |
@@ -311,11 +311,12 @@ fails.
 cpx models list my-provider
 cpx models sync my-provider
 cpx models sync my-provider --dry-run
+cpx models sync my-provider --force
 cpx models sync --all
 cpx models set my-model my-provider
 cpx models set my-model my-provider --dry-run
 cpx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
-cpx models update my-model my-provider --set context_window=200000 --set variants=low,medium,high
+cpx models update my-model my-provider --set context_window=200000 --set supported_reasoning_levels=low,medium,high
 ```
 
 `models list` shows the model IDs in the provider catalog file without
@@ -338,7 +339,82 @@ preview). `--context-window` updates both Codex context window fields, and
 if any provider cannot be queried. When `/models` exposes only IDs, sync uses
 the versioned GitHub metadata catalog and caches it under
 `~/.codex-provider/model-catalog-cache.json`; metadata fetch failures never
-block provider model synchronization.
+block provider model synchronization. Pass `--force` to reset the reasoning
+levels of every synced model to the default ladder; other model metadata is
+preserved.
+
+Catalog entries publish the reasoning levels Codex renders in the `/model`
+picker through `supported_reasoning_levels`, so those entries — not the
+three-level Codex default — decide which efforts are selectable. Sync fills
+them from the versioned metadata catalog using each vendor's documented
+levels:
+
+| Vendor | Levels | Preselected |
+| --- | --- | --- |
+| `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-6-astra`, `gpt-daybreak-*-latest` | `none`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | `medium` |
+| `gpt-5.6-luna` | `none`, `low`, `medium`, `high`, `xhigh`, `max` | `medium` |
+| `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, `gpt-5.6-cyber` | `none`, `low`, `medium`, `high`, `xhigh` | `medium` |
+| `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano` | `low`/`minimal`, `medium`, `high` | `medium` |
+| `o3`, `o3-mini`, `o4-mini` | `low`, `medium`, `high` | `medium` |
+| `gpt-4o`, `gpt-4.1`, `gpt-5.2-chat-latest`, `gpt-realtime-*` | no selectable level | — |
+| `claude-fable-5-1`, `claude-fable-5`, `claude-opus-5`, `claude-sonnet-5`, `claude-opus-4-8`, `claude-opus-4-7` | `low`, `medium`, `high`, `xhigh`, `max` | `high` |
+| `claude-opus-4-6`, `claude-sonnet-4-6` | `low`, `medium`, `high`, `max` | `high` |
+| `claude-opus-4-5` | `low`, `medium`, `high` | `high` |
+| `claude-haiku-4-5`, `claude-sonnet-4-5`, `claude-3-7-sonnet-latest` | thinking off/on (token budget) | `high` |
+| `claude-3-5-sonnet-latest`, `claude-3-5-haiku-latest` | no extended thinking | — |
+| `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-flash-latest` | `low`, `medium`, `high` | `medium` |
+| `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-flash-lite-latest`, `gemini-3-flash-preview` | `minimal`, `low`, `medium`, `high` | `medium`/`high` |
+| `gemini-3.1-pro-preview` | `low`, `medium`, `high` | `high` |
+| `gemini-3.1-flash-lite-image` | `minimal`, `high` | `high` |
+| `gemini-2.5-pro`, `gemini-2.5-flash` | `low`, `medium`, `high` | `medium` |
+| `gemini-2.5-flash-lite` (thinking off by default) | `low`, `medium`, `high` | `low` |
+| `deepseek-chat`, `deepseek-reasoner`, `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-v4-flash-vision-exp` | `none`, `low`, `high`, `max` | `high` |
+| `glm-5.3`, `glm-5.3-flash` | `low`, `high`, `max` | `high` |
+| `glm-5.2` | `none`, `high`, `max` | `high` |
+| `glm-5.1`, `glm-5`, `glm-4.6`, `glm-4.5`, `glm-5v-turbo`, `glm-4.6v` | thinking off/on | `high` |
+| `glm-4.7`, `glm-4.7-flash`, `glm-4.5v` | thinking always on | `high` |
+| `grok-4.6` | `low`, `medium`, `high`, `xhigh` | `high` |
+| `grok-4.5` | `low`, `medium`, `high` | `high` |
+| `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-multi-agent-0309` | thinking always on, no effort parameter | `high` |
+| `kimi-k3` | `low`, `high`, `max` | `high` |
+| `kimi-k2.6` | thinking off/on | `high` |
+| `kimi-k2.7-code`, `kimi-k2.7-code-highspeed` | thinking always on | `high` |
+| `qwen3.8-max`/`-flash`, `qwen3.7-*`, `qwen3.6-*`, `qwen3.5-*`, `qwen3-max`, `qwen-plus`, `qwen-flash`, `qwen-turbo`, `qwen3-omni-flash`, `qwen3-vl-plus`, `qwen3-vl-235b-a22b` | thinking off/on (`enable_thinking`) | `high` |
+| `qwq-plus`, `qwen3-vl-235b-a22b-thinking` | thinking always on | `high` |
+| `qwen-max`, `qwen-long`, `qwen3-coder-plus`, `qwen3-coder-flash` | no thinking mode | — |
+| `mistral-small-2603`, `mistral-medium-2604` | `none` (thinking omitted), `high` (thinking streamed) | `high` |
+| `magistral-medium-latest` | native reasoning, no level | `high` |
+| `mistral-large-*`, `devstral-2512`, `codestral-latest`, `pixtral-large-latest` | no reasoning control | — |
+| unknown model IDs | `low`, `medium`, `high`, `xhigh`, `max` | `medium` |
+
+Notes on how to read the table:
+
+- Codex 5.x levels come from the Codex CLI's own model metadata; `ultra`
+  (automatic task delegation) is a Codex-side level that the Codex CLI
+  advertises for those specific models.
+- Vendors that expose a thinking *switch* (`enable_thinking`,
+  `thinking.type`, a token budget) rather than an effort ladder are published
+  as `none`/`high` with the wording shown in the picker ("Thinking disabled" /
+  "Thinking enabled"), so the two states that actually exist are the two on
+  offer.
+- A model with an always-on reasoning mode and no parameter is published as a
+  single `high` level; Codex then always requests that effort instead of
+  asking you to choose. A model with no thinking mode is published as a single
+  `none` level and Codex skips the reasoning step.
+- The preselected level is never `max` or `ultra` while a cheaper level
+  exists, because those consume usage limits much faster.
+
+`input_modalities` is narrowed to `text`, `image`, and `audio` before it
+reaches the catalog: Codex refuses to parse a catalog that lists any other
+modality, so a provider advertising `video` or `pdf` input would otherwise
+break every model in that catalog.
+
+Sync rewrites a ladder only while it still looks generated: the fallback
+`low,medium,high,xhigh,max` ladder or the three-level `low,high,max` shape
+written by earlier releases. A ladder you edited with `models update` (or a
+hand-edited `default_reasoning_level` other than `max`) is preserved. Pass
+`--force` to reset every synced model to its catalog ladder, overwriting
+manual edits.
 
 `models update <model> [provider] --set FIELD=VALUE` edits one catalog entry
 in place (repeat `--set` for multiple fields; `--dry-run` previews). Text
@@ -351,9 +427,13 @@ integers.
 Booleans (`support_verbosity`, `supports_reasoning_summaries`,
 `supports_parallel_tool_calls`, `supports_search_tool`, `prefer_websockets`,
 `use_responses_lite`) accept `true`/`false`. `input_modalities` takes a
-comma-separated list, `truncation_policy` takes a JSON object, and `variants`
-takes a comma-separated effort subset of `low,medium,high,xhigh,max`
-(e.g. `--set variants=low,medium,high`). Unknown models and fields are
+comma-separated list and `truncation_policy` takes a JSON object.
+`supported_reasoning_levels` takes a comma-separated reasoning subset of
+`none,minimal,low,medium,high,xhigh,max,ultra` (e.g.
+`--set supported_reasoning_levels=low,medium,high`) and rewrites the catalog
+levels Codex shows in `/model`; `variants` is accepted as an alias for the
+same catalog key. `default_reasoning_level` takes one of those reasoning
+values (empty clears). Unknown models, fields, and reasoning values are
 rejected with the available values listed.
 
 ## OpenCode Models
@@ -472,6 +552,7 @@ remove copies when they are no longer needed.
 ```bash
 cpx upgrade --check
 cpx upgrade --dry-run
+cpx upgrade --notes
 cpx upgrade
 ```
 
@@ -483,6 +564,14 @@ available in every provider CLI and targets that CLI's own release asset.
 During an actual upgrade, interactive terminals show download progress and all
 other environments receive concise status lines for download, checksum, and
 installation stages.
+
+Release notes are printed before the binary is replaced, so upgrading never
+installs a change you have not seen: `upgrade` and `upgrade --check` show the
+notes of the newer version, and `upgrade --notes` prints them alone without
+touching the installed binary. Notes come from the release body, which the
+release workflow builds from `CHANGELOG.md`. They list new capabilities only —
+bug fixes are not listed — and long bodies are truncated with a link to the full
+notes when the output would otherwise scroll past the prompt.
 
 Standalone binaries are published per platform as
 `<tool>-<version>-<platform>`. Source installations managed with pip should use

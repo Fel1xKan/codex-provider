@@ -471,6 +471,11 @@ COMMON_COMMANDS: tuple[CommandSpec, ...] = (
                 action="store_true",
                 help="Preview the upgrade without replacing the binary",
             ),
+            _opt(
+                "--notes",
+                action="store_true",
+                help="Print the latest release notes and exit",
+            ),
         ),
     ),
 )

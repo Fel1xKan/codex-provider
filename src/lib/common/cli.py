@@ -145,7 +145,7 @@ def _handle_import(backend: Any, args: Any) -> int:
 
 
 def _handle_upgrade(backend: Any, args: Any) -> int:
-    return backend.upgrade(args.check, args.dry_run)
+    return backend.upgrade(args.check, args.dry_run, getattr(args, "notes", False))
 
 
 HANDLERS: dict[str, Any] = {

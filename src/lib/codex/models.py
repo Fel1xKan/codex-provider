@@ -13,7 +13,11 @@ from lib.codex.switch import switch_provider
 from lib.common.common_store import FileChange, apply_changes
 from lib.common.constants import MODE_OFFICIAL
 from lib.common.errors import SwitchError
-from lib.common.model_catalog import load_model_catalog, merge_metadata
+from lib.common.model_catalog import (
+    REASONING_EFFORTS,
+    load_model_catalog,
+    merge_metadata,
+)
 from lib.common.model_metadata import extract_model_metadata, model_record_map
 from lib.common.network import WireProtocol, fetch_provider_models
 from lib.common.toml_config import (
@@ -66,10 +70,50 @@ VALID_UPDATE_FIELDS = (
     "use_responses_lite",
     "input_modalities",
     "truncation_policy",
+    "supported_reasoning_levels",
     "variants",
 )
 
-_VARIANT_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# Reasoning-effort ladder used when neither the provider metadata nor the
+# built-in model catalog knows a model's levels. Codex renders a model's
+# `supported_reasoning_levels` in the `/model` picker, so the effort names
+# Codex can select have to be written there. OpenCode's `variants` map is not
+# part of Codex's model schema and is ignored by Codex.
+FALLBACK_REASONING_LEVELS: tuple[str, ...] = (
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+)
+_LEVEL_DESCRIPTIONS = {
+    "none": "Model does not reason",
+    "minimal": "Fastest responses with minimal reasoning",
+    "low": "Fast responses with lighter reasoning",
+    "medium": "Balances speed and reasoning depth for everyday tasks",
+    "high": "Greater reasoning depth for complex problems",
+    "xhigh": "Extra high reasoning depth for complex problems",
+    "max": "Maximum reasoning depth for the hardest problems",
+    "ultra": "Maximum reasoning with automatic task delegation",
+}
+# Level Codex preselects for a model that does not name its own default. The
+# middle of the ladder is the useful starting point: `max`/`ultra` burn usage
+# limits, and `low`/`minimal` throw away reasoning the model can afford.
+DEFAULT_REASONING_LEVEL = "medium"
+_PREFERRED_DEFAULT_LEVELS: tuple[str, ...] = (
+    "medium",
+    "high",
+    "low",
+    "minimal",
+    "xhigh",
+    "max",
+    "ultra",
+    "none",
+)
+# Update fields that map onto a different catalog key. Codex selects reasoning
+# levels through `supported_reasoning_levels`; `variants` stays accepted as an
+# alias so the shared `models update` command keeps one shape per effort list.
+_UPDATE_FIELD_TARGETS = {"variants": "supported_reasoning_levels"}
 
 _SCALAR_INT_FIELDS = {
     "context_window",
@@ -93,9 +137,144 @@ _LIST_STR_FIELDS = {"input_modalities"}
 
 _JSON_FIELDS = {"truncation_policy"}
 
+# Codex rejects a catalog whose `input_modalities` uses any other value, so
+# provider metadata has to be narrowed to these before it reaches the catalog.
+CODEX_INPUT_MODALITIES = ("text", "image", "audio")
 
-def _default_variants() -> dict[str, dict[str, str]]:
-    return {name: {"reasoningEffort": name} for name in _VARIANT_EFFORTS}
+
+def _codex_input_modalities(values: Any) -> list[str]:
+    """Keep only the input modalities Codex can parse."""
+
+    if not isinstance(values, list):
+        return []
+    kept = [
+        name
+        for name in (str(value).strip() for value in values)
+        if name in CODEX_INPUT_MODALITIES
+    ]
+    if kept and "text" not in kept:
+        kept.insert(0, "text")
+    return kept
+
+
+def reasoning_levels(levels: Any = None) -> list[dict[str, str]]:
+    """Render Codex `supported_reasoning_levels` entries.
+
+    Ladder entries may be plain effort names or mapping entries that carry the
+    vendor's own wording, such as `{"effort": "none", "description": "Thinking
+    disabled"}`. A catalog description wins over the generic table below.
+    """
+
+    names = levels if levels else list(FALLBACK_REASONING_LEVELS)
+    rendered: list[dict[str, str]] = []
+    for level in names:
+        if isinstance(level, dict):
+            name = str(level.get("effort", "")).strip()
+            description = level.get("description")
+        else:
+            name = str(level).strip()
+            description = None
+        if not name:
+            continue
+        if not isinstance(description, str) or not description.strip():
+            description = _LEVEL_DESCRIPTIONS.get(name, name)
+        rendered.append({"effort": name, "description": description})
+    return rendered
+
+
+def default_reasoning_level(levels: list[str] | tuple[str, ...] | None) -> str:
+    """Pick the level Codex preselects for a model.
+
+    A model's own `reasoning_default` wins when the built-in catalog provides
+    one; otherwise the ladder is searched for the preferred starting level.
+    """
+
+    names = list(levels) if levels else list(FALLBACK_REASONING_LEVELS)
+    for candidate in _PREFERRED_DEFAULT_LEVELS:
+        if candidate in names:
+            return candidate
+    return names[0] if names else DEFAULT_REASONING_LEVEL
+
+
+def default_reasoning_ladder() -> list[dict[str, str]]:
+    """Return the fallback ladder for models with no known levels."""
+
+    return reasoning_levels(None)
+
+
+def _ladder_efforts(levels: Any) -> list[str]:
+    """Read the effort names out of a catalog `supported_reasoning_levels`."""
+
+    if not isinstance(levels, list):
+        return []
+    names: list[str] = []
+    for level in levels:
+        name = level.get("effort") if isinstance(level, dict) else None
+        if isinstance(name, str) and name.strip() and name.strip() not in names:
+            names.append(name.strip())
+    return names
+
+
+def _has_generated_ladder(entry: dict[str, Any]) -> bool:
+    """Report whether a catalog entry still carries an untouched ladder.
+
+    Sync may rewrite a ladder it generated itself (including the three-level
+    `low, high, max` shape that shipped before the built-in catalog knew each
+    model's levels), but never a ladder a user edited or set explicitly.
+    """
+
+    names = _ladder_efforts(entry.get("supported_reasoning_levels"))
+    if not names:
+        return True
+    return names in (list(FALLBACK_REASONING_LEVELS), ["low", "high", "max"])
+
+
+def _has_generated_default(entry: dict[str, Any], levels: list[str]) -> bool:
+    """Report whether `default_reasoning_level` is still a value sync wrote.
+
+    Every catalog written before model reasoning levels were known preselected
+    `max`, so that value is treated as generated and refreshed; any other
+    in-ladder value is a deliberate user choice and is preserved.
+    """
+
+    current = entry.get("default_reasoning_level")
+    if not isinstance(current, str) or not current.strip():
+        return True
+    if current not in levels:
+        return True
+    return current == "max"
+
+
+def _apply_reasoning_levels(
+    entry: dict[str, Any],
+    metadata: dict[str, Any],
+    *,
+    is_new: bool,
+    force: bool,
+) -> dict[str, Any]:
+    """Apply the built-in catalog's reasoning ladder to a model entry."""
+
+    known_levels = metadata.get("reasoning_levels")
+    known = isinstance(known_levels, list) and bool(known_levels)
+    rewritten = _has_generated_ladder(entry)
+    if not (is_new or force or rewritten):
+        # The entry declares its own ladder; leave it alone.
+        return entry
+    ladder: list[Any] = list(known_levels) if known else list(FALLBACK_REASONING_LEVELS)
+    levels = [level["effort"] for level in reasoning_levels(ladder)]
+
+    next_entry = dict(entry)
+    next_entry["supported_reasoning_levels"] = reasoning_levels(ladder)
+    # Codex ignores OpenCode's `variants` map; drop it so catalogs stay clean.
+    next_entry.pop("variants", None)
+    if is_new or force or _has_generated_default(entry, levels):
+        configured = metadata.get("reasoning_default")
+        next_entry["default_reasoning_level"] = (
+            configured
+            if isinstance(configured, str) and configured in levels
+            else default_reasoning_level(levels)
+        )
+    return next_entry
 
 
 def minimal_catalog_entry(model_id: str) -> dict[str, Any]:
@@ -103,12 +282,8 @@ def minimal_catalog_entry(model_id: str) -> dict[str, Any]:
         "slug": model_id,
         "display_name": model_id,
         "description": f"Synced from provider /models: {model_id}",
-        "default_reasoning_level": "max",
-        "supported_reasoning_levels": [
-            {"effort": "low", "description": "Light reasoning"},
-            {"effort": "high", "description": "Enhanced reasoning"},
-            {"effort": "max", "description": "Deep reasoning"},
-        ],
+        "default_reasoning_level": default_reasoning_level(None),
+        "supported_reasoning_levels": default_reasoning_ladder(),
         "shell_type": "shell_command",
         "visibility": "list",
         "supported_in_api": True,
@@ -125,7 +300,6 @@ def minimal_catalog_entry(model_id: str) -> dict[str, Any]:
         "supports_parallel_tool_calls": True,
         "experimental_supported_tools": [],
         "input_modalities": ["text"],
-        "variants": _default_variants(),
     }
 
 
@@ -139,22 +313,30 @@ def _parse_bool(raw: str, field: str) -> bool:
 
 
 def _parse_update_value(field: str, raw: str) -> Any:
-    if field == "variants":
+    if field in {"variants", "supported_reasoning_levels"}:
         names = [part.strip() for part in raw.split(",")]
         names = [name for name in names if name]
         if not names:
-            raise SwitchError("--set variants requires at least one effort name")
-        unknown = [name for name in names if name not in _VARIANT_EFFORTS]
+            raise SwitchError(f"--set {field} requires at least one reasoning level")
+        unknown = [name for name in names if name not in REASONING_EFFORTS]
         if unknown:
             raise SwitchError(
-                f"unknown variant effort(s) {', '.join(unknown)}; "
-                f"available: {', '.join(_VARIANT_EFFORTS)}"
+                f"unknown reasoning level(s) {', '.join(unknown)}; "
+                f"available: {', '.join(REASONING_EFFORTS)}"
             )
         seen: list[str] = []
         for name in names:
             if name not in seen:
                 seen.append(name)
-        return {name: {"reasoningEffort": name} for name in seen}
+        return reasoning_levels(seen)
+    if field == "default_reasoning_level":
+        value = raw.strip()
+        if value and value not in REASONING_EFFORTS:
+            raise SwitchError(
+                f"unknown reasoning level {value!r}; "
+                f"available: {', '.join(REASONING_EFFORTS)}"
+            )
+        return value
     if field in _BOOL_FIELDS:
         return _parse_bool(raw, field)
     if field in _SCALAR_INT_FIELDS:
@@ -288,7 +470,7 @@ def _apply_remote_metadata(
     if max_output_tokens and (is_new or "max_output_tokens" not in next_entry):
         next_entry["max_output_tokens"] = max_output_tokens
 
-    input_modalities = metadata.get("input_modalities")
+    input_modalities = _codex_input_modalities(metadata.get("input_modalities"))
     if input_modalities and (is_new or next_entry.get("input_modalities") == ["text"]):
         next_entry["input_modalities"] = input_modalities
     return next_entry
@@ -304,7 +486,7 @@ def _resolve_catalog_path(
     return default, default.exists()
 
 
-def sync_provider_models(target: str, dry_run: bool) -> int:
+def sync_provider_models(target: str, dry_run: bool, force: bool = False) -> int:
     lock = nullcontext() if dry_run else st.state_lock()
     with lock:
         state = st.ensure_provider_state(read_only=dry_run)
@@ -319,34 +501,49 @@ def sync_provider_models(target: str, dry_run: bool) -> int:
         existing = load_catalog(catalog_path) if catalog_exists else {}
         merged: dict[str, dict[str, Any]] = {}
         added = 0
+        refreshed = 0
         for model_id in model_ids:
+            metadata = merge_metadata(
+                catalog_metadata.get(model_id, {}),
+                remote_metadata.get(model_id, {}),
+            )
             if model_id in existing:
-                merged[model_id] = _apply_remote_metadata(
+                entry = _apply_remote_metadata(
                     existing[model_id],
-                    merge_metadata(
-                        catalog_metadata.get(model_id, {}),
-                        remote_metadata.get(model_id, {}),
-                    ),
+                    metadata,
                     is_new=False,
                 )
+                is_new = False
             else:
-                merged[model_id] = _apply_remote_metadata(
-                    minimal_catalog_entry(model_id),
-                    merge_metadata(
-                        catalog_metadata.get(model_id, {}),
-                        remote_metadata.get(model_id, {}),
-                    ),
-                    is_new=True,
+                entry = _apply_remote_metadata(
+                    minimal_catalog_entry(model_id), metadata, is_new=True
                 )
+                is_new = True
                 added += 1
+
+            before = _ladder_efforts(entry.get("supported_reasoning_levels"))
+            entry = _apply_reasoning_levels(entry, metadata, is_new=is_new, force=force)
+            after = _ladder_efforts(entry.get("supported_reasoning_levels"))
+            if force and after != before:
+                refreshed += 1
+            merged[model_id] = entry
         for model_id, entry in existing.items():
             if model_id not in merged:
-                merged[model_id] = entry
+                # Retained models are not offered by the provider any more, so
+                # only the built-in catalog can describe them.
+                merged[model_id] = _apply_reasoning_levels(
+                    entry,
+                    catalog_metadata.get(model_id, {}),
+                    is_new=False,
+                    force=force,
+                )
         payload = render_catalog(merged)
 
         if dry_run:
             print(f"would sync models for provider '{target}': {len(model_ids)} models")
             print(f"would add {added} new models to catalog: {catalog_path}")
+            if force:
+                print(f"would refresh reasoning levels for {refreshed} models")
             return 0
 
         pointer = catalog_pointer_path(config)
@@ -380,17 +577,19 @@ def sync_provider_models(target: str, dry_run: bool) -> int:
 
     print(f"synced models for provider '{target}': {len(model_ids)} models")
     print(f"added {added} new models to catalog: {catalog_path}")
+    if force:
+        print(f"refreshed reasoning levels for {refreshed} models: {catalog_path}")
     return 0
 
 
-def sync_all_models(dry_run: bool = False) -> int:
+def sync_all_models(dry_run: bool = False, force: bool = False) -> int:
     state = st.ensure_provider_state(read_only=True)
     if not state.providers:
         raise SwitchError("no providers configured")
     failures = 0
     for target in sorted(state.providers):
         try:
-            sync_provider_models(target, dry_run)
+            sync_provider_models(target, dry_run, force)
         except SwitchError as exc:
             print(f"error: {exc}", file=sys.stderr)
             failures += 1
@@ -569,23 +768,25 @@ def update_provider_model(
         entry = dict(entries[model])
         changes: list[str] = []
         for field, value in updates.items():
+            key = _UPDATE_FIELD_TARGETS.get(field, field)
             if isinstance(value, str):
                 text = value.strip()
                 if not text:
-                    if field in entry:
-                        del entry[field]
-                        changes.append(f"remove {field}")
+                    if key in entry:
+                        del entry[key]
+                        changes.append(f"remove {key}")
                     else:
-                        changes.append(f"{field} remains unset")
+                        changes.append(f"{key} remains unset")
                 else:
-                    entry[field] = text
-                    changes.append(f"{field} = {text}")
+                    entry[key] = text
+                    changes.append(f"{key} = {text}")
             else:
-                entry[field] = value
-                if field == "variants":
-                    changes.append(f"variants = {', '.join(sorted(value))}")
+                entry[key] = value
+                if key == "supported_reasoning_levels":
+                    names = [level["effort"] for level in value]
+                    changes.append(f"{key} = {', '.join(names)}")
                 else:
-                    changes.append(f"{field} = {json.dumps(value, ensure_ascii=False)}")
+                    changes.append(f"{key} = {json.dumps(value, ensure_ascii=False)}")
         entries[model] = entry
         payload = render_catalog(entries)
         if not dry_run:
@@ -604,6 +805,7 @@ def models_command(
     model: str | None = None,
     dry_run: bool = False,
     all_providers: bool = False,
+    force: bool = False,
     update_sets: list[str] | None = None,
     context_window: int | None = None,
     max_output_tokens: int | None = None,
@@ -611,11 +813,11 @@ def models_command(
     if command == "sync" and all_providers:
         if provider is not None:
             raise SwitchError("--all cannot be combined with a provider")
-        return sync_all_models(dry_run)
+        return sync_all_models(dry_run, force)
     if command == "list":
         return list_provider_models(provider)
     if command == "sync":
-        return sync_provider_models(_resolve_target(provider), dry_run)
+        return sync_provider_models(_resolve_target(provider), dry_run, force)
     if command == "set":
         if not model:
             raise SwitchError("models set requires a model ID")

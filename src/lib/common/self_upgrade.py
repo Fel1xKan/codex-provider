@@ -33,6 +33,8 @@ class UpgradePlan:
     asset_url: str
     sha256_url: str | None
     update_available: bool
+    notes: str = ""
+    release_name: str = ""
 
 
 def _format_size(size: int) -> str:
@@ -196,6 +198,7 @@ def build_upgrade_plan(
     if asset is None:
         raise SwitchError(f"release {tag} has no asset for this platform: {names[0]}")
     expected = str(asset["name"])
+    body = payload.get("body")
     return UpgradePlan(
         current_version=current_version,
         latest_version=latest,
@@ -204,6 +207,8 @@ def build_upgrade_plan(
         asset_url=str(asset["browser_download_url"]),
         sha256_url=f"{asset['browser_download_url']}.sha256",
         update_available=update_available,
+        notes=body if isinstance(body, str) else "",
+        release_name=str(payload.get("name") or ""),
     )
 
 

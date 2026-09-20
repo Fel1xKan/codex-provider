@@ -309,6 +309,89 @@ def test_models_sync_adds_missing_ids_and_preserves_existing_config(
     }
 
 
+def test_models_sync_uses_catalog_reasoning_ladder(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Documented models get their own variants instead of the fallback set."""
+
+    config = write_config(opencode_paths)
+    monkeypatch.setattr(
+        op_models,
+        "_catalog_metadata",
+        lambda: {
+            "deepseek-v4-pro": {
+                "reasoning_levels": ["none", "low", "high", "max"],
+            },
+            "kimi-k2.7-code": {"reasoning_levels": ["high"]},
+        },
+    )
+    monkeypatch.setattr(
+        op.urllib.request,
+        "urlopen",
+        lambda request, timeout: ModelsResponse(
+            json.dumps(
+                {
+                    "data": [
+                        {"id": "deepseek-v4-pro"},
+                        {"id": "kimi-k2.7-code"},
+                        {"id": "unknown-model"},
+                    ]
+                }
+            ).encode()
+        ),
+    )
+
+    assert op.main(["models", "sync", "alpha"]) == 0
+
+    models = json5.loads(config.read_text())["provider"]["alpha"]["models"]
+    assert models["deepseek-v4-pro"]["variants"] == {
+        name: {"reasoningEffort": name} for name in ("none", "low", "high", "max")
+    }
+    # A single documented level offers no choice, so no variants block is written.
+    assert "variants" not in models["kimi-k2.7-code"]
+    # Unknown models keep the documented fallback ladder.
+    assert models["unknown-model"]["variants"] == {
+        name: {"reasoningEffort": name}
+        for name in ("low", "medium", "high", "xhigh", "max")
+    }
+
+
+def test_models_sync_force_uses_catalog_reasoning_ladder(
+    opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write_config(opencode_paths)
+    data = json.loads(config.read_text())
+    data["provider"]["alpha"]["models"]["grok-4.6"] = {
+        "name": "Grok",
+        "variants": {"custom": {"reasoningEffort": "high"}},
+    }
+    config.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        op_models,
+        "_catalog_metadata",
+        lambda: {
+            "grok-4.6": {
+                "reasoning_levels": ["low", "medium", "high", "xhigh"],
+            }
+        },
+    )
+    monkeypatch.setattr(
+        op.urllib.request,
+        "urlopen",
+        lambda request, timeout: ModelsResponse(
+            json.dumps({"data": [{"id": "grok-4.6"}]}).encode()
+        ),
+    )
+
+    assert op.main(["models", "sync", "alpha", "--force"]) == 0
+
+    model = json5.loads(config.read_text())["provider"]["alpha"]["models"]["grok-4.6"]
+    assert model["name"] == "Grok"
+    assert model["variants"] == {
+        name: {"reasoningEffort": name} for name in ("low", "medium", "high", "xhigh")
+    }
+
+
 def test_models_sync_imports_remote_metadata_and_retains_stale_models(
     opencode_paths: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

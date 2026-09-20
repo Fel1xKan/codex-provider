@@ -185,6 +185,11 @@ class CodexBackend(BaseBackend):
                             action="store_true",
                             help="Sync models for every configured provider",
                         ),
+                        ArgSpec(
+                            ("--force",),
+                            action="store_true",
+                            help="Refresh reasoning levels for every synced model",
+                        ),
                     ),
                 ),
                 SubcommandSpec(
@@ -230,7 +235,8 @@ class CodexBackend(BaseBackend):
                             metavar="FIELD=VALUE",
                             help=(
                                 "Set a catalog field; repeatable "
-                                "(display_name, context_window, variants, ...)"
+                                "(display_name, context_window, "
+                                "supported_reasoning_levels, ...)"
                             ),
                         ),
                         DRY_RUN,
@@ -272,6 +278,7 @@ class CodexBackend(BaseBackend):
             getattr(args, "model", None),
             getattr(args, "dry_run", False),
             getattr(args, "all", False),
+            getattr(args, "force", False),
             getattr(args, "set", None),
             getattr(args, "context_window", None),
             getattr(args, "max_output_tokens", None),

@@ -22,6 +22,9 @@ jobs:
       - run: python -m ruff check .
       - run: python -m ruff format --check .
       - run: python -m pytest
+      # Every release ships notes: a version bump without a CHANGELOG entry
+      # would publish an empty `cpx upgrade` summary.
+      - run: python scripts/release_notes.py --check
       - run: cpx --help
       - run: opx --help
       - run: apx --help

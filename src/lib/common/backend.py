@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from lib.common import self_upgrade
+from lib.common import release_notes, self_upgrade
 from lib.common.constants import VERSION
 from lib.common.errors import SwitchError
 from lib.common.registry import COMMON_COMMANDS, ArgSpec, CommandSpec, SubcommandSpec
@@ -167,9 +167,14 @@ class BaseBackend:
     def import_(self, file_path: str | None, dry_run: bool) -> int:
         raise NotImplementedError
 
-    def upgrade(self, check: bool, dry_run: bool) -> int:
+    def upgrade(
+        self,
+        check: bool,
+        dry_run: bool,
+        notes_only: bool = False,
+    ) -> int:
         progress = self_upgrade.UpgradeProgress()
-        if not check and not dry_run:
+        if not check and not dry_run and not notes_only:
             progress.status("checking latest release...")
         payload = self_upgrade.fetch_latest_release(self_upgrade.DEFAULT_REPOSITORY)
         plan = self_upgrade.build_upgrade_plan(
@@ -179,6 +184,9 @@ class BaseBackend:
             payload,
             legacy_name=self.legacy_name,
         )
+        if notes_only:
+            release_notes.print_notes(plan)
+            return 0
         if check or dry_run:
             print(f"current: {plan.current_version}")
             print(f"latest:  {plan.latest_version}")
@@ -187,6 +195,11 @@ class BaseBackend:
                 print("up to date")
             else:
                 print("would upgrade" if dry_run else "update available")
+            if plan.update_available:
+                release_notes.print_notes(plan)
             return 0
+        # Show what is being installed before the binary is replaced.
+        if plan.update_available:
+            release_notes.print_notes(plan)
         target = self_upgrade.current_executable()
         return self_upgrade.perform_upgrade(plan, target, progress)

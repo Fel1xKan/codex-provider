@@ -45,7 +45,7 @@ validation, safe writes, and dry-run previews.
 - **Isolate the official Codex login** - snapshot it as a provider and remove managed API-provider entries when switching back.
 - **Keep secrets out of terminal output** - inspect authentication metadata and redacted configuration without printing credential values.
 - **Verify the entire path** - probe `/models` endpoints or run a minimal command through Codex, OpenCode, or Antigravity.
-- **Manage Codex models** - discover remote model IDs into per-provider catalog files and set the default model independently of the endpoint.
+- **Manage Codex models** - discover remote model IDs into per-provider catalog files, publish the reasoning levels Codex offers in `/model`, and set the default model independently of the endpoint.
 - **Manage OpenCode models** - discover remote model IDs, sync new models without deleting metadata, and set the default model independently of switching.
 - **Manage Claude providers and models** - snapshot a local gateway or official endpoint from `settings.json`, sync provider model lists, and switch the default model independently of the endpoint.
 - **Manage Antigravity accounts** - log in, import account snapshots, switch accounts, and inspect 5-hour and weekly quota remaining.
@@ -135,7 +135,12 @@ Standalone binaries can update themselves from the latest GitHub release:
 ```bash
 cpx upgrade
 cpx upgrade --check
+cpx upgrade --notes
 ```
+
+`upgrade` prints the release notes of the version it installs before replacing
+the binary, so you always see what changed. Notes list new capabilities only
+and are kept short; `--notes` prints the newest ones on their own.
 
 ## Usage
 
@@ -159,6 +164,7 @@ appear first. `doctor` checks stored configuration and authentication, while
 ```bash
 cpx models list my-provider
 cpx models sync my-provider --dry-run
+cpx models sync my-provider --force
 cpx models set my-model my-provider
 cpx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
 opx models list my-provider
@@ -182,7 +188,24 @@ input modality fields without guessing from the model ID. `--context-window`
 and `--max-output-tokens` on `models set` write the selected model's limits
 while setting the default. Unpointed providers get a new
 `~/.codex-provider/catalogs/<provider>.json` and pointer automatically, and
-`models set` writes the top-level `model` in `~/.codex/config.toml`. OpenCode
+`models set` writes the top-level `model` in `~/.codex/config.toml`. Catalog
+entries publish the reasoning levels Codex renders in `/model`, filled from
+the same versioned metadata catalog using each vendor's documented levels.
+For example `gpt-5.4` offers `none,low,medium,high,xhigh`, `gpt-5.6-sol`
+offers `none,low,medium,high,xhigh,max,ultra`, `claude-opus-5` and
+`claude-opus-4-7` offer `low,medium,high,xhigh,max`, `claude-sonnet-4-6`
+stops at `max`, `deepseek-v4-pro` offers `none,low,high,max`, `glm-5.3`
+offers `low,high,max`, and `grok-4.6` offers `low,medium,high,xhigh`. Vendors
+that expose only a thinking switch (Qwen, Mistral, Kimi K2.6, older Claude)
+show `none`/`high` with the switch wording, models that always reason show a
+single `high`, models with no thinking mode show a single `none`, and unknown
+IDs fall back to `low,medium,high,xhigh,max`. The preselected level is
+`medium` (or `high` where the ladder has no `medium`) so `max` and `ultra`
+stay opt-in.
+Sync refreshes ladders that still match a previously generated shape and
+leaves edited ones alone; `cpx models sync <provider> --force` resets every
+synced model, and `models update --set supported_reasoning_levels=low,medium,high`
+trims one model. OpenCode
 `models sync` adds new IDs to `provider.<id>.models` with the same
 merge-and-retain semantics, imports explicit `limit.context`/`limit.output`
 metadata, and `models set` writes the top-level `model` as `provider/model`;

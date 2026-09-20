@@ -101,6 +101,13 @@ jobs:
             exit 1
           fi
           tag="v${version}"
+          # Publishing notes is part of releasing: the body comes from
+          # CHANGELOG.md so `cpx upgrade` shows exactly what was reviewed.
+          python scripts/release_notes.py --check
+          python scripts/release_notes.py > RELEASE_NOTES.md
+          echo "--- release notes ---"
+          cat RELEASE_NOTES.md
+          echo "---------------------"
           ls -la artifacts
           # If a release already exists for this tag, delete it before creating a
           # fresh one. This keeps the release's targetCommitish pointing at the
@@ -113,5 +120,5 @@ jobs:
           fi
           gh release create "$tag" artifacts/* \
             --title "$tag" \
-            --generate-notes \
+            --notes-file RELEASE_NOTES.md \
             --latest

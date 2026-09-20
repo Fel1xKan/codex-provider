@@ -106,16 +106,38 @@ with `build.py` to build one target. Do not edit generated files in `build/` or
 
 The package version is defined in `src/lib/common/constants.py`. GitHub Actions
 builds Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon) binaries and
-publishes a release when a matching version tag is pushed.
+publishes a release when a matching version tag is pushed. The release body
+comes from `CHANGELOG.md`, and `cpx upgrade` prints it before installing, so
+the notes are part of the deliverable rather than an afterthought.
+
+Every release entry is short and user-facing: one bullet per new capability,
+written for someone running the CLI. Bug fixes are not listed. CI fails on a
+version bump without a matching `CHANGELOG.md` section, and the test suite
+fails if a section grows past twelve rendered lines.
 
 ```bash
-git tag v0.6.0
-git push origin v0.6.0
+# while a change is in review
+$EDITOR CHANGELOG.md          # add a bullet under "## [Unreleased]"
+
+# when cutting a release
+$EDITOR CHANGELOG.md          # move those bullets under "## [1.6.0] - YYYY-MM-DD"
+$EDITOR src/lib/common/constants.py   # VERSION = "1.6.0"
+./scripts/release_notes.py --check    # the same check CI runs
+git tag v1.6.0
+git push origin v1.6.0
+```
+
+To read a section the way a user will see it:
+
+```bash
+./scripts/release_notes.py --version 1.5.4
+./cpx upgrade --notes
+./cpx upgrade --check
 ```
 
 The Release workflow can also be run manually. A release fails if its tag does
-not match the package version. Every staged binary receives a matching
-`.sha256` checksum file.
+not match the package version, or if the changelog has no section for that
+version. Every staged binary receives a matching `.sha256` checksum file.
 
 ## Pull Requests
 
