@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 from pathlib import Path
 
@@ -148,19 +149,28 @@ def test_print_notes_falls_back_to_the_release_url(capsys) -> None:
     assert "no release notes published" in capsys.readouterr().out
 
 
-def test_build_upgrade_plan_carries_release_notes() -> None:
-    payload = {
+def _release_payload(body: str | None = None) -> dict[str, object]:
+    platform_key = self_upgrade._platform_key()
+    suffix = ".exe" if os.name == "nt" else ""
+    asset_name = f"cpx-1.1.0-{platform_key}{suffix}"
+    payload: dict[str, object] = {
         "tag_name": "v1.1.0",
         "html_url": "https://example.com/release",
         "name": "v1.1.0",
-        "body": "## Added\n\n- something new",
         "assets": [
             {
-                "name": "cpx-1.1.0-linux-x86_64",
+                "name": asset_name,
                 "browser_download_url": "https://example.com/cpx",
             }
         ],
     }
+    if body is not None:
+        payload["body"] = body
+    return payload
+
+
+def test_build_upgrade_plan_carries_release_notes() -> None:
+    payload = _release_payload(body="## Added\n\n- something new")
 
     plan = self_upgrade.build_upgrade_plan(
         "owner/repo", "cpx", "1.0.0", payload, legacy_name=None
@@ -171,16 +181,7 @@ def test_build_upgrade_plan_carries_release_notes() -> None:
 
 
 def test_build_upgrade_plan_tolerates_a_missing_body() -> None:
-    payload = {
-        "tag_name": "v1.1.0",
-        "html_url": "https://example.com/release",
-        "assets": [
-            {
-                "name": "cpx-1.1.0-linux-x86_64",
-                "browser_download_url": "https://example.com/cpx",
-            }
-        ],
-    }
+    payload = _release_payload()
 
     plan = self_upgrade.build_upgrade_plan(
         "owner/repo", "cpx", "1.0.0", payload, legacy_name=None
