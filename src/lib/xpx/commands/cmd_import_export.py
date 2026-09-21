@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -19,6 +18,10 @@ from lib.xpx.adapters.agy import get_agy_cli_dir
 from lib.xpx.adapters.claude import get_claude_settings_path
 from lib.xpx.adapters.codex import get_codex_home
 from lib.xpx.adapters.cursor import get_cursor_db_path
+from lib.xpx.adapters.opencode import (
+    get_opencode_config_dir,
+    get_opencode_data_dir,
+)
 from lib.xpx.adapters.pi import get_pi_config_file
 from lib.xpx.store.account_store import AccountSpec, AccountStore
 from lib.xpx.store.provider_store import (
@@ -262,20 +265,8 @@ def collect_legacy_items() -> tuple[
     # ---------------------------------------------------------
     # 2. OpenCode (opx & native) configurations
     # ---------------------------------------------------------
-    opencode_cfg_dir = (
-        Path(os.environ["OPENCODE_CONFIG_DIR"])
-        if os.environ.get("OPENCODE_CONFIG_DIR")
-        else Path(os.environ["XDG_CONFIG_HOME"]) / "opencode"
-        if os.environ.get("XDG_CONFIG_HOME")
-        else home / ".config" / "opencode"
-    )
-    opencode_data_dir = (
-        Path(os.environ["OPENCODE_DATA_DIR"])
-        if os.environ.get("OPENCODE_DATA_DIR")
-        else Path(os.environ["XDG_DATA_HOME"]) / "opencode"
-        if os.environ.get("XDG_DATA_HOME")
-        else home / ".local" / "share" / "opencode"
-    )
+    opencode_cfg_dir = get_opencode_config_dir()
+    opencode_data_dir = get_opencode_data_dir()
 
     auth_keys: dict[str, str] = {}
     opencode_auth = opencode_data_dir / "auth.json"

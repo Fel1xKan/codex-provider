@@ -58,6 +58,8 @@ def xpx_isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("PI_CONFIG_PATH", str(pi_config))
     monkeypatch.setenv("CURSOR_DB_PATH", str(cursor_db))
     monkeypatch.setenv("AGY_CLI_DIR", str(agy_dir))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     monkeypatch.setattr("shutil.which", lambda _: None)
 
     home.mkdir(parents=True, exist_ok=True)
@@ -370,8 +372,20 @@ def test_auto_migration_legacy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     fake_home = tmp_path / "userhome"
     fake_home.mkdir(parents=True)
     monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.setenv("HOME", str(fake_home))
     xpx_home = fake_home / ".xpx"
     monkeypatch.setenv("XPX_HOME", str(xpx_home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.delenv("OPENCODE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("OPENCODE_DATA_DIR", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("AGY_CLI_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_SETTINGS_PATH", raising=False)
+    monkeypatch.delenv("PI_CONFIG_PATH", raising=False)
+    monkeypatch.delenv("CURSOR_DB_PATH", raising=False)
+    monkeypatch.delenv("CURSOR_DIR", raising=False)
+    monkeypatch.setattr("shutil.which", lambda _: None)
 
     # Setup legacy ~/.codex-provider
     codex_prov_dir = fake_home / ".codex-provider"
@@ -409,8 +423,20 @@ def test_migrate_command_all_tools(
     fake_home = tmp_path / "userhome"
     fake_home.mkdir(parents=True)
     monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.setenv("HOME", str(fake_home))
     xpx_home = fake_home / ".xpx"
     monkeypatch.setenv("XPX_HOME", str(xpx_home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.delenv("OPENCODE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("OPENCODE_DATA_DIR", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("AGY_CLI_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_SETTINGS_PATH", raising=False)
+    monkeypatch.delenv("PI_CONFIG_PATH", raising=False)
+    monkeypatch.delenv("CURSOR_DB_PATH", raising=False)
+    monkeypatch.delenv("CURSOR_DIR", raising=False)
+    monkeypatch.setattr("shutil.which", lambda _: None)
 
     # 1. Codex (cpx)
     codex_prov_dir = fake_home / ".codex-provider"

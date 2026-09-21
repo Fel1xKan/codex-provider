@@ -30,7 +30,10 @@ def get_opencode_config_dir() -> Path:
         return Path(override)
     xdg = os.environ.get("XDG_CONFIG_HOME")
     if xdg:
-        return Path(xdg) / "opencode"
+        cand = Path(xdg) / "opencode"
+        default_dir = Path.home() / ".config" / "opencode"
+        if cand.is_dir() or not default_dir.is_dir():
+            return cand
     return Path.home() / ".config" / "opencode"
 
 
@@ -40,7 +43,10 @@ def get_opencode_data_dir() -> Path:
         return Path(override)
     xdg = os.environ.get("XDG_DATA_HOME")
     if xdg:
-        return Path(xdg) / "opencode"
+        cand = Path(xdg) / "opencode"
+        default_dir = Path.home() / ".local" / "share" / "opencode"
+        if cand.is_dir() or not default_dir.is_dir():
+            return cand
     return Path.home() / ".local" / "share" / "opencode"
 
 
