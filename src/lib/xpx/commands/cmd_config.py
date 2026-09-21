@@ -132,16 +132,24 @@ def run_config_set(args: Any) -> int:
         return 0
 
     # Target-specific configuration
-    get_adapter(target)  # validate target client name
+    adp = get_adapter(target)  # validate target client name
     if target not in spec.targets:
         spec.targets[target] = TargetOverrides()
     overrides = spec.targets[target]
 
     if getattr(args, "fast", None) is not None:
+        if not getattr(adp, "supports_fast", False):
+            raise SwitchError(
+                f"target client '{target}' does not support --fast (Codex only)"
+            )
         overrides.fast = bool(args.fast)
 
     wire_api = getattr(args, "wire_api", None)
     if wire_api is not None:
+        if not getattr(adp, "supports_wire_api", False):
+            raise SwitchError(
+                f"target client '{target}' does not support --wire-api (Codex only)"
+            )
         if wire_api not in ("chat", "responses"):
             raise SwitchError(
                 f"invalid wire-api '{wire_api}'; must be 'chat' or 'responses'"
@@ -150,6 +158,10 @@ def run_config_set(args: Any) -> int:
 
     web_search = getattr(args, "web_search", None)
     if web_search is not None:
+        if not getattr(adp, "supports_web_search", False):
+            raise SwitchError(
+                f"target client '{target}' does not support --web-search (Codex only)"
+            )
         if isinstance(web_search, str):
             overrides.web_search = web_search.lower() in ("true", "1", "yes")
         else:

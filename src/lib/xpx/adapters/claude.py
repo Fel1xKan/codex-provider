@@ -90,10 +90,22 @@ class ClaudeAdapter(TargetAdapter):
             env = {}
             data["env"] = env
 
-        env["ANTHROPIC_BASE_URL"] = spec.base_url
+        # Anthropic SDK appends /v1/messages to baseURL.
+        # Strip trailing /v1 to avoid /v1/v1/messages.
+        base_url = spec.base_url.rstrip("/")
+        if base_url.endswith("/v1"):
+            base_url = base_url[:-3]
+
+        env["ANTHROPIC_BASE_URL"] = base_url
         env["ANTHROPIC_AUTH_TOKEN"] = spec.api_key
+        env["ANTHROPIC_API_KEY"] = spec.api_key
         if spec.model:
             env["ANTHROPIC_MODEL"] = spec.model
+            env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = spec.model
+            env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = spec.model
+            env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = spec.model
+            env["ANTHROPIC_SUBAGENT_MODEL"] = spec.model
+            env["CLAUDE_CODE_SUBAGENT_MODEL"] = spec.model
 
         raw_json = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
         atomic_write_bytes(self.path, raw_json.encode("utf-8"))
@@ -104,10 +116,18 @@ class ClaudeAdapter(TargetAdapter):
                 data = json.loads(self.path.read_text(encoding="utf-8"))
                 env = data.get("env") if isinstance(data, dict) else None
                 if isinstance(env, dict):
-                    env.pop("ANTHROPIC_BASE_URL", None)
-                    env.pop("ANTHROPIC_AUTH_TOKEN", None)
-                    env.pop("ANTHROPIC_API_KEY", None)
-                    env.pop("ANTHROPIC_MODEL", None)
+                    for key in [
+                        "ANTHROPIC_BASE_URL",
+                        "ANTHROPIC_AUTH_TOKEN",
+                        "ANTHROPIC_API_KEY",
+                        "ANTHROPIC_MODEL",
+                        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                        "ANTHROPIC_SUBAGENT_MODEL",
+                        "CLAUDE_CODE_SUBAGENT_MODEL",
+                    ]:
+                        env.pop(key, None)
                     raw_json = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
                     atomic_write_bytes(self.path, raw_json.encode("utf-8"))
             except Exception as exc:

@@ -22,6 +22,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # 2. Main xpx parser execution
     parser = build_parser(prog="xpx")
+
+    # If no arguments are passed in an interactive terminal,
+    # launch interactive control plane
+    if not effective_args:
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            from lib.xpx.interactive.wizards import run_interactive_main
+
+            return run_interactive_main()
+        parser.print_help()
+        return 0
+
+    if effective_args in (["i"], ["interactive"], ["menu"]):
+        from lib.xpx.interactive.wizards import run_interactive_main
+
+        return run_interactive_main()
+
     args = parser.parse_args(effective_args)
 
     if not hasattr(args, "func"):

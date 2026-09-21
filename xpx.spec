@@ -29,6 +29,7 @@ a = Analysis(
         'lib.xpx.adapters',
         'lib.xpx.commands',
         'lib.xpx.accounts',
+        'lib.xpx.interactive',
     ],
     hookspath=[],
     hooksconfig={},

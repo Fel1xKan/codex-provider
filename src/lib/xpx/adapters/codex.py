@@ -25,6 +25,9 @@ class CodexAdapter(TargetAdapter):
     name = "codex"
     display_name = "Codex CLI"
     supported_protocols = ["openai"]
+    supports_fast = True
+    supports_web_search = True
+    supports_wire_api = True
 
     def __init__(self, home: Path | None = None) -> None:
         self._home = home

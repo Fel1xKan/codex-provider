@@ -129,7 +129,19 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     p_cfg_set.add_argument(
         "--wire-api", choices=["chat", "responses"], help="Codex wire API"
     )
-    p_cfg_set.add_argument("--web-search", help="Codex web search (true/false)")
+    p_cfg_set.add_argument(
+        "--web-search",
+        nargs="?",
+        const="true",
+        default=None,
+        help="Codex web search (true/false) (Codex only)",
+    )
+    p_cfg_set.add_argument(
+        "--no-web-search",
+        action="store_false",
+        dest="web_search",
+        help="Disable Codex web search (Codex only)",
+    )
     p_cfg_set.add_argument(
         "--option", action="append", help="Generic option override (key=value)"
     )
@@ -201,15 +213,35 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
         "--header", action="append", help="Target header override (key=value)"
     )
     p_apply.add_argument(
-        "--fast", action="store_true", default=None, help="Enable fast mode"
+        "--fast",
+        action="store_true",
+        default=None,
+        help="Enable fast mode (Codex only)",
     )
     p_apply.add_argument(
-        "--no-fast", action="store_false", dest="fast", help="Disable fast mode"
+        "--no-fast",
+        action="store_false",
+        dest="fast",
+        help="Disable fast mode (Codex only)",
     )
     p_apply.add_argument(
-        "--wire-api", choices=["chat", "responses"], help="Codex wire API"
+        "--wire-api",
+        choices=["chat", "responses"],
+        help="Codex wire API (Codex only)",
     )
-    p_apply.add_argument("--web-search", help="Codex web search (true/false)")
+    p_apply.add_argument(
+        "--web-search",
+        nargs="?",
+        const="true",
+        default=None,
+        help="Enable or set Codex web search (Codex only)",
+    )
+    p_apply.add_argument(
+        "--no-web-search",
+        action="store_false",
+        dest="web_search",
+        help="Disable Codex web search (Codex only)",
+    )
     p_apply.set_defaults(func=run_apply)
 
     # 6. Account
@@ -308,5 +340,16 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     p_upgrade.add_argument("--notes", action="store_true", help="Show release notes")
     p_upgrade.add_argument("--dry-run", action="store_true", help="Preview upgrade")
     p_upgrade.set_defaults(func=run_upgrade)
+
+    p_interactive = subparsers.add_parser(
+        "interactive",
+        aliases=["i", "menu"],
+        help="Interactive control plane wizard",
+    )
+    p_interactive.set_defaults(
+        func=lambda _args: __import__(
+            "lib.xpx.interactive.wizards", fromlist=["run_interactive_main"]
+        ).run_interactive_main()
+    )
 
     return parser

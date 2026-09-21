@@ -165,9 +165,11 @@ def test_claude_adapter(tmp_path: Path) -> None:
 
     assert settings_file.is_file()
     data = json.loads(settings_file.read_text(encoding="utf-8"))
-    assert data["env"]["ANTHROPIC_BASE_URL"] == "https://proxy.example.com/v1"
+    assert data["env"]["ANTHROPIC_BASE_URL"] == "https://proxy.example.com"
     assert data["env"]["ANTHROPIC_AUTH_TOKEN"] == "sk-ant-test"
+    assert data["env"]["ANTHROPIC_API_KEY"] == "sk-ant-test"
     assert data["env"]["ANTHROPIC_MODEL"] == "claude-3-7-sonnet-20250219"
+    assert data["env"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-3-7-sonnet-20250219"
 
     status = adapter.get_status()
     assert status.installed is True
@@ -264,3 +266,16 @@ def test_registry() -> None:
     with pytest.raises(SwitchError) as excinfo:
         get_adapter("unknown-client")
     assert "unknown target client: 'unknown-client'" in str(excinfo.value)
+
+
+def test_adapter_capabilities() -> None:
+    codex = get_adapter("codex")
+    assert codex.supports_fast is True
+    assert codex.supports_web_search is True
+    assert codex.supports_wire_api is True
+
+    for name in ["claude", "opencode", "cursor", "agy", "pi"]:
+        adp = get_adapter(name)
+        assert adp.supports_fast is False
+        assert adp.supports_web_search is False
+        assert adp.supports_wire_api is False

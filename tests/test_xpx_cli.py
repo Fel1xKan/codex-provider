@@ -824,3 +824,58 @@ base_url = "https://codex.v2.com/v1"
     st = StateStore().load()
     assert st.targets["codex"].active_name == "my_codex"
     assert st.targets["codex"].active_model == "model-v2"
+
+
+def test_apply_fast_and_web_search_codex_only(
+    xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(
+            name="deepseek",
+            base_url="https://api.deepseek.com/v1",
+            api_key="sk-test",
+            default_model="deepseek-chat",
+        )
+    )
+
+    # 1. Apply to claude with --fast and --web-search
+    rc = xpx_cli.main(["apply", "claude", "deepseek", "--fast", "--web-search"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Applied 'deepseek/deepseek-chat' to claude" in out
+    assert "fast mode enabled" not in out
+
+    # Saved claude target override should not have fast or web_search
+    pv = store.require("deepseek")
+    claude_over = pv.targets.get("claude")
+    if claude_over:
+        assert claude_over.fast is None
+        assert claude_over.web_search is None
+
+    # 2. Apply to codex with --fast and --web-search
+    rc = xpx_cli.main(["apply", "codex", "deepseek", "--fast", "--web-search"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Applied 'deepseek/deepseek-chat' to codex (fast mode enabled)" in out
+
+    pv = store.require("deepseek")
+    codex_over = pv.targets.get("codex")
+    assert codex_over is not None
+    assert codex_over.fast is True
+    assert codex_over.web_search is True
+
+    # 3. Config set should reject codex-only flags for non-codex
+    rc_fast = xpx_cli.main(["config", "set", "deepseek", "claude", "--fast"])
+    assert rc_fast == 1
+    assert "does not support --fast (Codex only)" in capsys.readouterr().err
+
+    rc_web = xpx_cli.main(["config", "set", "deepseek", "claude", "--web-search"])
+    assert rc_web == 1
+    assert "does not support --web-search (Codex only)" in capsys.readouterr().err
+
+    rc_wire = xpx_cli.main(
+        ["config", "set", "deepseek", "claude", "--wire-api", "chat"]
+    )
+    assert rc_wire == 1
+    assert "does not support --wire-api (Codex only)" in capsys.readouterr().err

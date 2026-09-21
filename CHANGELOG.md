@@ -9,6 +9,14 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-21
+
+- Interactive control plane wizard (`xpx` / `xpx interactive`) with live status dashboard and fuzzy search.
+- Multi-language localization support with Chinese and English interface options.
+- Codex capability isolation restricting `--fast`, `--web-search`, and `--wire-api` strictly to Codex.
+- Claude Code adapter auto-normalizes custom proxy base URLs and syncs subagent models.
+- Enhanced interactive model listing and multi-target batch application.
+
 ## [2.0.0] - 2026-09-20
 
 - Unified single control plane CLI `xpx` managing Codex, OpenCode, Claude, Cursor, Antigravity, and Pi.

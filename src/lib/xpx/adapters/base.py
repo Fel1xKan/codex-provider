@@ -39,6 +39,9 @@ class TargetAdapter(ABC):
     name: str
     display_name: str
     supported_protocols: list[str] = ["openai"]
+    supports_fast: bool = False
+    supports_web_search: bool = False
+    supports_wire_api: bool = False
 
     @abstractmethod
     def detect(self) -> bool:

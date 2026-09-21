@@ -62,10 +62,19 @@ def build_merged_spec(
 
     Returns (MergedProviderSpec, has_adhoc_overrides).
     """
+    adp = get_adapter(target)
+    fast_supported = getattr(adp, "supports_fast", False)
+    wire_api_supported = getattr(adp, "supports_wire_api", False)
+    web_search_supported = getattr(adp, "supports_web_search", False)
+
     overrides = pv.targets.get(target)
-    fast = overrides.fast if overrides else None
-    wire_api = overrides.wire_api if overrides else None
-    web_search = overrides.web_search if overrides else None
+    fast = (overrides.fast if overrides else None) if fast_supported else None
+    wire_api = (
+        (overrides.wire_api if overrides else None) if wire_api_supported else None
+    )
+    web_search = (
+        (overrides.web_search if overrides else None) if web_search_supported else None
+    )
     options = dict(overrides.options) if (overrides and overrides.options) else {}
 
     headers = dict(pv.headers)
@@ -76,12 +85,12 @@ def build_merged_spec(
 
     # Layer 3: Ad-hoc CLI flags
     cli_fast = getattr(args, "fast", None)
-    if cli_fast is not None:
+    if cli_fast is not None and fast_supported:
         fast = bool(cli_fast)
         has_adhoc = True
 
     cli_wire_api = getattr(args, "wire_api", None)
-    if cli_wire_api is not None:
+    if cli_wire_api is not None and wire_api_supported:
         if cli_wire_api not in ("chat", "responses"):
             raise SwitchError(
                 f"invalid wire-api '{cli_wire_api}'; must be 'chat' or 'responses'"
@@ -90,7 +99,7 @@ def build_merged_spec(
         has_adhoc = True
 
     cli_web_search = getattr(args, "web_search", None)
-    if cli_web_search is not None:
+    if cli_web_search is not None and web_search_supported:
         if isinstance(cli_web_search, str):
             web_search = cli_web_search.lower() in ("true", "1", "yes")
         else:
@@ -145,6 +154,12 @@ def run_apply(args: Any) -> int:
     elif target_arg:
         target_names = [t.strip().lower() for t in target_arg.split(",") if t.strip()]
     else:
+        import sys
+
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            from lib.xpx.interactive.wizards import run_interactive_apply
+
+            return run_interactive_apply()
         raise SwitchError(
             "target client required "
             "(e.g. 'xpx apply codex ...' or 'xpx apply --all ...')"
@@ -353,11 +368,14 @@ def run_apply(args: Any) -> int:
             if t not in pv.targets:
                 pv.targets[t] = TargetOverrides()
             t_over = pv.targets[t]
-            if merged_spec.fast is not None:
+            if getattr(adp, "supports_fast", False) and merged_spec.fast is not None:
                 t_over.fast = merged_spec.fast
-            if merged_spec.wire_api:
+            if getattr(adp, "supports_wire_api", False) and merged_spec.wire_api:
                 t_over.wire_api = merged_spec.wire_api
-            if merged_spec.web_search is not None:
+            if (
+                getattr(adp, "supports_web_search", False)
+                and merged_spec.web_search is not None
+            ):
                 t_over.web_search = merged_spec.web_search
             # persist custom target headers
             for k, v in merged_spec.headers.items():
