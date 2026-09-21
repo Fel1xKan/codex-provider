@@ -205,26 +205,44 @@ def test_confirm_action_enter_and_esc() -> None:
 
 def test_prompt_select_model_flow() -> None:
     from lib.xpx.interactive.wizards import _prompt_select_model
+    from lib.xpx.store.provider_store import ProviderSpec
 
-    # 1. Select a model directly
-    with patch("lib.xpx.interactive.wizards.select", return_value="deepseek-reasoner"):
-        res = _prompt_select_model("cistern", include_keep=True)
-        assert res == "deepseek-reasoner"
+    mock_pv = ProviderSpec(
+        name="cistern",
+        base_url="https://api.cistern.com/v1",
+        api_key="sk-test",
+        default_model="deepseek-chat",
+    )
 
-    # 2. Select __keep__
-    with patch("lib.xpx.interactive.wizards.select", return_value="__keep__"):
-        res = _prompt_select_model("cistern", include_keep=True)
-        assert res == "__keep__"
-
-    # 3. Select __custom__ and type custom model
     with (
-        patch("lib.xpx.interactive.wizards.select", return_value="__custom__"),
         patch(
-            "lib.xpx.interactive.wizards.prompt_text", return_value="my-special-model"
+            "lib.xpx.store.provider_store.ProviderStore.require",
+            return_value=mock_pv,
         ),
+        patch("lib.xpx.store.catalog_store.CatalogStore.get", return_value=None),
     ):
-        res = _prompt_select_model("cistern", include_keep=True)
-        assert res == "my-special-model"
+        # 1. Select a model directly
+        with patch(
+            "lib.xpx.interactive.wizards.select", return_value="deepseek-reasoner"
+        ):
+            res = _prompt_select_model("cistern", include_keep=True)
+            assert res == "deepseek-reasoner"
+
+        # 2. Select __keep__
+        with patch("lib.xpx.interactive.wizards.select", return_value="__keep__"):
+            res = _prompt_select_model("cistern", include_keep=True)
+            assert res == "__keep__"
+
+        # 3. Select __custom__ and type custom model
+        with (
+            patch("lib.xpx.interactive.wizards.select", return_value="__custom__"),
+            patch(
+                "lib.xpx.interactive.wizards.prompt_text",
+                return_value="my-special-model",
+            ),
+        ):
+            res = _prompt_select_model("cistern", include_keep=True)
+            assert res == "my-special-model"
 
 
 def test_render_card_alignment() -> None:
