@@ -47,11 +47,11 @@ jobs:
           else
             ext=""
           fi
-          for name in cpx opx apx cupx clpx; do
-            src="dist/${name}${ext}"
-            dest="release/${name}-${version}-${platform}${ext}"
-            cp "$src" "$dest"
-            python - <<PY
+          name="xpx"
+          src="dist/${name}${ext}"
+          dest="release/${name}-${version}-${platform}${ext}"
+          cp "$src" "$dest"
+          python - <<PY
           from pathlib import Path
           import hashlib
           path = Path(r"${dest}")
@@ -62,7 +62,6 @@ jobs:
           print(path)
           print(path.with_suffix(path.suffix + ".sha256"))
           PY
-          done
           ls -la release
 
       - uses: actions/upload-artifact@v4
@@ -102,7 +101,7 @@ jobs:
           fi
           tag="v${version}"
           # Publishing notes is part of releasing: the body comes from
-          # CHANGELOG.md so `cpx upgrade` shows exactly what was reviewed.
+          # CHANGELOG.md so `xpx upgrade` shows exactly what was reviewed.
           python scripts/release_notes.py --check
           python scripts/release_notes.py > RELEASE_NOTES.md
           echo "--- release notes ---"

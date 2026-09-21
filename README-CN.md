@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset=".github/logo-light.svg">
-    <img alt="codex-provider" src=".github/logo-light.svg" width="440">
+    <img alt="xpx" src=".github/logo-light.svg" width="440">
   </picture>
 </div>
 
@@ -18,201 +18,188 @@
 <div align="center">
   <a href="README.md">English</a> &middot;
   <a href="#快速开始">快速开始</a> &middot;
-  <a href="#使用方法">使用方法</a> &middot;
+  <a href="#核心特性">核心特性</a> &middot;
+  <a href="#使用指南">使用指南</a> &middot;
   <a href="docs/command-reference.md">命令参考</a> &middot;
-  <a href="https://github.com/Fel1xKan/codex-provider/issues/new?labels=bug">报告问题</a>
+  <a href="docs/architecture.md">架构设计</a> &middot;
+  <a href="https://github.com/Fel1xKan/codex-provider/issues/new?labels=bug">反馈问题</a>
 </div>
 
-> 无需手动修改凭据或全局配置，即可切换 Codex、OpenCode、Antigravity、Cursor 和 Claude 的账号与模型。
+> 面向 Codex、OpenCode、Claude、Cursor、Antigravity 和 Pi 的统一 AI Coding Agent 控制中枢。
 
 ---
 
-## 为什么使用 codex-provider？
+## 为什么选择 xpx？
 
-不同的 AI 编程 CLI 会用不同的格式和目录保存提供商、模型与凭据。如果你经常在官方账号、
-OpenAI 兼容 API 提供商或多个 Antigravity 账号之间切换，手动编辑配置既容易出错，也难以
-检查。本项目为每个目标工具提供专用 CLI，同时统一常用命令、验证方式、安全写入和预览机制。
+现代 AI 辅助编程工具（如 Codex、OpenCode、Claude Code、Cursor、Antigravity、Pi 等）在本地存储提供商、凭据和模型配置的方式各不相同（TOML、JSON、SQLite、环境配置文件等）。当你需要维护多个第三方 API（如 DeepSeek、OpenRouter、SiliconFlow）、切换企业与个人账号、或在不同工具间共享配置时，手动修改配置文件不仅极其繁琐，而且极易出现语法错误或泄露凭据。
 
-## 功能亮点
+**`xpx` 将所有 AI Coding Agent 的配置收敛至统一控制平面。** 你只需在 `~/.xpx/` 中一次性录入 Provider 资产或账号，即可通过 `xpx apply` 将配置一键渲染分发至任何客户端，并具备自动记忆机制与零端侧污染保障。
 
-- **无需手动编辑即可切换**：选择已保存的提供商或账号，同时保留无关的全局配置。
-- **隔离 Codex 官方登录**：可把官方登录保存为提供商，切回时清理托管 API 提供商配置。
-- **按提供商设置 Codex 选项**：可免编辑器配置联网搜索、模型目录和 fast 模式，切换时自动渲染到运行时配置。
-- **避免在终端泄露秘密**：可以查看认证字段元数据和脱敏配置，不会打印凭据值。
-- **验证完整调用链**：既能探测 `/models` 接口，也能通过 Codex、OpenCode 或 Antigravity 执行最小命令。
-- **管理 Codex 模型**：把远端模型 ID 同步到按提供商存放的模型目录文件，并可独立设置默认模型。
-- **管理 OpenCode 模型**：发现远端模型 ID、只同步新增模型，并可独立设置默认模型。
-- **管理 Antigravity 账号**：登录、导入账号快照、切换账号，并查看 5 小时和每周配额余量。
-- **管理 Cursor 账号和模型**：快照当前登录的 Cursor 账号，直接改写 Cursor SQLite 数据库中的认证行，并可在所有 Composer 场景间切换模型。
-- **在工具之间迁移 API 提供商**：可将 Codex、OpenCode、Claude 或 Cursor 的 OpenAI 兼容 provider 配置导出为另一个 CLI 可直接导入的格式。
-- **预览和恢复变更**：修改类命令支持预演，Codex 会保留最近十份变更前快照，也支持 JSON 导出或导入。
-- **快速返回最近使用项**：交互式选择器和列表会优先显示最近使用的提供商或账号。
+---
 
-## 选择对应的 CLI
+## 支持的客户端矩阵
 
-| CLI | 适用场景 | 原生配置位置 |
-|-----|----------|--------------|
-| `cpx` | Codex 兼容 API 提供商、按提供商的模型目录与联网搜索选项、官方登录快照和认证快照 | `~/.codex` 与 `~/.codex-provider` |
-| `opx` | OpenCode 提供商、凭据、默认模型与模型发现 | OpenCode 的 XDG 配置、数据和状态目录 |
-| `apx` | Antigravity 账号、登录快照、切换和配额查询 | `~/.gemini/antigravity-cli` 与 `~/.gemini/agy-provider` |
-| `cupx` | 存储在 Cursor SQLite 数据库中的账号与模型选择 | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` 与 `~/.cursor-provider` |
-| `clpx` | Claude 兼容 API 提供商与默认模型，写入 Claude 全局设置 | `~/.claude/settings.json` 与 `~/.claude-provider` |
+| 目标客户端 | 配置文件路径 | 支持的差异化能力 |
+|------------|--------------|------------------|
+| **Codex** | `~/.codex/config.toml` | 自定义提供商、Fast 模式、Wire API、联网搜索、Reasoning 阶梯 |
+| **OpenCode** | `opencode.json` (XDG 目录) | 提供商自动发现、模型目录同步、保持 JSONC 格式与注释 |
+| **Claude Code** | `~/.claude/settings.json` | Anthropic 兼容端点、默认模型注入 |
+| **Cursor** | `state.vscdb` (SQLite 数据库) | 自定义 OpenAI 兼容提供商、模型切换、官方账号快照 |
+| **Antigravity** | `~/.gemini/antigravity-cli` | Google OAuth 登录、会话切换、5 小时与每周配额余量查询 |
+| **Pi Agent** | `~/.pi/agent/models.json` / `config.yaml` | 多模型定义、自定义 Provider |
 
-旧的长命令名（`codex-provider` 等）已在 v1.4.0 移除，请使用上面的短命令名。
+---
 
-Codex、OpenCode 与 Claude CLI 的公共操作会保持命令名称和行为一致。Codex 额外提供 `official`、
-`config set`、模型目录选项和 `models`，OpenCode 额外提供 `models`，Antigravity 额外提供 `login`
-和 `usage`，Cursor 额外提供 `model`，用于各自特有的工作流。
+## 核心特性
 
-## 适用场景
+- **动静分离与副作用唯一收敛**：`xpx add`、`xpx auth set`、`xpx config set`、`xpx models sync` 等命令**仅读写 `~/.xpx/` 目录**。对任何外部客户端原生配置的修改 100% 收敛在 `xpx apply` 域下。
+- **客户端专属参数自动记忆**：在执行 `xpx apply codex deepseek --fast` 时，系统不仅完成渲染，还会自动持久化记住 `--fast`，下次执行 `xpx apply codex deepseek` 无需重复敲参。
+- **全景控制大盘**：运行 `xpx status` 一键查看所有客户端当前激活的 Provider、主力模型、状态指示灯与配额余量。
+- **全端并发连通性测试**：运行 `xpx ping --all` 自动并发拉起本机所有已安装的 Agent CLI，发送微测试 prompt 验证全链路端到端可用性。
+- **内置模型与 Reasoning 知识库**：自动从上游官方文档补充上下文窗口大小、最大输出 token 与思维链档位（`xpx models sync`）。
+- **完整账号生命周期**：支持原生 OAuth 登录与本地已登录会话快照（`xpx account login`、`xpx account snapshot`、`xpx account usage`）。
+- **全端健康巡检**：运行 `xpx doctor [--fix]` 校验各客户端配置文件语法、测试网络可用性并自动修复孤儿状态。
+- **零 Python 运行时依赖**：提供单个独立二进制可执行文件，内置无缝自升级命令（`xpx upgrade`）。
 
-当你维护多个提供商或账号，并希望用可重复的方式完成切换、验证、备份和故障排查时，
-可以使用这些 CLI。修改类命令支持 `--dry-run`，失败时返回非零状态码，因此也适合脚本调用。
-
-本项目不会创建提供商订阅，不会安装目标 Codex、OpenCode、Antigravity 或 Cursor 工具，也不会绕过
-提供商认证。它只管理你已有并有权使用的配置和凭据。
+---
 
 ## 快速开始
 
+### 独立二进制安装（推荐）
+
+Linux / macOS：
+```bash
+curl -LsSf https://raw.githubusercontent.com/Fel1xKan/codex-provider/master/scripts/install.sh | sh
+```
+
+Windows (PowerShell)：
+```powershell
+irm https://raw.githubusercontent.com/Fel1xKan/codex-provider/master/scripts/install.ps1 | iex
+```
+
+### 使用 pipx 安装
+
 ```bash
 pipx install git+https://github.com/Fel1xKan/codex-provider.git
-cpx status
 ```
 
-如果你使用的是另外四个工具，将第二条命令替换为 `opx status`、`apx status`、`cupx status` 或 `clpx status`。
+---
 
-## 安装
+## 使用指南
 
-### 使用 pipx
+### 1. 录入与管理 Provider
 
 ```bash
-pipx install git+https://github.com/Fel1xKan/codex-provider.git
+# 交互式输入 API Key 录入提供商
+xpx add deepseek https://api.deepseek.com/v1 --default-model deepseek-reasoner
+
+# 或通过管道标准输入传入 Key
+echo "sk-secret" | xpx add openrouter https://openrouter.ai/api/v1 --key-stdin
+
+# 查看所有已保存的 Provider 资产
+xpx list
+
+# 更新 API Key（若有客户端正在激活该 Provider，会自动重放渲染刷新）
+xpx auth set deepseek --key "sk-new-key"
 ```
 
-该命令会在隔离的 Python 环境中安装全部五个 CLI。升级命令为：
+### 2. 生效与分发至客户端 (Apply)
 
 ```bash
-pipx upgrade opx
+# 生效至 Codex 并开启 fast 模式（会自动记住 fast 偏好）
+xpx apply codex deepseek --fast
+
+# 同时分发至多个目标客户端
+xpx apply codex,opencode deepseek
+
+# 全量分发至本机所有已安装客户端
+xpx apply --all deepseek
+
+# 仅切换当前客户端的模型（保持 Provider 不变）
+xpx apply opencode :deepseek-chat
+
+# 预演变更（查看 diff，不真正写入文件）
+xpx apply codex deepseek --dry-run
+
+# 重置客户端并切回官方默认登录态
+xpx apply codex --reset
 ```
 
-### 独立二进制文件
-
-[GitHub Releases 页面][release-url]提供 Linux (x86_64)、Windows (x86_64) 和
-macOS (Apple Silicon) 二进制文件以及对应的 SHA-256
-校验文件。独立二进制文件不需要本地 Python 环境。
-
-## 使用方法
-
-### 切换、检查并验证提供商
+### 3. 同步模型目录与思维链阶梯
 
 ```bash
-cpx list
-cpx switch my-provider --dry-run
-cpx switch my-provider
-cpx status
-cpx doctor
-cpx test my-provider
+# 拉取远端模型列表并自动合并元数据与思考档位
+xpx models sync deepseek
+
+# 查看缓存的模型列表
+xpx models list deepseek
+
+# 设置默认模型与默认思考强度
+xpx models set deepseek-reasoner deepseek --default --effort high
 ```
 
-省略 `switch` 的提供商参数会打开交互式选择器，最近使用的提供商会排在前面。`doctor`
-检查保存的配置和认证数据，`test` 则探测提供商接口。
-
-### 使用后端专属能力
+### 4. 账号生命周期与配额查询
 
 ```bash
-cpx models list my-provider
-cpx models sync my-provider --dry-run
-cpx models sync my-provider --force
-cpx models set my-model my-provider
-cpx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
-opx models list my-provider
-opx models sync my-provider --dry-run
-opx models set my-model my-provider
-opx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
-apx login work-account
-apx usage work-account
-cupx add work --from-current
-cupx switch work
-cupx provider add deepseek --from-current
-cupx models sync deepseek
-cupx models set deepseek-v4-flash
+# 唤起官方 OAuth 授权（如 Antigravity 的 Google OAuth）
+xpx account login agy work
+
+# 查看 Antigravity 5 小时和每周配额使用情况
+xpx account usage agy work
+
+# 快照当前已登录的官方会话或 Cursor 本地认证
+xpx account snapshot codex official-work
+xpx account snapshot cursor personal
 ```
 
-Codex `models sync` 会把提供商当前的 `/models` ID 合并进模型目录文件（保留已有条目
-元数据、新 ID 使用最小条目、远端已删除的 ID 也会保留）。如果上游模型条目明确提供了
-显示名、上下文、最大输出或输入模态，sync 会补齐缺失字段，但不会根据模型 ID 猜能力，也
-不会覆盖手工值。`models set` 可通过 `--context-window` 和 `--max-output-tokens` 在选择模型
-时同时写入限制。未设置目录指针的提供商会自动新建
-`~/.codex-provider/catalogs/<provider>.json` 并记录指针，`models set` 则写入
-`~/.codex/config.toml` 顶层 `model`。目录条目会按同一个版本化元数据目录、依据各家官方文档写入
-Codex `/model` 里真实可选的推理档位。例如 `gpt-5.4` 为 `none,low,medium,high,xhigh`，
-`gpt-5.6-sol` 为 `none,low,medium,high,xhigh,max,ultra`，`claude-opus-5`、`claude-opus-4-7`
-为 `low,medium,high,xhigh,max`，`claude-sonnet-4-6` 到 `max` 为止，`deepseek-v4-pro` 为
-`none,low,high,max`，`glm-5.3` 为 `low,high,max`，`grok-4.6` 为 `low,medium,high,xhigh`。
-只提供「思考开关」的厂商（Qwen、Mistral、Kimi K2.6、旧版 Claude）显示 `none`/`high` 并标注
-开关含义；始终思考且无参数的模型只给一档 `high`；不支持思考的模型（`qwen-max`、
-`qwen3-coder-plus` 等）只有 `none`；未收录的模型回退到 `low,medium,high,xhigh,max`。
-预选档位取 `medium`（档位里没有 `medium` 时取 `high`），`max`、`ultra` 需要手动选择。sync 只刷新仍然是我们自动生成的档位，手工修改过的
-会保留；`cpx models sync <provider> --force` 会重置全部已同步模型，也可用
-`models update --set supported_reasoning_levels=low,medium,high` 为单个模型裁剪档位。OpenCode 模型同步会添加新 ID、保留旧模型和手工元数据，
-并导入明确的 `limit.context`/`limit.output`；`models set` 写入顶层 `model`（`provider/model`
-形式）。如果 provider 的 `/models` 只返回模型 ID，三个 CLI 还会查询本仓库托管的版本化
-`data/model-catalog.json`，成功后缓存到各自状态目录；目录请求失败时使用缓存，完全没有缓存
-时也不会阻断模型 ID 同步。Antigravity `usage` 会在不切换账号的
-情况下显示 5 小时和每周配额。Cursor `switch` 会改写 Cursor SQLite 数据库中的认证行，
-`models set` 会把一个模型 ID 应用到所有 Composer 场景。Cursor `provider` 命令管理
-Cursor 数据库中的自定义 OpenAI 兼容提供商（如 DeepSeek），`models sync` 会把提供商
-的远端模型列表导入为用户添加的模型。端到端 `ping`、批量检查、
-提供商生命周期操作，以及 JSON 备份和恢复方式见[命令参考](docs/command-reference.md)。
-
-## 安全保证
-
-- 检查命令不会打印 API 密钥或认证值。
-- 配置采用原子写入，并保留现有 POSIX 权限。
-- OpenCode 的 JSONC 注释、尾逗号和无关全局配置会被保留。
-- 工具会遵守提供商过滤规则，避免误选已禁用的提供商。
-- Codex 的 `switch`、`delete`、`rename`、`import` 和 `config set` 会在 `~/.codex-provider/backups/` 保留最近十份变更前快照。
-- `switch`、`add`、`delete`、`rename`、`import` 以及支持的账号操作提供预演模式。
-- Cursor 只改写 `state.vscdb` 中的认证和模型行，聊天历史和 workspace 状态保持不变。
-- 工具拒绝把 API 密钥作为位置参数传入；请使用隐藏输入或 `--api-key-stdin`。
-
-独立二进制可从 GitHub 最新 Release 自升级：
+### 5. 观测、诊断与健康巡检
 
 ```bash
-cpx upgrade
-cpx upgrade --check
-cpx upgrade --notes
+# 查看全景控制大盘
+xpx status
+
+# 全端健康检查与孤儿状态修复
+xpx doctor --fix
+
+# HTTP 接口探测
+xpx test --all
+
+# 全端并发端到端 ping 测试
+xpx ping --all
 ```
 
-`upgrade` 会在替换二进制之前先打印新版本的 release notes，所以升级前就能看到变化；
-`--notes` 只打印最新说明。说明只列出新增功能、保持简短。
+### 6. 迁移、备份与升级
 
-## 命令参考
+```bash
+# 预演旧工具（cpx, opx, apx, cupx, clpx）历史配置探测结果
+xpx migrate --dry-run
 
-四个 CLI 提供一致的提供商管理命令，并分别扩展 OpenCode 模型发现、Antigravity 账号工作流
-和 Cursor 账号与模型切换。参考文档还包含文件位置、切换行为、秘密处理和退出码语义。
+# 一键将所有旧工具配置与账号资产迁移导入至 ~/.xpx/
+xpx migrate
 
-→ [查看完整命令参考（英文）](docs/command-reference.md)
+# 从指定配置文件或 JSON 备份中导入
+xpx import backup.json
 
-## 前置条件
+# 导出全量中枢配置至单一 JSON 备份
+xpx export backup.json
 
-| 要求 | 何时需要 |
-|------|----------|
-| Python 3.11+ 与 `pipx` | 从源码安装 |
-| Codex、OpenCode、Antigravity 或 Cursor | 执行对应工具的原生 `ping` 命令，或切换其账号和模型 |
-| 网络连接 | 提供商测试、模型发现、登录和配额查询 |
+# 检查并自升级至最新发布版本
+xpx upgrade
+```
 
-## 参与贡献
+---
 
-仓库包含镜像式 CLI 一致性测试、隔离文件系统测试、静态检查和跨平台 PyInstaller 构建。
+## 深入了解
 
-→ [查看贡献、测试、构建和发布指南（英文）](CONTRIBUTING.md)
+- [命令详细规范](docs/command-reference.md)：各个命令的位置参数、选项说明与终端输出格式。
+- [架构设计指南](docs/architecture.md)：控制中枢分层设计理念、数据拓扑与 TargetAdapter 扩展开发指南。
+- [贡献指南](CONTRIBUTING.md)：本地开发、测试与跨平台打包构建流程。
+
+---
 
 ## 许可证
 
-本项目基于 MIT License 分发，详情见 [LICENSE](LICENSE)。
-
----
+本项目遵循 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
 
 [license-shield]: https://img.shields.io/badge/License-MIT-green.svg
 [license-url]: LICENSE

@@ -3,14 +3,15 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "opencode-provider"
+name = "xpx"
 dynamic = ["version"]
-description = "Default provider and model switcher for OpenCode"
+description = "Unified AI Agent Provider Control Plane"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "cryptography>=42,<47",
   "json5>=0.12,<1",
+  "pyyaml>=6.0",
   "tomlkit>=0.13,<1",
 ]
 
@@ -24,15 +25,21 @@ dev = [
 ]
 
 [project.scripts]
-cpx = "cli.codex_provider:main"
-opx = "cli.opencode_provider:main"
-apx = "cli.agy_provider:main"
-cupx = "cli.cursor_provider:main"
-clpx = "cli.claude_provider:main"
+xpx = "cli.xpx:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["cli", "lib", "lib.common", "lib.codex", "lib.opencode", "lib.agy", "lib.cursor", "lib.claude"]
+packages = [
+  "cli",
+  "lib",
+  "lib.common",
+  "lib.xpx",
+  "lib.xpx.store",
+  "lib.xpx.models",
+  "lib.xpx.adapters",
+  "lib.xpx.commands",
+  "lib.xpx.accounts",
+]
 
 [tool.setuptools.dynamic]
 version = { attr = "lib.common.constants.VERSION" }

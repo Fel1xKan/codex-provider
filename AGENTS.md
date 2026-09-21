@@ -2,39 +2,40 @@
 
 ## Project Structure & Module Organization
 
-This repository contains five Python CLIs for managing Codex, OpenCode, Antigravity, Cursor, and Claude provider configuration and authentication.
+This repository contains the unified `xpx` control plane CLI for managing Codex, OpenCode, Cursor, Claude, Antigravity, and Pi provider configuration and authentication.
 
-- `src/cli/`: CLI entrypoints (`codex_provider.py`, `opencode_provider.py`, `agy_provider.py`, `cursor_provider.py`, `claude_provider.py`).
-- `src/lib/`: modularized packages (`common/`, `codex/`, `opencode/`, `agy/`, `cursor/`, `claude/`).
-- `cpx`, `opx`, `apx`, `cupx`, `clpx`: shell launchers for the Python entrypoints.
-- `codex-provider-bin.spec`, `opencode-provider.spec`, `agy-provider.spec`, `cursor-provider.spec`, `claude-provider.spec`: PyInstaller specs for the standalone binaries.
+- `src/cli/`: CLI entrypoint (`xpx.py`).
+- `src/lib/`: modularized packages:
+  - `common/`: shared utilities, OS cryptography, self-upgrade, and constants.
+  - `xpx/`: unified control plane core:
+    - `store/`: persistence models and directory managers for `~/.xpx/`.
+    - `adapters/`: target client adapters (`codex`, `opencode`, `cursor`, `claude`, `agy`, `pi`).
+    - `models/`: model discovery, catalog enrichment, and reasoning settings.
+    - `commands/`: CLI command domains (`apply`, `provider`, `auth`, `config`, `account`, etc.).
+    - `accounts/`: session and OAuth account handlers.
+- `xpx`: shell launcher.
+- `xpx.spec`: PyInstaller spec for the standalone `xpx` binary.
 - `build/` and `dist/`: generated artifacts from packaging; treat them as outputs, not source.
 
-Keep backend-specific code near its provider module under `src/lib/`. Put genuinely shared behavior in `src/lib/common/`.
+## Single Control Plane Architecture
 
-## Dual CLI API Consistency
+All configuration state is centrally managed in `~/.xpx/`. Native client modifications are isolated strictly to the `apply` command domain.
 
-`cpx` and `opx` must expose a consistent API for every shared command. A change to a shared command must update both CLIs in the same change, even when the request mentions only one of them.
-
-- Keep shared command names, aliases, positional arguments, options, defaults, validation rules, exit-code semantics, dry-run behavior, and user-facing result wording aligned.
-- Before completing a change to `list`, `status`, `auth`, `config`, `doctor`, `switch`, `test`, `ping`, `add`, `delete`, or `rename`, inspect and update the corresponding parser, dispatch path, implementation, documentation, and tests for both CLIs.
-- Put shared parsing and dispatch behavior in `codex_provider_lib` when practical. Keep backend-specific config, auth, model selection, and filesystem logic in the relevant provider module.
-- Backend-specific differences are allowed only when the target tools genuinely require them. Document the difference and keep the remaining command shape consistent. OpenCode-only `models` commands are an explicit example.
-- Add mirrored behavioral tests for both CLIs and retain the parser command-matrix test so API drift fails during validation.
-- Do not mark a shared CLI change complete after validating only one executable.
+- The primary CLI binary is `xpx`.
+- New capabilities should be added directly to the appropriate `xpx` command domain or target adapter.
 
 ## Build, Test, and Development Commands
 
 Run commands from the repository root:
 
-- `./cpx --help` and `./opx --help`: inspect both wrapper CLIs.
-- `./cpx status` and `./opx status`: run the wrappers the same way end users do.
-- `./.venv/bin/python -m pytest -q`: run the complete test suite, including CLI parity checks.
+- `./xpx --help`: inspect the unified control plane CLI.
+- `./xpx status`: run the multi-client dashboard.
+- `./.venv/bin/python -m pytest -q`: run the complete test suite.
 - `./.venv/bin/ruff check .`: run static checks.
-- `./.venv/bin/python build.py --target codex` and `./.venv/bin/python build.py --target opencode`: rebuild both standalone binaries into `dist/`.
-- `./dist/cpx --help` and `./dist/opx --help`: confirm both packaged binaries start and expose the expected commands.
+- `./.venv/bin/python build.py`: build the standalone `xpx` binary into `dist/`.
+- `./dist/xpx --help` and `./dist/xpx status`: confirm the packaged binary starts and works.
 
-In addition to the full suite, validate the exact commands touched by your change, especially `auth show`, `auth edit`, `config show`, `config edit`, `switch`, and `doctor` in both CLIs.
+In addition to the full suite, validate the exact commands touched by your change, especially `auth show`, `auth set`, `config show`, `config set`, `apply`, `status`, and `doctor`.
 
 ## Coding Style & Naming Conventions
 

@@ -7,16 +7,9 @@ INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 usage() {
   cat <<'EOF'
-Usage: install.sh <command>
+Usage: install.sh
 
-Install one of the provider switchers from GitHub Releases.
-
-Commands:
-  cpx    codex provider switcher
-  clpx   claude provider switcher
-  cupx   cursor provider switcher
-  apx    agy provider switcher
-  opx    opencode provider switcher
+Install xpx unified AI agent control plane from GitHub Releases.
 
 Environment:
   REPO         GitHub repository (default: Fel1xKan/codex-provider)
@@ -25,20 +18,10 @@ Environment:
 EOF
 }
 
-if [[ $# -ne 1 ]]; then
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
-  exit 1
+  exit 0
 fi
-
-COMMAND="$1"
-case "$COMMAND" in
-  cpx|clpx|cupx|apx|opx) ;;
-  *)
-    echo "error: unknown command '$COMMAND'" >&2
-    usage
-    exit 1
-    ;;
-esac
 
 OS="$(uname -s)"
 MACHINE="$(uname -m)"
@@ -80,10 +63,10 @@ else
   VERSION="${VERSION#v}"
 fi
 
-ASSET="${COMMAND}-${VERSION}-${PLATFORM}-${ARCH}"
+ASSET="xpx-${VERSION}-${PLATFORM}-${ARCH}"
 BASE_URL="https://github.com/${REPO}/releases/download/v${VERSION}"
 mkdir -p "$INSTALL_DIR"
-TARGET="$INSTALL_DIR/$COMMAND"
+TARGET="$INSTALL_DIR/xpx"
 
 echo "downloading $ASSET"
 curl -fsSL "$BASE_URL/$ASSET" -o "$TARGET"
@@ -100,11 +83,11 @@ fi
 chmod +x "$TARGET"
 rm -f "$TARGET.sha256"
 
-echo "installed $COMMAND to $TARGET"
-echo "run: $COMMAND --help"
+echo "installed xpx to $TARGET"
+echo "run: xpx --help"
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
   *)
-    echo "note: add $INSTALL_DIR to your PATH to use $COMMAND"
+    echo "note: add $INSTALL_DIR to your PATH to use xpx"
     ;;
 esac

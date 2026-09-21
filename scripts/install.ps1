@@ -1,7 +1,4 @@
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("cpx", "clpx", "cupx", "apx", "opx")]
-    [string]$Command,
     [string]$Repo = "Fel1xKan/codex-provider",
     [string]$Version = "latest",
     [string]$InstallDir = "$HOME\.local\bin"
@@ -18,10 +15,10 @@ function Get-Version {
 }
 
 $ver = Get-Version
-$asset = "$Command-$ver-windows-x86_64.exe"
+$asset = "xpx-$ver-windows-x86_64.exe"
 $base = "https://github.com/$Repo/releases/download/v$ver"
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-$target = Join-Path $InstallDir "$Command.exe"
+$target = Join-Path $InstallDir "xpx.exe"
 
 Write-Host "downloading $asset"
 Invoke-WebRequest -Uri "$base/$asset" -OutFile $target
@@ -32,8 +29,8 @@ if ($actual -ne $expected) {
     throw "checksum mismatch"
 }
 
-Write-Host "installed $Command to $target"
-Write-Host "run: $Command --help"
+Write-Host "installed xpx to $target"
+Write-Host "run: xpx --help"
 if ($env:Path -notlike "*$InstallDir*") {
-    Write-Host "note: add $InstallDir to your PATH to use $Command"
+    Write-Host "note: add $InstallDir to your PATH to use xpx"
 }

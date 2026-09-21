@@ -1,774 +1,373 @@
-# Command Reference
+# Command Reference (xpx 2.0.0)
 
-This document covers `codex-provider`, `opencode-provider`, `agy-provider`,
-`cursor-provider`, and `claude-provider` version 1.5.4. Run `<command> --help`
-in your installed version for the exact parser surface.
+This document covers `xpx` version 2.0.0, the unified AI agent provider control plane. Run `xpx <command> --help` for the exact parser surface of any command.
 
-## Command Matrix
-
-| Command | Codex | OpenCode | Antigravity | Cursor | Claude | Purpose |
-|---------|:-----:|:--------:|:-----------:|:------:|:------:|---------|
-| `list` | Yes | Yes | Yes | Yes | Yes | List configured providers or accounts |
-| `status` | Yes | Yes | Yes | Yes | Yes | Show the active provider or account |
-| `auth show` / `auth edit` | Yes | Yes | Yes | Yes | Yes | Inspect auth metadata or edit credentials |
-| `config show` / `config edit` | Yes | Yes | Yes | Yes | Yes | Inspect or edit provider configuration |
-| `doctor [--fix]` | Yes | Yes | Yes | Yes | Yes | Validate configuration and authentication |
-| `test [--all]` | Yes | Yes | Yes | Yes | Yes | Test provider connectivity |
-| `ping` / `p` | Yes | Yes | Yes | Yes | Yes | Run a minimal command through the target CLI |
-| `switch [name] [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Switch the active provider or account |
-| `add` | Yes | Yes | Yes | Yes | Yes | Add a provider or import an account |
-| `delete [--full] [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Remove configuration, optionally including auth |
-| `rename [--dry-run]` | Yes | Yes | Yes | Yes | Yes | Rename a provider or account |
-| `export` / `import` | Yes | Yes | Yes | Yes | Yes | Back up or restore configuration and auth |
-| `upgrade [--check] [--dry-run] [--notes]` | Yes | Yes | Yes | Yes | Yes | Update the binary and read its release notes |
-| `models list` / `models sync` | Yes | Yes | No | No | Yes | Discover and synchronize Codex/OpenCode/Claude models |
-| `models set` | Yes | Yes | No | No | Yes | Set the default model for a provider |
-| `models update` | Yes | Yes | No | No | Yes | Update stored fields for a synced model |
-| `models list` / `models set` | No | No | No | Yes | No | List or switch the Cursor model selection |
-| `models sync` | No | No | No | Yes | No | Import models from a custom Cursor provider |
-| `official add` | Yes | No | No | No | No | Save the current Codex login as a switchable official provider |
-| `provider add` / `switch` / `delete` | No | No | No | Yes | No | Manage custom OpenAI-compatible Cursor providers |
-| `login` / `usage` | No | No | Yes | No | No | Authenticate an account or inspect quota |
-
-Codex, OpenCode, and Claude share their parsers for common commands. Backend-specific
-differences exist only where the target configuration format requires them.
-
-## Official Codex Login
-
-```bash
-codex login
-cpx official add
-cpx switch official
-```
-
-`official add` snapshots the current `~/.codex/auth.json` into the provider
-store and records a provider with `mode = "official"`. Switching to that
-provider restores the official auth snapshot and renders the runtime config
-with Codex's built-in `openai` provider. cpx also removes its own
-managed runtime provider block, standalone web-search override, and model
-catalog pointer in that mode. Use `cpx ping official` to verify the
-login; HTTP `/models` tests do not apply.
-
-`--provider NAME` selects a different provider identifier and `--name` sets the
-display name. Both `official add` and `switch` support `--dry-run` previews.
-
-## Provider Discovery
-
-```bash
-cpx list
-cpx status
-opx list
-opx status
-apx list
-apx status
-clpx list
-clpx status
-```
-
-`list` and interactive provider selection order entries by recent use. Entries
-that have never been used are sorted by name. Running `list` or `status`
-initializes the recency file if it does not exist.
-
-For OpenCode, only providers explicitly declared in the global config's
-`provider` object are switchable. Built-in providers that exist only in
-`auth.json` are not listed because OpenCode requires a concrete model ID.
-
-## Claude Providers
-
-```bash
-clpx add https://api.claude.ai --provider claudeai --model claude-sonnet-4-5
-clpx switch claudeai
-clpx status
-```
-
-`claude-provider` keeps its registry in `~/.claude-provider/config.json` and
-auth snapshots in `~/.claude-provider/auth/<provider>.json`. Switching writes
-`ANTHROPIC_BASE_URL`, the provider credential (`ANTHROPIC_AUTH_TOKEN` or
-`ANTHROPIC_API_KEY`), and any provider-specific model env keys
-(`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`)
-into the `env` object of `~/.claude/settings.json`. A provider can also carry a
-`modelOverrides` block; switching restores it and removes it when the target
-provider has none, mirroring how `codex-provider` points Codex at a per-provider
-model catalog. The active provider is recorded in
-`~/.claude-provider/config.json`, so Claude Code picks up the selected endpoint
-and credentials on its next run. Other settings such as `permissions` and
-`model` are preserved. The optional `--model` on `add` is stored per provider
-as metadata; use `config set --model` to change it later.
-
-`clpx add --from-settings` snapshots the current `env` and
-`modelOverrides` from `~/.claude/settings.json` into a new provider without
-prompting for a credential, which is convenient when switching between a local
-gateway (for example `http://127.0.0.1:4000` with `ANTHROPIC_API_KEY`) and an
-official endpoint (for example `https://api.deepseek.com/anthropic` with
-`ANTHROPIC_AUTH_TOKEN`).
-
-`clpx test` probes the Anthropic-compatible models endpoint with
-`x-api-key` authentication and the standard `anthropic-version` header.
-Some providers expose model discovery on a different path (DeepSeek uses
-`https://api.deepseek.com/models`); set it per provider with
-`clpx config set <provider> --models-url <url>`.
-`clpx ping` runs a minimal `claude -p "<prompt>"` command through
-the locally installed Claude Code binary so the full settings path is
-exercised.
-
-### Claude model management
-
-```bash
-clpx models sync cistern
-clpx models sync --all
-clpx models list cistern
-clpx models list cistern --remote
-clpx models set claude-sonnet-5 cistern
-clpx models set claude-sonnet-5 cistern --context-window 200000 --max-output-tokens 16000
-clpx models update claude-sonnet-5 cistern --set name="Sonnet 5" --set limit='{"context": 200000}'
-```
-
-`models sync` fetches the model IDs exposed by a provider and stores them at
-`~/.claude-provider/models/<provider>.json`, preserving per-model fields
-(`name`, `limit`, `options`) for IDs that still exist and retaining removed
-remote IDs. When the provider includes explicit model metadata, sync also
-imports display name, context window, and maximum output into missing fields;
-it never guesses capabilities from a model ID or overwrites manual values.
-For providers whose `/models` response contains only IDs, sync also consults
-the versioned GitHub catalog at `data/model-catalog.json` and caches a
-successful copy under `~/.claude-provider/model-catalog-cache.json`. Catalog
-network failures fall back to that cache, or leave unknown limits at defaults
-when no cache exists.
-`models list` shows the cached list, or fetches live with `--remote`.
-`models set <model> [provider]` updates the provider's model env keys
-(`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL`,
-`CLAUDE_CODE_SUBAGENT_MODEL`) and re-renders `~/.claude/settings.json` so the
-new default model applies immediately without changing the active provider or
-endpoint. `--context-window` and `--max-output-tokens` can be passed to
-`models set` to write the selected model's `limit` fields in the same
-operation. `models update <model> [provider] --set FIELD=VALUE` edits stored
-fields of one synced model (`name` plain text; `limit`/`options` JSON objects;
-empty value clears the field; `--dry-run` previews).
-
-## Authentication and Configuration
-
-```bash
-cpx auth show my-provider
-cpx auth edit my-provider
-cpx config show my-provider
-cpx config edit my-provider
-cpx config set my-provider \
-  --supports-standalone-web-search true \
-  --provider-model-catalog-json ~/.codex-provider/catalogs/custom.json
-cpx config set my-provider --fast
-cpx config set my-provider --fast --apply
-cpx config set my-provider --no-fast
-cpx config set my-provider --provider-model-catalog-json ""
-cpx config set my-provider --name "New Name" \
-  --wire-api chat --supports-websockets true
-cpx config set my-provider \
-  --header x-openai-actor-authorization=local-image-extension
-cpx config set my-provider --reset
-cpx config set my-provider --supports-standalone-web-search false \
-  --dry-run
-
-opx auth show my-provider
-opx auth edit my-provider
-opx config show my-provider
-opx config edit my-provider
-```
-
-The provider argument is optional and defaults to the current provider when the
-backend has one.
-
-- `auth show` prints field metadata without credential values.
-- `auth edit` opens the backend auth file in `$VISUAL` or `$EDITOR`, then validates the result before keeping it.
-- `config show` redacts inline secrets.
-- `config edit` opens and validates provider configuration. Use `auth edit` to change an API key.
-- `config set` (Codex only) updates provider fields without opening an editor:
-  `--name`, `--wire-api`, `--supports-websockets`,
-  `--supports-standalone-web-search`, `--provider-model-catalog-json`,
-  `--header`, and `--fast`/`--no-fast`. At least one option is required. An empty
-  `--provider-model-catalog-json` clears the catalog field; a non-empty value
-  is stored exactly as provided so a catalog file can be generated before the
-  next switch. `--fast` enables fast mode by writing Codex's native top-level
-  `service_tier = "priority"` into the runtime config; `--no-fast` clears it
-  and lets Codex choose. `--reset` clears fast mode, web search, and model
-  catalog options in one step.
-
-  `--header KEY=VALUE` adds a provider HTTP header and may be repeated. It is
-  written into the provider block as `http_headers = { ... }`, so Codex sends
-  the header on every request to that provider. Pass `--header KEY=` (empty
-  value) to remove a single header. Header values are redacted by
-  `config show`.
-
-  `config set` writes the intended provider state in the tool config. The
-  runtime `~/.codex/config.toml` is generated from it by `switch`. Pass
-  `--apply` to re-render the runtime config immediately for the active
-  provider; otherwise run `cpx switch <provider>`.
-- `doctor` validates config, provider models, and auth JSON. `doctor --fix` applies repairs supported by that backend.
-
-OpenCode currently has no legacy files that require automatic repair.
-
-## Add a Provider
-
-```bash
-cpx add https://api.example.com --provider example
-opx add https://api.example.com --provider example
-```
-
-By default, the command reads the API key from a hidden terminal prompt. For
-scripts, pipe the value to standard input:
-
-```bash
-printf '%s\n' "$PROVIDER_API_KEY" | \
-  opx add https://api.example.com \
-  --provider example \
-  --api-key-stdin
-```
-
-API keys passed as positional arguments are rejected. Both provider CLIs accept
-the following options:
-
-| Option | Meaning |
-|--------|---------|
-| `--provider NAME` | Provider identifier; defaults to the base URL domain |
-| `--name NAME` | Display name stored in provider configuration |
-| `--wire-api API` | Wire API value; defaults to `responses` |
-| `--supports-websockets true\|false` | Set WebSocket support when the backend supports it |
-| `--supports-standalone-web-search true\|false` | Enable Codex standalone (live) web search by writing `web_search = "live"` into the runtime config |
-| `--provider-model-catalog-json PATH` | Codex only; store a per-provider model catalog pointer. Empty clears the field |
-| `--fast` / `--no-fast` | Codex only; enable or disable fast mode. `--fast` writes `service_tier = "priority"` on switch |
-| `--header KEY=VALUE` | Codex only; add a provider HTTP header. Repeat to add more; `KEY=` removes one |
-| `--apply` | Codex only; after `add`, switch to the new provider immediately |
-| `--api-key-stdin` | Read the API key from standard input |
-| `--dry-run` | Preview changes without writing files |
-
-OpenCode accepts `--supports-websockets` for CLI compatibility but does not
-store it because OpenCode has no equivalent provider field. The same applies to
-`--supports-standalone-web-search`: OpenCode accepts it for parser parity but
-does not persist a standalone web search flag.
-
-## Switch a Provider or Account
-
-```bash
-cpx switch my-provider
-cpx switch my-provider --dry-run
-
-opx switch my-provider
-opx switch my-provider --model my-model
-opx switch my-provider --model my-provider/my-model --dry-run
-
-apx switch work-account
-apx switch work-account --dry-run
-```
-
-Running `switch` without a name opens the interactive picker. In a
-non-interactive environment, provide the name explicitly.
-
-OpenCode writes the selected value to the global config's top-level `model`
-field as `provider/model`:
-
-- If the target provider has one model, it is selected automatically.
-- If the current model ID exists on the target, that ID is retained.
-- Otherwise an interactive terminal opens a model menu.
-- In non-interactive use, pass `--model`.
-
-Project-level `opencode.json` files have higher precedence than global config.
-A project-level top-level `model` continues to override a global switch.
-
-## Test and Ping
-
-```bash
-cpx test
-cpx test --all
-cpx test my-provider
-cpx ping my-provider --model gpt-5
-
-opx test
-opx test --all
-opx ping my-provider --model my-model
-
-apx test
-apx ping work-account
-```
-
-`test` probes the configured provider endpoint. It accepts the current provider,
-a named provider, or a direct base URL. A direct URL requires an API key from a
-hidden prompt or `--api-key-stdin`; credentials in positional arguments are
-rejected.
-
-`ping` invokes the target CLI with a minimal prompt. It supports:
-
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `--all` | Off | Check every configured provider and print a summary |
-| `--timeout SECONDS` | `120` | Target CLI timeout |
-| `-m`, `--model MODEL` | Target default | Override the model for this check |
-| `--prompt TEXT` | `say hi` | Prompt sent by the target CLI |
-
-`--all` continues after individual failures and returns status 1 if any check
-fails.
-
-## Codex Models
-
-```bash
-cpx models list my-provider
-cpx models sync my-provider
-cpx models sync my-provider --dry-run
-cpx models sync my-provider --force
-cpx models sync --all
-cpx models set my-model my-provider
-cpx models set my-model my-provider --dry-run
-cpx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
-cpx models update my-model my-provider --set context_window=200000 --set supported_reasoning_levels=low,medium,high
-```
-
-`models list` shows the model IDs in the provider catalog file without
-changing config. `models sync` fetches IDs from the OpenAI-compatible
-`base_url/models` endpoint and merges them into the catalog: existing entries
-keep their metadata, newly discovered IDs receive a minimal catalog entry
-(cloned from the `glm-5.3-flash` shape with the new `slug`/`display_name`),
-and removed remote IDs are retained, never deleted. If the response includes
-explicit display name, context, maximum output, or input modality fields,
-sync fills the corresponding default entry fields; manual catalog values are
-preserved. The catalog path is the provider's
-`provider_model_catalog_json` pointer when set; otherwise sync creates
-`~/.codex-provider/catalogs/<provider>.json`, records the pointer, and
-re-renders the runtime config when the target is active. `models set <model>
-[provider]` validates the ID against the catalog and writes the top-level
-`model` field in `~/.codex/config.toml` (bare model ID; use `--dry-run` to
-preview). `--context-window` updates both Codex context window fields, and
-`--max-output-tokens` stores the explicit output limit in the catalog. With
-`--all`, synchronization continues through every provider and returns status 1
-if any provider cannot be queried. When `/models` exposes only IDs, sync uses
-the versioned GitHub metadata catalog and caches it under
-`~/.codex-provider/model-catalog-cache.json`; metadata fetch failures never
-block provider model synchronization. Pass `--force` to reset the reasoning
-levels of every synced model to the default ladder; other model metadata is
-preserved.
-
-Catalog entries publish the reasoning levels Codex renders in the `/model`
-picker through `supported_reasoning_levels`, so those entries — not the
-three-level Codex default — decide which efforts are selectable. Sync fills
-them from the versioned metadata catalog using each vendor's documented
-levels:
-
-| Vendor | Levels | Preselected |
-| --- | --- | --- |
-| `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-6-astra`, `gpt-daybreak-*-latest` | `none`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra` | `medium` |
-| `gpt-5.6-luna` | `none`, `low`, `medium`, `high`, `xhigh`, `max` | `medium` |
-| `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, `gpt-5.6-cyber` | `none`, `low`, `medium`, `high`, `xhigh` | `medium` |
-| `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano` | `low`/`minimal`, `medium`, `high` | `medium` |
-| `o3`, `o3-mini`, `o4-mini` | `low`, `medium`, `high` | `medium` |
-| `gpt-4o`, `gpt-4.1`, `gpt-5.2-chat-latest`, `gpt-realtime-*` | no selectable level | — |
-| `claude-fable-5-1`, `claude-fable-5`, `claude-opus-5`, `claude-sonnet-5`, `claude-opus-4-8`, `claude-opus-4-7` | `low`, `medium`, `high`, `xhigh`, `max` | `high` |
-| `claude-opus-4-6`, `claude-sonnet-4-6` | `low`, `medium`, `high`, `max` | `high` |
-| `claude-opus-4-5` | `low`, `medium`, `high` | `high` |
-| `claude-haiku-4-5`, `claude-sonnet-4-5`, `claude-3-7-sonnet-latest` | thinking off/on (token budget) | `high` |
-| `claude-3-5-sonnet-latest`, `claude-3-5-haiku-latest` | no extended thinking | — |
-| `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-flash-latest` | `low`, `medium`, `high` | `medium` |
-| `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-flash-lite-latest`, `gemini-3-flash-preview` | `minimal`, `low`, `medium`, `high` | `medium`/`high` |
-| `gemini-3.1-pro-preview` | `low`, `medium`, `high` | `high` |
-| `gemini-3.1-flash-lite-image` | `minimal`, `high` | `high` |
-| `gemini-2.5-pro`, `gemini-2.5-flash` | `low`, `medium`, `high` | `medium` |
-| `gemini-2.5-flash-lite` (thinking off by default) | `low`, `medium`, `high` | `low` |
-| `deepseek-chat`, `deepseek-reasoner`, `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-v4-flash-vision-exp` | `none`, `low`, `high`, `max` | `high` |
-| `glm-5.3`, `glm-5.3-flash` | `low`, `high`, `max` | `high` |
-| `glm-5.2` | `none`, `high`, `max` | `high` |
-| `glm-5.1`, `glm-5`, `glm-4.6`, `glm-4.5`, `glm-5v-turbo`, `glm-4.6v` | thinking off/on | `high` |
-| `glm-4.7`, `glm-4.7-flash`, `glm-4.5v` | thinking always on | `high` |
-| `grok-4.6` | `low`, `medium`, `high`, `xhigh` | `high` |
-| `grok-4.5` | `low`, `medium`, `high` | `high` |
-| `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-multi-agent-0309` | thinking always on, no effort parameter | `high` |
-| `kimi-k3` | `low`, `high`, `max` | `high` |
-| `kimi-k2.6` | thinking off/on | `high` |
-| `kimi-k2.7-code`, `kimi-k2.7-code-highspeed` | thinking always on | `high` |
-| `qwen3.8-max`/`-flash`, `qwen3.7-*`, `qwen3.6-*`, `qwen3.5-*`, `qwen3-max`, `qwen-plus`, `qwen-flash`, `qwen-turbo`, `qwen3-omni-flash`, `qwen3-vl-plus`, `qwen3-vl-235b-a22b` | thinking off/on (`enable_thinking`) | `high` |
-| `qwq-plus`, `qwen3-vl-235b-a22b-thinking` | thinking always on | `high` |
-| `qwen-max`, `qwen-long`, `qwen3-coder-plus`, `qwen3-coder-flash` | no thinking mode | — |
-| `mistral-small-2603`, `mistral-medium-2604` | `none` (thinking omitted), `high` (thinking streamed) | `high` |
-| `magistral-medium-latest` | native reasoning, no level | `high` |
-| `mistral-large-*`, `devstral-2512`, `codestral-latest`, `pixtral-large-latest` | no reasoning control | — |
-| unknown model IDs | `low`, `medium`, `high`, `xhigh`, `max` | `medium` |
-
-Notes on how to read the table:
-
-- Codex 5.x levels come from the Codex CLI's own model metadata; `ultra`
-  (automatic task delegation) is a Codex-side level that the Codex CLI
-  advertises for those specific models.
-- Vendors that expose a thinking *switch* (`enable_thinking`,
-  `thinking.type`, a token budget) rather than an effort ladder are published
-  as `none`/`high` with the wording shown in the picker ("Thinking disabled" /
-  "Thinking enabled"), so the two states that actually exist are the two on
-  offer.
-- A model with an always-on reasoning mode and no parameter is published as a
-  single `high` level; Codex then always requests that effort instead of
-  asking you to choose. A model with no thinking mode is published as a single
-  `none` level and Codex skips the reasoning step.
-- The preselected level is never `max` or `ultra` while a cheaper level
-  exists, because those consume usage limits much faster.
-
-`input_modalities` is narrowed to `text`, `image`, and `audio` before it
-reaches the catalog: Codex refuses to parse a catalog that lists any other
-modality, so a provider advertising `video` or `pdf` input would otherwise
-break every model in that catalog.
-
-Sync rewrites a ladder only while it still looks generated: the fallback
-`low,medium,high,xhigh,max` ladder or the three-level `low,high,max` shape
-written by earlier releases. A ladder you edited with `models update` (or a
-hand-edited `default_reasoning_level` other than `max`) is preserved. Pass
-`--force` to reset every synced model to its catalog ladder, overwriting
-manual edits.
-
-`models update <model> [provider] --set FIELD=VALUE` edits one catalog entry
-in place (repeat `--set` for multiple fields; `--dry-run` previews). Text
-fields (`display_name`, `description`, `default_reasoning_level`,
-`default_verbosity`, `default_service_tier`, `default_reasoning_summary`)
-take plain values (empty clears). Integer fields (`context_window`,
-`max_context_window`, `max_output_tokens`, `effective_context_window_percent`
-clamped to 1-100, `auto_compact_token_limit`, `priority`) take non-negative
-integers.
-Booleans (`support_verbosity`, `supports_reasoning_summaries`,
-`supports_parallel_tool_calls`, `supports_search_tool`, `prefer_websockets`,
-`use_responses_lite`) accept `true`/`false`. `input_modalities` takes a
-comma-separated list and `truncation_policy` takes a JSON object.
-`supported_reasoning_levels` takes a comma-separated reasoning subset of
-`none,minimal,low,medium,high,xhigh,max,ultra` (e.g.
-`--set supported_reasoning_levels=low,medium,high`) and rewrites the catalog
-levels Codex shows in `/model`; `variants` is accepted as an alias for the
-same catalog key. `default_reasoning_level` takes one of those reasoning
-values (empty clears). Unknown models, fields, and reasoning values are
-rejected with the available values listed.
-
-## OpenCode Models
-
-```bash
-opx models list my-provider
-opx models sync my-provider
-opx models sync my-provider --dry-run
-opx models sync --all
-opx models set my-model my-provider
-opx models set my-model my-provider --dry-run
-opx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
-opx models update my-model my-provider --set name="My Model" --set limit='{"context": 200000}'
-```
-
-`models list` fetches IDs from the OpenAI-compatible
-`options.baseURL/models` endpoint without changing config. `models sync` adds
-new IDs to `provider.<id>.models`, retains existing model metadata, and never
-removes models. When explicit provider metadata is present, newly discovered
-models also receive their display name and `limit.context`/`limit.output`
-values; existing manual values are left unchanged. Models without those
-fields retain the existing provider defaults. Newly discovered models receive
-default `variants` named `low`, `medium`, `high`, `xhigh`, and `max`; each
-variant sets the matching `reasoningEffort` value. Existing model entries and
-custom variants are left unchanged.
-If the provider returns only IDs, sync supplements them from the versioned
-GitHub metadata catalog and caches the successful copy under the OpenCode
-state directory. A failed metadata fetch falls back to the cache or leaves
-the provider defaults unchanged.
-
-Pass `--force` to refresh the five default variants for every synchronized
-model. Other model metadata is preserved; custom variants are replaced by the
-default set when `--force` is used.
-
-Credentials are read from `options.apiKey` or OpenCode's auth store. API keys
-are never printed. With `--all`, synchronization continues through every
-provider and returns status 1 if any provider cannot be queried.
-
-`models set <model> [provider]` validates the ID against the provider's
-synced models and writes the top-level `model` field as `provider/model`
-(bare `provider/model` prefixes must match the target; `--dry-run` previews
-without writing). `--context-window` and `--max-output-tokens` update the
-selected model's `limit` fields in the same operation.
-
-`models update <model> [provider] --set FIELD=VALUE` edits one synced model
-entry in place (repeat `--set` for multiple fields; `--dry-run` previews).
-Available fields are `name` (plain text, empty clears), `limit` and `options`
-(JSON objects, empty clears), and `variants` (JSON object mapping variant
-names to variant configs). Unknown models and fields are rejected with the
-available values listed.
-
-## Delete and Rename
-
-```bash
-cpx delete my-provider --dry-run
-cpx delete my-provider
-cpx delete my-provider --full
-cpx rename my-provider new-provider --dry-run
-
-opx delete my-provider --full
-opx rename my-provider new-provider
-```
-
-`delete` removes provider configuration but retains authentication by default.
-Pass `--full` to remove auth too. If a provider was already deleted, run
-`delete <provider> --full` again to remove orphaned auth. Re-adding the provider
-replaces retained auth with the newly entered key.
-
-The current provider cannot be deleted until another provider is selected.
-OpenCode preserves unrelated JSONC content during deletion. OpenCode rename
-updates the provider key, matching auth entry, and top-level default model in
-one operation.
-
-## Export and Import
-
-```bash
-cpx export backup.json
-cpx export -
-cpx export opencode-providers.json --for opx
-opx import opencode-providers.json --dry-run
-opx import opencode-providers.json
-```
-
-Omit the file or use `-` to write an export to standard output or read an import
-from standard input. `import --dry-run` validates and previews changes without
-writing files. Exported data can contain credentials and must be protected as a
-secret.
-
-`cpx`, `opx`, `clpx`, and `cupx` can convert OpenAI-compatible provider
-settings for another tool with `export --for <target>`, where `<target>` is
-`cpx`, `opx`, `clpx`, or `cupx`. The generated file is consumed by the target
-CLI's normal `import` command. Conversion carries provider names, base URLs,
-API keys, compatible model metadata, and the active provider when the target
-can represent it. Tool-specific fields are not converted. `cupx` conversion
-only handles custom API providers, never Cursor sign-in accounts. Antigravity
-account exports remain separate and do not provide `--for`.
-
-## Automatic Snapshots
-
-Codex provider `switch`, `delete`, `rename`, and `import` write a full
-pre-change snapshot to `~/.codex-provider/backups/` before modifying provider
-state. Snapshots use the export JSON format, include auth data, and are stored
-with owner-only permissions. The ten most recent snapshots are retained.
-
-Restore a snapshot with the standard import command:
-
-```bash
-cpx import ~/.codex-provider/backups/<snapshot-token>.json
-```
-
-Snapshot files contain credentials. Copy them only over trusted channels and
-remove copies when they are no longer needed.
-
-## Upgrade
-
-```bash
-cpx upgrade --check
-cpx upgrade --dry-run
-cpx upgrade --notes
-cpx upgrade
-```
-
-`upgrade` fetches the latest GitHub release for the current platform, verifies
-the asset against its published SHA-256 checksum, and atomically replaces the
-executable. `--check` only reports whether a newer version exists; `--dry-run`
-prints what would be downloaded without replacing anything. The command is
-available in every provider CLI and targets that CLI's own release asset.
-During an actual upgrade, interactive terminals show download progress and all
-other environments receive concise status lines for download, checksum, and
-installation stages.
-
-Release notes are printed before the binary is replaced, so upgrading never
-installs a change you have not seen: `upgrade` and `upgrade --check` show the
-notes of the newer version, and `upgrade --notes` prints them alone without
-touching the installed binary. Notes come from the release body, which the
-release workflow builds from `CHANGELOG.md`. They list new capabilities only —
-bug fixes are not listed — and long bodies are truncated with a link to the full
-notes when the output would otherwise scroll past the prompt.
-
-Standalone binaries are published per platform as
-`<tool>-<version>-<platform>`. Source installations managed with pip should use
-`pipx upgrade <tool>` instead.
-
-## Cursor Accounts and Models
-
-Cursor stores the signed-in account and the model selection in its SQLite
-`state.vscdb` database, so switching only rewrites a few rows.
-
-```bash
-cupx add work --from-current
-cupx add work --from-current --dry-run
-cupx list
-cupx status
-cupx switch work
-cupx switch work --dry-run
-cupx models list
-cupx models set claude-sonnet-4-6
-cupx models set claude-sonnet-4-6 --dry-run
-```
-`add --from-current` snapshots the account currently signed in to Cursor.
-`switch` writes the saved `cursorAuth/*` tokens and the reactive account fields
-into `state.vscdb`; chat history and workspace state are shared and never
-touched. `delete --full` also clears the auth rows in Cursor, logging the app
-out.
-
-`models list` prints the model catalog cached in the Cursor database plus the
-current selection per surface. `models set` validates the id against the catalog
-and applies it to every surface (`composer`, `cmd-k`, `background-composer`,
-`composer-ensemble`, `plan-execution`, `spec`, `deep-search`, `quick-agent`) and
-updates `modelLastUsedAt`.
-
-### Custom providers and model sync
-
-Cursor supports custom OpenAI-compatible providers (for example DeepSeek)
-through Settings > Models. The base URL is stored as `openAIBaseUrl` in the
-Cursor database and the API key in the encrypted `secret://cursorAuth/openAIKey`
-row. `cursor-provider` can capture and restore both.
-
-```bash
-cupx provider add deepseek --from-current
-cupx provider add moon --base-url https://api.moon.com --api-key-stdin
-cupx provider list
-cupx provider switch deepseek --dry-run
-cupx provider switch deepseek
-cupx provider delete deepseek --full
-cupx models sync deepseek
-cupx models sync deepseek --dry-run
-```
-
-- `provider add --from-current` snapshots the provider currently configured in
-  Cursor (base URL plus the API key row).
-- `provider add --base-url` stores a new base URL and prompts for the API key
-  with a hidden prompt; pass `--api-key-stdin` to pipe it in instead (identical
-  behavior to `cpx add`). On Windows the key is re-encrypted into
-  Cursor's secret format using the DPAPI-wrapped key in `Local State`; on macOS
-  and Linux the tool reads Cursor's encryption key from the login Keychain or
-  Secret Service keyring (the first terminal run asks for Keychain access). If
-  the platform key cannot be read, keys can still be captured from Cursor with
-  `--from-current`.
-- `provider switch` rewrites `openAIBaseUrl` and the secret row, then `models
-  sync` fetches `GET {base_url}/models` and adds missing ids to the Cursor
-  model catalog as user-added entries (existing entries are preserved; models
-  are never removed).
-- `list` prints three sections: saved accounts, custom providers (with the
-  active provider marked), and user-added models with their provider origin.
-- `provider delete --full` clears the base URL and key row in Cursor.
-
-Custom API keys only affect chat models; Tab completion continues to use
-Cursor's built-in models.
-
-Cursor keeps the database and its in-memory state in sync while running; quit
-Cursor before `switch`, `models set`, `provider switch`, or `delete --full` so
-the change is not overwritten. These commands warn when a Cursor process is
-detected.
-
-`test` and `ping` validate the saved access token locally: the JWT is decoded,
-its expiry is checked, and the account identity is printed. They return status 1
-for an expired token.
-
-## Antigravity Accounts
-
-### Login and import
-
-```bash
-apx login work-account
-apx login work-account --dry-run
-apx add work-account --from-current
-apx add work-account --from-dir /path/to/account
-apx add work-account --login
-```
-
-`login` starts an interactive AGY login and saves the resulting account
-snapshot. `add` can import the active token, import an account directory, or
-delegate to the login flow.
-
-### Quota usage
-
-```bash
-apx usage
-apx usage work-account
-```
-
-Without an account name, `usage` queries the current account. It initializes
-Code Assist for that account, uses the returned project for the quota request,
-and reports remaining 5-hour and weekly limits by model group. Expired access
-tokens are refreshed in memory; the active account and saved credentials are
-not modified.
-
-## Storage Locations
-
-### Codex
+## Command Tree Overview
 
 ```text
-~/.codex/
-~/.codex-provider/config.toml
-~/.codex-provider/auth/
-~/.codex-provider/backups/
-~/.codex-provider/catalogs/
-~/.codex-provider/recent.json
-~/.codex-provider/.lock
+xpx
+├── add <name> [base_url]
+├── list
+├── show <name>
+├── delete <name>
+├── rename <old> <new>
+│
+├── auth
+│   ├── show [name]
+│   └── set <name>
+│
+├── config
+│   ├── show [name] [target]
+│   └── set <name> [target]
+│
+├── models
+│   ├── sync <provider>
+│   ├── list [provider]
+│   └── set <model> <provider>
+│
+├── apply [target] [provider_spec]
+│
+├── account
+│   ├── login <target> [name]
+│   ├── snapshot <target> <name>
+│   ├── list
+│   └── usage [target] [name]
+│
+├── status
+├── doctor
+├── test [provider]
+├── ping [target] [provider_spec]
+├── migrate [--dry-run]
+├── import [file]
+├── export [file]
+└── upgrade
 ```
 
-Synced Codex model catalogs live in `~/.codex-provider/catalogs/` (one JSON
-file per provider, referenced by the provider's
-`provider_model_catalog_json` pointer).
+---
 
-### OpenCode
+## 1. Provider Asset Management
 
-The first existing global config path in this order is used:
+### `xpx add <name> [base_url]`
+Register a new API provider into the centralized store (`~/.xpx/providers/<name>.json`).
 
-```text
-~/.config/opencode/opencode.jsonc
-~/.config/opencode/opencode.json
-~/.config/opencode/config.json
+- **Arguments**:
+  - `name`: Identifier containing only letters, numbers, hyphens, and underscores (`^[a-zA-Z0-9_-]+$`).
+  - `base_url`: API base endpoint URL (e.g., `https://api.deepseek.com/v1`). Prompted if omitted in interactive TTY.
+- **Options**:
+  - `--key <text>`: API key string.
+  - `--key-stdin`: Read the API key from stdin.
+  - `--default-model <text>`: Primary model ID to use by default.
+  - `--protocol <openai|anthropic>`: Wire protocol (default: `openai`).
+
+```bash
+# Add with interactive key entry
+xpx add deepseek https://api.deepseek.com/v1 --default-model deepseek-reasoner
+
+# Add via stdin pipe
+echo "sk-secret" | xpx add openrouter https://openrouter.ai/api/v1 --key-stdin
 ```
 
-Authentication and provider recency are stored at:
+### `xpx list`
+List all registered providers and their active status across client targets.
 
-```text
-~/.local/share/opencode/auth.json
-~/.local/state/opencode/opencode-provider-recent.json
+- **Options**:
+  - `--json`: Output as structured JSON.
+
+```bash
+xpx list
 ```
 
-`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_STATE_HOME` are respected on macOS
-and Linux.
+### `xpx show <name>`
+Inspect provider properties and any saved target-specific overrides.
 
-### Antigravity
-
-```text
-~/.gemini/antigravity-cli/
-~/.gemini/config/config.json
-~/.gemini/agy-provider/auth.json
-~/.gemini/agy-provider/state/
+```bash
+xpx show deepseek
 ```
 
-### Cursor
+### `xpx delete <name>`
+Delete a provider from the central store.
 
-```text
-~/.cursor-provider/auth.json
-~/.cursor-provider/state/state.json
-~/.cursor-provider/state/recent.json
+- **Options**:
+  - `--full`: Also remove this provider's configuration from all active client targets.
+  - `--dry-run`: Preview changes without deleting.
+
+```bash
+xpx delete deepseek --full
 ```
 
-The Cursor database written by this CLI is:
+### `xpx rename <old> <new>`
+Rename a provider asset.
 
-```text
-%APPDATA%\Cursor\User\globalStorage\state.vscdb   (Windows)
-~/Library/Application Support/Cursor/User/globalStorage/state.vscdb   (macOS)
-~/.config/Cursor/User/globalStorage/state.vscdb   (Linux)
+```bash
+xpx rename deepseek ds-corp
 ```
 
-### Claude
+---
 
-```text
-~/.claude/settings.json
-~/.claude-provider/config.json
-~/.claude-provider/auth/
-~/.claude-provider/recent.json
-~/.claude-provider/.lock
+## 2. Credentials and Configuration (`auth` / `config`)
+
+### `xpx auth show [name]`
+Display masked API key summaries (first 4 and last 4 characters, length, and format validity).
+
+```bash
+xpx auth show deepseek
 ```
 
-`~/.claude/settings.json` is the Claude Code global settings file managed by
-Claude itself; this CLI only adds or updates the `env` keys
-`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`. The settings path can be
-customized with the `settings_path` field in `~/.claude-provider/config.json`.
+### `xpx auth set <name>`
+Update the API key for a provider. If the provider is currently active in any client targets, `xpx` automatically updates and re-renders configuration for those targets.
 
-## Safety and Exit Semantics
+- **Options**:
+  - `--key <text>`: New API key.
+  - `--key-stdin`: Read key from stdin.
 
-- Credential values are redacted from inspection output.
-- Writes are atomic and preserve existing POSIX file modes.
-- Provider state directories and secret files use restrictive permissions.
-- OpenCode JSONC comments and trailing commas are preserved.
-- Unrelated global configuration remains unchanged.
-- Disabled or excluded providers cannot be selected accidentally.
-- A successful command returns status 0; validation, connectivity, and command failures return a non-zero status.
-- `--all` operations continue after individual failures and summarize the final result.
+```bash
+xpx auth set deepseek --key "sk-new-key"
+```
 
-Return to the [README](../README.md) or [Chinese README](../README-CN.md).
+### `xpx config set <name> [target]`
+Update configuration settings. Automatically handles universal base settings vs. target-specific overrides:
+
+- **Without `target`** (universal base settings):
+  - `--base-url <url>`: Update endpoint base URL.
+  - `--default-model <model>`: Update default model.
+  - *Re-applies to all active targets automatically.*
+- **With `target`** (target-specific override settings):
+  - `--header <k=v>`: Add or update a client-specific header (pass `k=` to remove).
+  - `--fast` / `--no-fast`: Codex-specific fast mode.
+  - `--wire-api <chat|responses>`: Codex-specific wire API.
+  - `--web-search <true|false>`: Codex-specific web search toggle.
+  - `--option <k=v>`: Generic client override option.
+
+```bash
+# Universal base update
+xpx config set deepseek --base-url https://api.deepseek.com/v1
+
+# Target-specific override for Codex
+xpx config set deepseek codex --fast --header x-custom-id=123
+```
+
+### `xpx config show [name] [target]`
+Inspect effective configuration, merging universal base values with target-specific overrides.
+
+```bash
+xpx config show deepseek codex
+```
+
+---
+
+## 3. Models and Catalog (`models`)
+
+### `xpx models sync <provider>`
+Discover remote models from `{base_url}/models` and enrich them with known context windows, token limits, and reasoning levels from the built-in catalog.
+
+- **Options**:
+  - `--force`: Force overwrite existing custom reasoning levels for all models under this provider.
+
+```bash
+xpx models sync deepseek
+```
+
+### `xpx models list [provider]`
+List cached models for a provider or all providers.
+
+- **Options**:
+  - `--remote`: Query the remote endpoint directly without reading the local catalog cache.
+
+```bash
+xpx models list deepseek
+```
+
+### `xpx models set <model> <provider>`
+Configure model metadata or set the provider's default model.
+
+- **Options**:
+  - `--default`: Mark this model as the provider's default model.
+  - `--context <int>`: Set context window size in tokens.
+  - `--max-output <int>`: Set max output tokens limit.
+  - `--effort <level>`: Set default reasoning effort level (e.g. `high`, `medium`, `low`).
+
+```bash
+xpx models set deepseek-reasoner deepseek --default --effort high
+```
+
+---
+
+## 4. Client Application & Switching (`apply`)
+
+The `apply` command is the **single point of mutation** for external agent configs.
+
+### Syntax
+```bash
+xpx apply [target] [provider_spec] [options]
+```
+
+- **Positional Arguments**:
+  - `target`: Target client (`codex`, `opencode`, `cursor`, `claude`, `agy`, `pi`), or comma-separated list (`codex,pi`).
+  - `provider_spec`:
+    - `<provider>`: Use provider with its default model.
+    - `<provider>/<model>`: Use provider with a specific model.
+    - `:<model>`: Keep the active provider, but switch to a different model.
+- **Options**:
+  - `--all`: Apply across all installed client targets.
+  - `--account <name>`: Apply a saved OAuth or session account (e.g. `xpx apply agy --account work`).
+  - `--model <id>`: Explicit model identifier flag.
+  - `--clear` / `--reset`: Reset client configuration back to official defaults.
+  - `--dry-run`: Preview file modifications and configuration diff without touching the disk.
+  - `--no-save`: Do not persist target-specific overrides from the command line into the provider's archive.
+  - **Client Overrides (applied and automatically remembered)**:
+    - `--header <k=v>`: Custom HTTP headers.
+    - `--fast` / `--no-fast`: Codex fast mode.
+    - `--wire-api <chat|responses>`: Codex wire API.
+    - `--web-search <true|false>`: Codex standalone web search.
+
+```bash
+# Apply deepseek to Codex with fast mode enabled (remembers fast mode for next time)
+xpx apply codex deepseek --fast
+
+# Apply deepseek to multiple clients at once
+xpx apply codex,opencode deepseek
+
+# Switch model only on active provider for OpenCode
+xpx apply opencode :deepseek-chat
+
+# Apply an Antigravity account
+xpx apply agy --account work
+
+# Preview changes with dry-run
+xpx apply codex deepseek --dry-run
+
+# Reset client to official defaults
+xpx apply codex --reset
+```
+
+---
+
+## 5. Account Lifecycle (`account`)
+
+### `xpx account login <target> [name]`
+Initiate the target client's native OAuth login flow (e.g., Google OAuth for Antigravity).
+
+```bash
+xpx account login agy work
+```
+
+### `xpx account snapshot <target> <name>`
+Snapshot currently active session or credential files from the target client (e.g., Cursor SQLite session or Codex official `auth.json`) into a named account asset.
+
+```bash
+xpx account snapshot codex official-work
+xpx account snapshot cursor personal
+```
+
+### `xpx account list`
+List all saved accounts and snapshots across targets.
+
+```bash
+xpx account list
+```
+
+### `xpx account usage [target] [name]`
+Query quota and remaining limits (e.g. Antigravity 5-hour and weekly quota).
+
+```bash
+xpx account usage agy work
+```
+
+---
+
+## 6. Dashboard, Verification, and Diagnostics
+
+### `xpx status`
+Display the global dashboard showing active providers, models, and account quotas across all detected client agents.
+
+```bash
+xpx status
+```
+
+### `xpx doctor [--fix]`
+Run comprehensive health checks across all detected clients:
+- Verifies syntax and parseability of client configuration files.
+- Checks API key format and endpoint reachability.
+- Validates state consistency and cleans dangling references when `--fix` is passed.
+
+```bash
+xpx doctor
+xpx doctor --fix
+```
+
+### `xpx test [provider]`
+Perform HTTP API probe tests against provider `/models` endpoints:
+- Reports HTTP status code, latency (ms), and available model count.
+- `--all`: Probe all configured providers.
+
+```bash
+xpx test deepseek
+xpx test --all
+```
+
+### `xpx ping [target] [provider_spec]`
+End-to-end integration test running a minimal prompt through the actual client binary.
+
+- **Options**:
+  - `--prompt <text>`: Custom prompt to send (default: `"say hi"`).
+  - `--timeout <int>`: Timeout in seconds (default: 60s).
+  - `--all`: Concurrently execute verification across all installed targets using a thread pool.
+
+```bash
+# Test single client
+xpx ping codex deepseek
+
+# Concurrently test all installed clients
+xpx ping --all
+```
+
+---
+
+## 7. Migration, Backups, and Self-Upgrade
+
+### `xpx migrate [--dry-run]`
+Scan local environment and migrate legacy configurations from previous 1.x CLIs (Codex `cpx`, OpenCode `opx`, Claude `clpx`, Cursor `cupx`, Antigravity `apx`) into `~/.xpx/`.
+
+- **Options**:
+  - `--dry-run`: Inspect and preview all discovered legacy providers and accounts without writing to disk.
+
+```bash
+# Preview discovered legacy configurations
+xpx migrate --dry-run
+
+# Run full migration
+xpx migrate
+```
+
+### `xpx import [file]`
+Smart format-sniffing import:
+- **Without `file`**: Automatically executes the legacy migration scan.
+- **With `file`**: Automatically detects format (Codex TOML, OpenCode JSON, Claude settings, or xpx backup) without requiring manual flags.
+
+```bash
+# Run migration scan
+xpx import
+
+# Import specific file
+xpx import my-backup.json
+```
+
+### `xpx export [file]`
+Export all providers, accounts, and configuration into a unified JSON backup file.
+
+```bash
+xpx export backup-2026.json
+```
+
+### `xpx upgrade`
+Self-upgrade the standalone `xpx` binary to the latest release from GitHub.
+
+- `--check`: Check if an update is available without downloading.
+- `--notes`: Print latest release notes.
+- `--dry-run`: Preview download and replacement steps.
+
+```bash
+xpx upgrade --check
+xpx upgrade --notes
+xpx upgrade
+```

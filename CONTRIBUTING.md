@@ -1,8 +1,6 @@
 # Contributing
 
-Contributions should preserve the shared CLI contract while keeping
-backend-specific filesystem and authentication behavior isolated in the
-corresponding provider module.
+Contributions should preserve the single control plane architecture in `src/lib/xpx/` while keeping target-specific adapter behavior isolated in `src/lib/xpx/adapters/`.
 
 ## Development Setup
 
@@ -20,30 +18,24 @@ On Windows, replace `./.venv/bin/python` with `.venv\Scripts\python.exe`.
 ## Repository Layout
 
 ```text
-src/cli/        CLI entry points
-src/lib/common/ Shared parsing, network, storage, and platform helpers
-src/lib/codex/  Codex-specific behavior
-src/lib/opencode/ OpenCode-specific behavior
-src/lib/agy/    Antigravity-specific behavior
-src/lib/claude/ Claude-specific behavior
-tests/          Command, storage, network, and parity tests
+src/cli/          Unified CLI entrypoint (xpx.py)
+src/lib/common/   Shared cryptography, storage, network, and upgrade helpers
+src/lib/xpx/      xpx control plane core
+  store/          State, provider, and account persistence (~/.xpx/)
+  adapters/       Client adapters (codex, opencode, cursor, claude, agy, pi)
+  models/         Model discovery, sync, and catalog enrichment
+  commands/       CLI domain implementations
+  accounts/       Session and OAuth account handlers
+tests/            Unit, adapter, and CLI end-to-end tests
 ```
 
-The shell launchers in the repository root execute the Python entry points.
-PyInstaller specifications produce the standalone binaries in `dist/`.
+## Control Plane Architecture
 
-## CLI Consistency
+All configuration is managed centrally in `~/.xpx/`. Native client modifications are isolated strictly to the `apply` command domain.
 
-Changes to a shared command must update `cpx` and
-`opx` in the same change, and keep `clpx` aligned
-where the shared command surface applies. Keep command names, aliases, positional
-arguments, options, defaults, validation rules, exit codes, dry-run behavior,
-and user-facing wording aligned.
-
-Before completing changes to shared commands, inspect the parser, dispatch
-path, implementation, documentation, and mirrored tests for both CLIs.
-OpenCode-only `models` behavior and Antigravity account workflows are valid
-backend-specific extensions.
+- The primary CLI binary is `xpx`.
+- Legacy multi-call aliases transparently route to `xpx` with semantic command translation.
+- New capabilities should be added directly to the appropriate `xpx` command domain or target adapter.
 
 ## Validation
 
@@ -55,93 +47,57 @@ Run the full suite from the repository root:
 ./.venv/bin/python -m pytest -q
 ```
 
-Also verify that every wrapper starts and exposes its intended commands:
+Also verify that `xpx` starts and exposes its commands:
 
 ```bash
-./cpx --help
-./opx --help
-./apx --help
-./clpx --help
+./xpx --help
+./xpx status
 ```
 
-For behavior changes, validate the exact commands touched. Shared command work
-should cover the Codex, OpenCode, and Claude variants, especially `auth detail`,
-`auth edit`, `config detail`, `config edit`, `switch`, and `doctor`.
-
-Tests that read or write provider state must use an isolated temporary `HOME`
-and, where relevant, temporary XDG directories. Do not point tests at your real
-Codex, OpenCode, or Antigravity configuration.
+Tests that read or write provider state must use an isolated temporary `HOME` (or `XPX_HOME`). Do not point tests at your real user configuration.
 
 ## Building Binaries
 
-One build invocation creates all standalone binaries and matching
-SHA-256 files:
+One build invocation creates the standalone `xpx` binary and matching SHA-256 file:
 
 ```bash
 ./.venv/bin/python build.py
-./build.sh
-./dist/cpx --help
-./dist/opx --help
-./dist/apx --help
-./dist/clpx --help
+./dist/xpx --help
+./dist/xpx status
 ```
 
 On Windows:
 
 ```bat
 py -3 build.py
-build.cmd
-dist\cpx.exe --help
-dist\opx.exe --help
-dist\apx.exe --help
-dist\clpx.exe --help
+dist\xpx.exe --help
+dist\xpx.exe status
 ```
 
-Use `--target codex`, `--target opencode`, `--target agy`, `--target cursor`,
-or `--target claude`
-with `build.py` to build one target. Do not edit generated files in `build/` or
-`dist/` manually.
+Do not edit generated files in `build/` or `dist/` manually.
 
 ## Release Process
 
-The package version is defined in `src/lib/common/constants.py`. GitHub Actions
-builds Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon) binaries and
-publishes a release when a matching version tag is pushed. The release body
-comes from `CHANGELOG.md`, and `cpx upgrade` prints it before installing, so
-the notes are part of the deliverable rather than an afterthought.
+The package version is defined in `src/lib/common/constants.py`. GitHub Actions builds Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon) binaries and publishes a release when a matching version tag is pushed. The release body comes from `CHANGELOG.md`, and `xpx upgrade` prints it before installing.
 
-Every release entry is short and user-facing: one bullet per new capability,
-written for someone running the CLI. Bug fixes are not listed. CI fails on a
-version bump without a matching `CHANGELOG.md` section, and the test suite
-fails if a section grows past twelve rendered lines.
+Every release entry is short and user-facing: one bullet per new capability, written for someone running the CLI. Bug fixes are not listed. CI fails on a version bump without a matching `CHANGELOG.md` section, and the test suite verifies that the release notes parser extracts notes without truncation.
 
 ```bash
-# while a change is in review
+# when developing
 $EDITOR CHANGELOG.md          # add a bullet under "## [Unreleased]"
 
 # when cutting a release
-$EDITOR CHANGELOG.md          # move those bullets under "## [1.6.0] - YYYY-MM-DD"
-$EDITOR src/lib/common/constants.py   # VERSION = "1.6.0"
+$EDITOR CHANGELOG.md          # move those bullets under "## [X.Y.Z] - YYYY-MM-DD"
+$EDITOR src/lib/common/constants.py   # VERSION = "X.Y.Z"
 ./scripts/release_notes.py --check    # the same check CI runs
-git tag v1.6.0
-git push origin v1.6.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 To read a section the way a user will see it:
 
 ```bash
-./scripts/release_notes.py --version 1.5.4
-./cpx upgrade --notes
-./cpx upgrade --check
+./scripts/release_notes.py --version 2.0.0
+./xpx upgrade --notes
+./xpx upgrade --check
 ```
-
-The Release workflow can also be run manually. A release fails if its tag does
-not match the package version, or if the changelog has no section for that
-version. Every staged binary receives a matching `.sha256` checksum file.
-
-## Pull Requests
-
-Keep changes focused and use short imperative commit messages. A pull request
-should summarize behavior changes, list validation commands, and identify any
-filesystem side effects. Include terminal screenshots only when output
-formatting is the behavior under review.

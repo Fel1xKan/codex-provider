@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import cli.codex_provider as cp
+import cli.xpx as cp
 import lib.common.release_notes as notes
 import lib.common.self_upgrade as self_upgrade
 from lib.common.constants import VERSION
@@ -87,13 +87,13 @@ def test_render_notes_keeps_identifiers_with_underscores() -> None:
     """Underscores inside an identifier are not emphasis."""
 
     lines = notes.render_notes(
-        "- cpx models update --set supported_reasoning_levels=low,high\n"
+        "- xpx models update --set supported_reasoning_levels=low,high\n"
         "- _real emphasis_ stays removable\n"
         "- `a_b_c` in a code span is untouched\n"
     )
 
     assert lines == [
-        "- cpx models update --set supported_reasoning_levels=low,high",
+        "- xpx models update --set supported_reasoning_levels=low,high",
         "- real emphasis stays removable",
         "- a_b_c in a code span is untouched",
     ]
@@ -138,8 +138,8 @@ def test_print_notes_falls_back_to_the_release_url(capsys) -> None:
         current_version="1.0.0",
         latest_version="1.1.0",
         release_url="https://example.com/release",
-        asset_name="cpx-1.1.0-linux-x86_64",
-        asset_url="https://example.com/cpx",
+        asset_name="xpx-1.1.0-linux-x86_64",
+        asset_url="https://example.com/xpx",
         sha256_url=None,
         update_available=True,
     )
@@ -152,7 +152,7 @@ def test_print_notes_falls_back_to_the_release_url(capsys) -> None:
 def _release_payload(body: str | None = None) -> dict[str, object]:
     platform_key = self_upgrade._platform_key()
     suffix = ".exe" if os.name == "nt" else ""
-    asset_name = f"cpx-1.1.0-{platform_key}{suffix}"
+    asset_name = f"xpx-1.1.0-{platform_key}{suffix}"
     payload: dict[str, object] = {
         "tag_name": "v1.1.0",
         "html_url": "https://example.com/release",
@@ -160,7 +160,7 @@ def _release_payload(body: str | None = None) -> dict[str, object]:
         "assets": [
             {
                 "name": asset_name,
-                "browser_download_url": "https://example.com/cpx",
+                "browser_download_url": "https://example.com/xpx",
             }
         ],
     }
@@ -173,7 +173,7 @@ def test_build_upgrade_plan_carries_release_notes() -> None:
     payload = _release_payload(body="## Added\n\n- something new")
 
     plan = self_upgrade.build_upgrade_plan(
-        "owner/repo", "cpx", "1.0.0", payload, legacy_name=None
+        "owner/repo", "xpx", "1.0.0", payload, legacy_name=None
     )
 
     assert plan.notes == "## Added\n\n- something new"
@@ -184,7 +184,7 @@ def test_build_upgrade_plan_tolerates_a_missing_body() -> None:
     payload = _release_payload()
 
     plan = self_upgrade.build_upgrade_plan(
-        "owner/repo", "cpx", "1.0.0", payload, legacy_name=None
+        "owner/repo", "xpx", "1.0.0", payload, legacy_name=None
     )
 
     assert plan.notes == ""
@@ -195,8 +195,8 @@ def _plan_available() -> self_upgrade.UpgradePlan:
         current_version="1.0.0",
         latest_version="1.1.0",
         release_url="https://example.com/release",
-        asset_name="cpx-1.1.0-linux-x86_64",
-        asset_url="https://example.com/cpx",
+        asset_name="xpx-1.1.0-linux-x86_64",
+        asset_url="https://example.com/xpx",
         sha256_url=None,
         update_available=True,
         notes="### Added\n\n- a new command\n",
@@ -211,7 +211,7 @@ def no_upgrade(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("upgrade must not install during this test")
 
     monkeypatch.setattr(self_upgrade, "perform_upgrade", fail)
-    monkeypatch.setattr(self_upgrade, "current_executable", lambda: Path("/bin/cpx"))
+    monkeypatch.setattr(self_upgrade, "current_executable", lambda: Path("/bin/xpx"))
 
 
 def test_upgrade_check_shows_release_notes(
@@ -260,8 +260,8 @@ def test_upgrade_check_stays_quiet_when_up_to_date(
         current_version="1.1.0",
         latest_version="1.1.0",
         release_url="https://example.com/release",
-        asset_name="cpx-1.1.0-linux-x86_64",
-        asset_url="https://example.com/cpx",
+        asset_name="xpx-1.1.0-linux-x86_64",
+        asset_url="https://example.com/xpx",
         sha256_url=None,
         update_available=False,
         notes="### Added\n\n- already installed\n",
@@ -279,23 +279,15 @@ def test_upgrade_check_stays_quiet_when_up_to_date(
 
 
 def test_upgrade_command_exposes_notes_flag() -> None:
-    """Every CLI shares one upgrade spec, so parity is structural."""
+    from lib.xpx.parser import build_parser
 
-    import cli.agy_provider as ap
-    import cli.claude_provider as clp
-    import cli.cursor_provider as cup
-    import cli.opencode_provider as op
-
-    for module in (cp, op, ap, cup, clp):
-        parser = module.build_parser()
-        action = next(
-            item
-            for item in parser._actions
-            if isinstance(item, argparse._SubParsersAction)
-        )
-        upgrade = action.choices["upgrade"]
-        flags = {opt for item in upgrade._actions for opt in item.option_strings}
-        assert {"--check", "--dry-run", "--notes"} <= flags, module.__name__
+    parser = build_parser()
+    action = next(
+        item for item in parser._actions if isinstance(item, argparse._SubParsersAction)
+    )
+    upgrade = action.choices["upgrade"]
+    flags = {opt for item in upgrade._actions for opt in item.option_strings}
+    assert {"--check", "--dry-run", "--notes"} <= flags
 
 
 def test_release_notes_stay_short() -> None:

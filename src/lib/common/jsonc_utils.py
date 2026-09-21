@@ -1,8 +1,14 @@
-from __future__ import annotations
+from dataclasses import dataclass
 
 import json5
 
-from lib.opencode.store import Token
+
+@dataclass(frozen=True)
+class Token:
+    kind: str
+    start: int
+    end: int
+    text: str
 
 
 def tokenize_jsonc(text: str) -> list[Token]:

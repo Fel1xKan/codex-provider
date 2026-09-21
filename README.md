@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset=".github/logo-light.svg">
-    <img alt="codex-provider" src=".github/logo-light.svg" width="440">
+    <img alt="xpx" src=".github/logo-light.svg" width="440">
   </picture>
 </div>
 
@@ -18,254 +18,188 @@
 <div align="center">
   <a href="README-CN.md">简体中文</a> &middot;
   <a href="#quick-start">Quick Start</a> &middot;
+  <a href="#features">Features</a> &middot;
   <a href="#usage">Usage</a> &middot;
   <a href="docs/command-reference.md">Command Reference</a> &middot;
+  <a href="docs/architecture.md">Architecture</a> &middot;
   <a href="https://github.com/Fel1xKan/codex-provider/issues/new?labels=bug">Report Bug</a>
 </div>
 
-> Switch Codex, OpenCode, Antigravity, Cursor, and Claude accounts and models without hand-editing credentials or global configuration.
-
-The five CLIs are built on a shared command registry and backend adapter
-framework; see [docs/architecture.md](docs/architecture.md) for the command
-definition model and how to onboard a new agent provider.
+> Unified AI Agent Provider Control Plane for Codex, OpenCode, Claude, Cursor, Antigravity, and Pi.
 
 ---
 
-## Why codex-provider?
+## Why xpx?
 
-AI coding CLIs store providers, models, and credentials in different formats and
-locations. If you regularly move between official accounts, compatible API
-providers, or Antigravity accounts, manual edits are easy to get wrong and hard
-to audit. This project gives each tool a focused CLI with aligned commands,
-validation, safe writes, and dry-run previews.
+Modern AI coding agents (Codex, OpenCode, Claude Code, Cursor, Antigravity, Pi) each store providers, credentials, and model configurations in isolated locations and inconsistent formats (TOML, JSON, SQLite, environment files). Managing multiple providers, official logins, or API keys across several tools requires constant manual edits, risking formatting bugs and secret exposure.
+
+**`xpx` centralizes all AI agent configuration into a single control plane.** Manage your providers and accounts once in `~/.xpx/`, and let `xpx apply` render configurations into any agent with automatic memory and zero side effects until applied.
+
+---
+
+## Supported Agents
+
+| Target Agent | Configuration Target | Capabilities Supported |
+|--------------|----------------------|------------------------|
+| **Codex** | `~/.codex/config.toml` | Custom providers, fast mode, wire API, web search, reasoning levels |
+| **OpenCode** | `opencode.json` (XDG config) | Provider discovery, models catalog, JSONC formatting preservation |
+| **Claude Code** | `~/.claude/settings.json` | Custom Anthropic-compatible endpoints, default models |
+| **Cursor** | `state.vscdb` (SQLite) | Custom OpenAI-compatible providers, model switching, account snapshots |
+| **Antigravity** | `~/.gemini/antigravity-cli` | OAuth accounts, session switching, 5-hour and weekly quota tracking |
+| **Pi Agent** | `~/.pi/agent/models.json` / `config.yaml` | Multi-model definitions, custom providers |
+
+---
 
 ## Features
 
-- **Switch without manual edits** - select saved providers or accounts while preserving unrelated global configuration.
-- **Isolate the official Codex login** - snapshot it as a provider and remove managed API-provider entries when switching back.
-- **Keep secrets out of terminal output** - inspect authentication metadata and redacted configuration without printing credential values.
-- **Verify the entire path** - probe `/models` endpoints or run a minimal command through Codex, OpenCode, or Antigravity.
-- **Manage Codex models** - discover remote model IDs into per-provider catalog files, publish the reasoning levels Codex offers in `/model`, and set the default model independently of the endpoint.
-- **Manage OpenCode models** - discover remote model IDs, sync new models without deleting metadata, and set the default model independently of switching.
-- **Manage Claude providers and models** - snapshot a local gateway or official endpoint from `settings.json`, sync provider model lists, and switch the default model independently of the endpoint.
-- **Manage Antigravity accounts** - log in, import account snapshots, switch accounts, and inspect 5-hour and weekly quota remaining.
-- **Manage Cursor accounts and models** - snapshot signed-in Cursor accounts, swap auth rows in the Cursor SQLite database, and switch models across every Composer surface.
-- **Manage Claude providers** - switch the base URL, auth token, and optional default model written into `~/.claude/settings.json`.
-- **Move API providers between tools** - export OpenAI-compatible provider settings from Codex, OpenCode, Claude, or Cursor into another CLI's import format.
-- **Preview and recover changes** - use dry runs, import pre-change snapshots retained by Codex provider mutations, and export or import provider data as JSON.
-- **Move quickly between recent providers** - interactive pickers and list output prioritize recently used entries.
+- **Single Point of Mutation**: Provider additions (`xpx add`), credential updates (`xpx auth set`), and configuration edits (`xpx config set`) only modify `~/.xpx/`. External agent configs are touched exclusively during `xpx apply`.
+- **Automatic Override Memory**: Apply client-specific flags once (e.g. `xpx apply codex deepseek --fast`), and `xpx` remembers them automatically for future applies.
+- **Unified Multi-Client Dashboard**: Run `xpx status` to see the active provider, model, and quota across all installed agents in a single view.
+- **Concurrent Integration Testing**: Run `xpx ping --all` to concurrently verify end-to-end prompt latency across all installed coding agents.
+- **Centralized Model Catalog**: Auto-sync model limits, token windows, and reasoning tiers from upstream vendor documentation (`xpx models sync`).
+- **Full Account Lifecycle**: Manage OAuth logins and session snapshots (`xpx account login`, `xpx account snapshot`, `xpx account usage`).
+- **Comprehensive Diagnostics**: Run `xpx doctor [--fix]` to validate configuration syntax, test API reachability, and repair dangling references.
+- **Zero Python Dependency**: Distributed as a single self-contained standalone binary with built-in self-upgrade (`xpx upgrade`).
 
-## Choose Your CLI
-
-| CLI | Use it for | Native configuration |
-|-----|------------|----------------------|
-| `cpx` | Codex-compatible API providers, per-provider catalog and web-search options, official-login snapshots, and auth snapshots | `~/.codex` and `~/.codex-provider` |
-| `opx` | OpenCode providers, credentials, default models, and model discovery | XDG OpenCode config, data, and state directories |
-| `apx` | Antigravity accounts, login snapshots, switching, and quota checks | `~/.gemini/antigravity-cli` and `~/.gemini/agy-provider` |
-| `cupx` | Cursor accounts and model selection stored in the Cursor SQLite database | `%APPDATA%\Cursor\User\globalStorage\state.vscdb` and `~/.cursor-provider` |
-| `clpx` | Claude-compatible API providers and default models, written into Claude global settings | `~/.claude/settings.json` and `~/.claude-provider` |
-
-The previous `codex-provider`/`opencode-provider`/`agy-provider`/`cursor-provider`/
-`claude-provider` names were removed in v1.4.0. Use the short names above.
-
-The Codex, OpenCode, and Claude CLIs intentionally share command names and behavior for
-their common operations. Codex adds `official` plus focused `config set`,
-catalog options, and `models`; OpenCode adds `models`; Antigravity adds `login`
-and `usage`; Cursor adds `model` because those workflows are backend-specific.
-
-## When to Use
-
-Use these CLIs when you maintain multiple providers or accounts and want a
-repeatable way to switch, validate, back up, and troubleshoot them. They are
-especially useful in scripts because mutating commands expose `--dry-run` and
-return non-zero status codes on failure.
-
-This project does not create provider subscriptions, install the target Codex,
-OpenCode, Antigravity, or Cursor tools, or bypass provider authentication. It
-manages configuration and credentials that you already control.
+---
 
 ## Quick Start
 
+### Install Standalone Binary (Recommended)
+
+Linux / macOS:
 ```bash
-pipx install git+https://github.com/Fel1xKan/codex-provider.git
-cpx status
+curl -LsSf https://raw.githubusercontent.com/Fel1xKan/codex-provider/master/scripts/install.sh | sh
 ```
 
-Replace the second command with `opx status`, `apx status`, `cupx status`, or
-`clpx status` for the tool you use.
-
-## Install
-
-### With pipx
-
-```bash
-pipx install git+https://github.com/Fel1xKan/codex-provider.git
-```
-
-This installs all five commands in isolated Python packaging. Upgrade with:
-
-```bash
-pipx upgrade cpx
-```
-
-### Standalone binaries
-
-Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon) binaries are
-published with SHA-256 checksum files on the
-[GitHub Releases page][release-url]. Standalone binaries do not require a local
-Python installation.
-
-Install a standalone binary with the official script:
-
-```bash
-curl -LsSf https://raw.githubusercontent.com/Fel1xKan/codex-provider/master/scripts/install.sh | sh -s -- cpx
-```
-
-Windows users run `scripts/install.ps1` from PowerShell:
-
+Windows (PowerShell):
 ```powershell
-irm https://raw.githubusercontent.com/Fel1xKan/codex-provider/master/scripts/install.ps1 | iex -Command cpx
+irm https://raw.githubusercontent.com/Fel1xKan/codex-provider/master/scripts/install.ps1 | iex
 ```
 
-The script detects the platform, downloads the matching release asset, verifies
-its SHA-256 checksum, and installs it to `~/.local/bin`.
-
-Standalone binaries can update themselves from the latest GitHub release:
+### Install with pipx
 
 ```bash
-cpx upgrade
-cpx upgrade --check
-cpx upgrade --notes
+pipx install git+https://github.com/Fel1xKan/codex-provider.git
 ```
 
-`upgrade` prints the release notes of the version it installs before replacing
-the binary, so you always see what changed. Notes list new capabilities only
-and are kept short; `--notes` prints the newest ones on their own.
+---
 
 ## Usage
 
-### Switch, inspect, and validate a provider
+### 1. Add and Manage Providers
 
 ```bash
-cpx list
-cpx switch my-provider --dry-run
-cpx switch my-provider
-cpx status
-cpx doctor
-cpx test my-provider
+# Add a provider with interactive key entry
+xpx add deepseek https://api.deepseek.com/v1 --default-model deepseek-reasoner
+
+# Or pipe in an API key via stdin
+echo "sk-secret" | xpx add openrouter https://openrouter.ai/api/v1 --key-stdin
+
+# List all configured providers
+xpx list
+
+# Update an API key (automatically re-applies to all active agents)
+xpx auth set deepseek --key "sk-new-key"
 ```
 
-Omit the provider from `switch` to open an interactive picker. Recent providers
-appear first. `doctor` checks stored configuration and authentication, while
-`test` probes the provider endpoint.
-
-### Use backend-specific capabilities
+### 2. Apply to Target Agents
 
 ```bash
-cpx models list my-provider
-cpx models sync my-provider --dry-run
-cpx models sync my-provider --force
-cpx models set my-model my-provider
-cpx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
-opx models list my-provider
-opx models sync my-provider --dry-run
-opx models set my-model my-provider
-opx models set my-model my-provider --context-window 200000 --max-output-tokens 16000
-apx login work-account
-apx usage work-account
-cupx add work --from-current
-cupx switch work
-cupx provider add deepseek --from-current
-cupx models sync deepseek
-cupx models set deepseek-v4-flash
+# Apply to Codex with fast mode enabled (remembers fast mode for next time)
+xpx apply codex deepseek --fast
+
+# Apply to multiple targets simultaneously
+xpx apply codex,opencode deepseek
+
+# Apply to all detected agents
+xpx apply --all deepseek
+
+# Switch model only on the active provider
+xpx apply opencode :deepseek-chat
+
+# Preview changes without touching files
+xpx apply codex deepseek --dry-run
+
+# Reset a client to official defaults
+xpx apply codex --reset
 ```
 
-Codex `models sync` merges the provider's current `/models` IDs into its
-catalog file (existing entries keep their metadata, new IDs get a minimal
-entry, removed remote IDs are retained). When a provider exposes explicit
-model metadata, sync also fills missing display name, context, output, and
-input modality fields without guessing from the model ID. `--context-window`
-and `--max-output-tokens` on `models set` write the selected model's limits
-while setting the default. Unpointed providers get a new
-`~/.codex-provider/catalogs/<provider>.json` and pointer automatically, and
-`models set` writes the top-level `model` in `~/.codex/config.toml`. Catalog
-entries publish the reasoning levels Codex renders in `/model`, filled from
-the same versioned metadata catalog using each vendor's documented levels.
-For example `gpt-5.4` offers `none,low,medium,high,xhigh`, `gpt-5.6-sol`
-offers `none,low,medium,high,xhigh,max,ultra`, `claude-opus-5` and
-`claude-opus-4-7` offer `low,medium,high,xhigh,max`, `claude-sonnet-4-6`
-stops at `max`, `deepseek-v4-pro` offers `none,low,high,max`, `glm-5.3`
-offers `low,high,max`, and `grok-4.6` offers `low,medium,high,xhigh`. Vendors
-that expose only a thinking switch (Qwen, Mistral, Kimi K2.6, older Claude)
-show `none`/`high` with the switch wording, models that always reason show a
-single `high`, models with no thinking mode show a single `none`, and unknown
-IDs fall back to `low,medium,high,xhigh,max`. The preselected level is
-`medium` (or `high` where the ladder has no `medium`) so `max` and `ultra`
-stay opt-in.
-Sync refreshes ladders that still match a previously generated shape and
-leaves edited ones alone; `cpx models sync <provider> --force` resets every
-synced model, and `models update --set supported_reasoning_levels=low,medium,high`
-trims one model. OpenCode
-`models sync` adds new IDs to `provider.<id>.models` with the same
-merge-and-retain semantics, imports explicit `limit.context`/`limit.output`
-metadata, and `models set` writes the top-level `model` as `provider/model`;
-use `--all` to sync every configured provider. If a provider's `/models`
-response contains only IDs, all three CLIs consult the versioned
-`data/model-catalog.json` hosted in this repository and cache it locally;
-catalog failures fall back to the cache or leave unknown model limits at
-their normal defaults.
-Anthropic-compatible providers (`npm` is `@ai-sdk/anthropic`) are queried with
-Anthropic headers. Antigravity `usage` reports 5-hour and weekly quota without
-switching accounts.
-Cursor `switch` rewrites the auth rows in the Cursor SQLite database, and
-`models set` applies one model id to every Composer surface. Cursor `provider`
-commands manage custom OpenAI-compatible providers (for example DeepSeek) in
-Cursor's database, and `models sync` imports the provider's remote model list as
-user-added models. The [command reference](docs/command-reference.md) covers
-end-to-end `ping`,
-bulk checks, provider lifecycle operations, and JSON backup or restore.
+### 3. Synchronize Models & Reasoning Tiers
 
-## Safety
+```bash
+# Fetch provider models and enrich with context windows and reasoning tiers
+xpx models sync deepseek
 
-- API keys and authentication values are not printed by inspection commands.
-- Configuration writes are atomic and retain existing POSIX permissions.
-- OpenCode JSONC comments, trailing commas, and unrelated global values are preserved.
-- Provider filters are respected, so disabled providers cannot be selected accidentally.
-- Codex provider `switch`, `delete`, `rename`, `import`, and `config set` keep the ten most recent pre-change snapshots in `~/.codex-provider/backups/`.
-- `switch`, `add`, `delete`, `rename`, `import`, and supported account operations provide dry-run previews.
-- Cursor writes target only the auth and model rows in `state.vscdb`; chat history and workspace state are preserved.
-- API keys passed as positional command arguments are rejected; use a hidden prompt or `--api-key-stdin`.
+# List synced models
+xpx models list deepseek
 
-## Command Reference
+# Set default model and default reasoning effort
+xpx models set deepseek-reasoner deepseek --default --effort high
+```
 
-The five CLIs expose aligned provider-management commands, with focused
-extensions for OpenCode model discovery, Antigravity account workflows, and
-Cursor account and model switching, and Claude provider env injection. The
-reference also documents file locations, switch behavior, secret handling, and
-exit semantics.
+### 4. Account Lifecycle & Quotas
 
-→ [Read the complete command reference](docs/command-reference.md)
+```bash
+# Log in via OAuth (e.g. Google OAuth for Antigravity)
+xpx account login agy work
 
-## Prerequisites
+# Inspect 5-hour and weekly quota
+xpx account usage agy work
 
-| Requirement | When needed |
-|-------------|-------------|
-| Python 3.11+ and `pipx` | Installing from source |
-| Codex, OpenCode, Antigravity, or Cursor | Running that tool's native `ping` command, or switching its accounts and models |
-| Network access | Provider tests, model discovery, login, and quota checks |
+# Snapshot current official session from Codex or Cursor
+xpx account snapshot codex official-work
+xpx account snapshot cursor personal
+```
 
-## Contributing
+### 5. Diagnostics and Health Checks
 
-The repository includes mirrored CLI-parity tests, isolated filesystem tests,
-linting, and cross-platform PyInstaller builds.
+```bash
+# View dashboard across all clients
+xpx status
 
-→ [Read the contributing, testing, build, and release guide](CONTRIBUTING.md)
+# Run system health check and repair dangling state
+xpx doctor --fix
+
+# Probe HTTP API endpoints
+xpx test --all
+
+# Concurrent end-to-end prompt test across all installed clients
+xpx ping --all
+```
+
+### 6. Migration and Backups
+
+```bash
+# Preview legacy configurations across cpx, opx, apx, cupx, clpx
+xpx migrate --dry-run
+
+# Migrate all legacy tools' configurations into ~/.xpx/
+xpx migrate
+
+# Import from a specific config file or backup JSON
+xpx import backup.json
+
+# Export central state to JSON backup
+xpx export backup.json
+
+# Self-upgrade to latest release
+xpx upgrade
+```
+
+---
+
+## Documentation
+
+- [Command Reference](docs/command-reference.md): Detailed argument definitions, option flags, and syntax for every command.
+- [Architecture & Extension Guide](docs/architecture.md): Internal design principles, data flow topology, and how to write a new `TargetAdapter`.
+- [Contributing Guidelines](CONTRIBUTING.md): Local development, testing, and packaging instructions.
+
+---
 
 ## License
 
 Distributed under the MIT License. See [LICENSE](LICENSE) for details.
-
----
 
 [license-shield]: https://img.shields.io/badge/License-MIT-green.svg
 [license-url]: LICENSE

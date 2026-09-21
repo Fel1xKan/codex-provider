@@ -18,25 +18,9 @@ from lib.common.constants import VERSION  # noqa: E402
 
 DIST_DIR = ROOT_DIR / "dist"
 BUILD_TARGETS = {
-    "codex": (
-        ROOT_DIR / "codex-provider-bin.spec",
-        "cpx.exe" if os.name == "nt" else "cpx",
-    ),
-    "opencode": (
-        ROOT_DIR / "opencode-provider.spec",
-        "opx.exe" if os.name == "nt" else "opx",
-    ),
-    "agy": (
-        ROOT_DIR / "agy-provider.spec",
-        "apx.exe" if os.name == "nt" else "apx",
-    ),
-    "cursor": (
-        ROOT_DIR / "cursor-provider.spec",
-        "cupx.exe" if os.name == "nt" else "cupx",
-    ),
-    "claude": (
-        ROOT_DIR / "claude-provider.spec",
-        "clpx.exe" if os.name == "nt" else "clpx",
+    "xpx": (
+        ROOT_DIR / "xpx.spec",
+        "xpx.exe" if os.name == "nt" else "xpx",
     ),
 }
 

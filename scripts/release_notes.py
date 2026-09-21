@@ -2,7 +2,7 @@
 """Extract the CHANGELOG section for the release being published.
 
 The release workflow uses this script to build the GitHub release body from
-CHANGELOG.md, so the notes a user sees in `cpx upgrade` are exactly the notes
+CHANGELOG.md, so the notes a user sees in `xpx upgrade` are exactly the notes
 reviewed in the pull request that made the change.
 """
 

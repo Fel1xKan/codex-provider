@@ -23,13 +23,10 @@ jobs:
       - run: python -m ruff format --check .
       - run: python -m pytest
       # Every release ships notes: a version bump without a CHANGELOG entry
-      # would publish an empty `cpx upgrade` summary.
+      # would publish an empty `xpx upgrade` summary.
       - run: python scripts/release_notes.py --check
-      - run: cpx --help
-      - run: opx --help
-      - run: apx --help
-      - run: cupx --help
-      - run: clpx --help
+      - run: xpx --help
+      - run: xpx status
 
   build:
     strategy:
@@ -49,24 +46,8 @@ jobs:
         with:
           name: binaries-${{ matrix.os }}
           path: |
-            dist/cpx
-            dist/cpx.exe
-            dist/cpx.sha256
-            dist/cpx.exe.sha256
-            dist/opx
-            dist/opx.exe
-            dist/opx.sha256
-            dist/opx.exe.sha256
-            dist/apx
-            dist/apx.exe
-            dist/apx.sha256
-            dist/apx.exe.sha256
-            dist/cupx
-            dist/cupx.exe
-            dist/cupx.sha256
-            dist/cupx.exe.sha256
-            dist/clpx
-            dist/clpx.exe
-            dist/clpx.sha256
-            dist/clpx.exe.sha256
+            dist/xpx
+            dist/xpx.exe
+            dist/xpx.sha256
+            dist/xpx.exe.sha256
           if-no-files-found: error
