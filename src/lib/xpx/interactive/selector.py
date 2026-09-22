@@ -12,15 +12,30 @@ from lib.xpx.interactive.terminal import (
     KeyCode,
     TerminalSession,
 )
+from lib.xpx.interactive.theme import (
+    ACCENT,
+    BORDER,
+    DIM_TEXT,
+    ERROR,
+    KEYCAP_BG,
+    MUTED,
+    PRIMARY,
+    RESET,
+    SUCCESS,
+    TEXT,
+    WARNING,
+    bg,
+    fg,
+    styled,
+)
 
-# Colors & styles
-CYAN = "\033[36m"
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-DIM = "\033[2m"
+# Colors & styles (legacy aliases mapped to theme)
+CYAN = fg(PRIMARY)
+GREEN = fg(SUCCESS)
+YELLOW = fg(WARNING)
+DIM = fg(DIM_TEXT)
 BOLD = "\033[1m"
-RESET = "\033[0m"
-RED = "\033[31m"
+RED = fg(ERROR)
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
@@ -47,27 +62,30 @@ def str_display_width(s: str) -> int:
 
 
 def render_card(title: str, lines: Sequence[str]) -> str:
-    """Render a perfectly aligned terminal card/box with unicode box borders."""
+    """Render a perfectly aligned terminal card/box with rounded unicode box borders."""
     clean_title = strip_ansi(title)
     title_w = str_display_width(clean_title)
     content_w = max((str_display_width(line) for line in lines), default=0)
     # Ensure minimum width of 56, and accommodate the longest line + padding
     inner_w = max(content_w + 4, title_w + 8, 56)
 
-    # Top border: ┌── {title} ──────┐
-    # "┌── " has width 4, " " has width 1, "┐" has width 1
+    # Top border: ╭── {title} ──────╮
+    # "╭── " has width 4, " " has width 1, "╮" has width 1
     dashes_count = max(inner_w - 5 - title_w, 2)
     inner_w = 5 + title_w + dashes_count
-    top_border = f"┌── {title} {'─' * dashes_count}┐"
+    b_color = fg(BORDER)
+    title_styled = styled(title, fg_color=PRIMARY, bold=True)
+    dashes = "─" * dashes_count
+    top_border = f"{b_color}╭── {RESET}{title_styled} {b_color}{dashes}╮{RESET}"
 
-    rendered_lines = [f"{BOLD}{top_border}{RESET}"]
+    rendered_lines = [top_border]
     for line in lines:
         lw = str_display_width(line)
         pad = max(inner_w - 3 - lw, 1)
-        rendered_lines.append(f"│  {line}{' ' * pad}│")
+        rendered_lines.append(f"{b_color}│{RESET}  {line}{' ' * pad}{b_color}│{RESET}")
 
-    bottom_border = f"└{'─' * (inner_w - 1)}┘"
-    rendered_lines.append(f"{BOLD}{bottom_border}{RESET}")
+    bottom_border = f"{b_color}╰{'─' * (inner_w - 1)}╯{RESET}"
+    rendered_lines.append(bottom_border)
 
     return "\n".join(rendered_lines) + "\n"
 
@@ -184,42 +202,56 @@ def select(
             if filter_text:
                 lbl = t("ui.filter_label")
                 header = (
-                    f"{BOLD}?{RESET} {BOLD}{prompt}{RESET} "
-                    f"{DIM}({lbl}: {CYAN}{filter_text}{RESET}{DIM}){RESET}"
+                    f"{fg(ACCENT)}?{RESET} {BOLD}{prompt}{RESET} "
+                    f"{bg(KEYCAP_BG)}{fg(PRIMARY)} 🔍 {lbl}: {filter_text} {RESET}"
                 )
             else:
-                header = f"{BOLD}?{RESET} {BOLD}{prompt}{RESET}"
+                header = f"{fg(ACCENT)}?{RESET} {BOLD}{prompt}{RESET}"
             lines.append(header)
 
             # 2. Top overflow indicator
             if scroll_offset > 0:
-                up_msg = f"  {DIM}{t('ui.overflow_up', count=scroll_offset)}{RESET}"
+                up_msg = (
+                    f"  {fg(DIM_TEXT)}{t('ui.overflow_up', count=scroll_offset)}{RESET}"
+                )
                 lines.append(up_msg)
 
             # 3. Choices
             if not visible_slice:
-                lines.append(f"  {DIM}{t('ui.no_matches')}{RESET}")
+                lines.append(f"  {fg(DIM_TEXT)}{t('ui.no_matches')}{RESET}")
             else:
                 for idx, c in enumerate(visible_slice):
                     actual_idx = scroll_offset + idx
-                    desc_str = f" {DIM}{c.description}{RESET}" if c.description else ""
+                    desc_str = (
+                        f" {fg(MUTED)}{c.description}{RESET}" if c.description else ""
+                    )
                     if actual_idx == highlight_index:
-                        prefix = f"{CYAN}❯{RESET} {CYAN}{BOLD}"
-                        suffix = f"{RESET}{desc_str}"
+                        prefix = f"{fg(PRIMARY)}❯{RESET} "
+                        title_str = styled(c.title, fg_color=PRIMARY, bold=True)
+                        desc_str = (
+                            f" {fg(MUTED)}{c.description}{RESET}"
+                            if c.description
+                            else ""
+                        )
                     else:
                         prefix = "  "
-                        suffix = f"{desc_str}"
-                    lines.append(f"{prefix}{c.title}{suffix}")
+                        title_str = styled(c.title, fg_color=TEXT)
+                        desc_str = (
+                            f" {fg(DIM_TEXT)}{c.description}{RESET}"
+                            if c.description
+                            else ""
+                        )
+                    lines.append(f"{prefix}{title_str}{desc_str}")
 
             # 4. Bottom overflow indicator
             rem = len(filtered) - (scroll_offset + len(visible_slice))
             if rem > 0:
-                dn_msg = f"  {DIM}{t('ui.overflow_down', count=rem)}{RESET}"
+                dn_msg = f"  {fg(DIM_TEXT)}{t('ui.overflow_down', count=rem)}{RESET}"
                 lines.append(dn_msg)
 
             # 5. Hint footer
             hint = t("ui.hint_select")
-            lines.append(f"{DIM}{hint}{RESET}")
+            lines.append(f"  {fg(DIM_TEXT)}{hint}{RESET}")
 
             last_rendered_lines = render_frame(lines, last_rendered_lines)
 
@@ -271,8 +303,8 @@ def select(
                 chosen = filtered[highlight_index]
                 clear_frame(last_rendered_lines)
                 out_line = (
-                    f"{GREEN}✔{RESET} {BOLD}{prompt}{RESET}: "
-                    f"{CYAN}{chosen.title}{RESET}\n"
+                    f"{fg(SUCCESS)}✔{RESET} {BOLD}{prompt}{RESET}: "
+                    f"{fg(PRIMARY)}{chosen.title}{RESET}\n"
                 )
                 sys.stdout.write(out_line)
                 sys.stdout.flush()
@@ -335,51 +367,69 @@ def checkbox(
             badge_text = t(
                 "ui.selected_badge", selected=sel_count, total=len(norm_choices)
             )
-            count_badge = f"{CYAN}{badge_text}{RESET}"
+            count_badge = f"{fg(SUCCESS)}{badge_text}{RESET}"
             if filter_text:
                 lbl = t("ui.filter_label")
                 header = (
-                    f"{BOLD}?{RESET} {BOLD}{prompt}{RESET} {count_badge} "
-                    f"{DIM}({lbl}: {CYAN}{filter_text}{RESET}{DIM}){RESET}"
+                    f"{fg(ACCENT)}?{RESET} {BOLD}{prompt}{RESET} {count_badge} "
+                    f"{bg(KEYCAP_BG)}{fg(PRIMARY)} 🔍 {lbl}: {filter_text} {RESET}"
                 )
             else:
-                header = f"{BOLD}?{RESET} {BOLD}{prompt}{RESET} {count_badge}"
+                header = f"{fg(ACCENT)}?{RESET} {BOLD}{prompt}{RESET} {count_badge}"
             lines.append(header)
 
             # 2. Top overflow
             if scroll_offset > 0:
-                up_msg = f"  {DIM}{t('ui.overflow_up', count=scroll_offset)}{RESET}"
+                up_msg = (
+                    f"  {fg(DIM_TEXT)}{t('ui.overflow_up', count=scroll_offset)}{RESET}"
+                )
                 lines.append(up_msg)
 
             # 3. Choices
             if not visible_slice:
-                lines.append(f"  {DIM}{t('ui.no_matches')}{RESET}")
+                lines.append(f"  {fg(DIM_TEXT)}{t('ui.no_matches')}{RESET}")
             else:
                 for idx, c in enumerate(visible_slice):
                     actual_idx = scroll_offset + idx
-                    box = f"{GREEN}[✔]{RESET}" if c.checked else "[ ]"
-                    desc_str = f" {DIM}{c.description}{RESET}" if c.description else ""
+                    box = (
+                        f"{fg(SUCCESS)}[✔]{RESET}"
+                        if c.checked
+                        else f"{fg(DIM_TEXT)}[ ]{RESET}"
+                    )
+                    desc_str = (
+                        f" {fg(MUTED)}{c.description}{RESET}" if c.description else ""
+                    )
                     if actual_idx == highlight_index:
-                        prefix = f"{CYAN}❯{RESET} {box} {CYAN}{BOLD}"
-                        suffix = f"{RESET}{desc_str}"
+                        prefix = f"{fg(PRIMARY)}❯{RESET} {box} "
+                        title_str = styled(c.title, fg_color=PRIMARY, bold=True)
+                        desc_str = (
+                            f" {fg(MUTED)}{c.description}{RESET}"
+                            if c.description
+                            else ""
+                        )
                     else:
                         prefix = f"  {box} "
-                        suffix = f"{desc_str}"
-                    lines.append(f"{prefix}{c.title}{suffix}")
+                        title_str = styled(c.title, fg_color=TEXT)
+                        desc_str = (
+                            f" {fg(DIM_TEXT)}{c.description}{RESET}"
+                            if c.description
+                            else ""
+                        )
+                    lines.append(f"{prefix}{title_str}{desc_str}")
 
             # 4. Bottom overflow
             rem = len(filtered) - (scroll_offset + len(visible_slice))
             if rem > 0:
-                dn_msg = f"  {DIM}{t('ui.overflow_down', count=rem)}{RESET}"
+                dn_msg = f"  {fg(DIM_TEXT)}{t('ui.overflow_down', count=rem)}{RESET}"
                 lines.append(dn_msg)
 
             # 5. Error message or Hint footer
             if error_msg:
-                lines.append(f"{RED}⚠ {error_msg}{RESET}")
+                lines.append(f"  {fg(ERROR)}⚠ {error_msg}{RESET}")
                 error_msg = ""
             else:
                 hint = t("ui.hint_checkbox")
-                lines.append(f"{DIM}{hint}{RESET}")
+                lines.append(f"  {fg(DIM_TEXT)}{hint}{RESET}")
 
             last_rendered_lines = render_frame(lines, last_rendered_lines)
 
@@ -444,8 +494,8 @@ def checkbox(
                 clear_frame(last_rendered_lines)
                 sel_titles = ", ".join(c.title for c in selected_items) or "(none)"
                 out_line = (
-                    f"{GREEN}✔{RESET} {BOLD}{prompt}{RESET}: "
-                    f"{CYAN}{sel_titles}{RESET}\n"
+                    f"{fg(SUCCESS)}✔{RESET} {BOLD}{prompt}{RESET}: "
+                    f"{fg(PRIMARY)}{sel_titles}{RESET}\n"
                 )
                 sys.stdout.write(out_line)
                 sys.stdout.flush()
@@ -471,8 +521,10 @@ def prompt_text(
                 hint_str = t("ui.hint_prompt_def", default=default)
             else:
                 hint_str = t("ui.hint_prompt_nodef")
-            def_hint = f" {DIM}{hint_str}{RESET}"
-            line = f"{BOLD}?{RESET} {BOLD}{prompt}{RESET}{def_hint}: {display_val}"
+            def_hint = f" {fg(DIM_TEXT)}{hint_str}{RESET}"
+            line = (
+                f"{fg(ACCENT)}?{RESET} {BOLD}{prompt}{RESET}{def_hint}: {display_val}"
+            )
             last_rendered_lines = render_frame([line], last_rendered_lines)
 
             try:
@@ -490,7 +542,8 @@ def prompt_text(
                 clear_frame(last_rendered_lines)
                 masked = "••••••••" if (password and result) else result
                 out_line = (
-                    f"{GREEN}✔{RESET} {BOLD}{prompt}{RESET}: {CYAN}{masked}{RESET}\n"
+                    f"{fg(SUCCESS)}✔{RESET} {BOLD}{prompt}{RESET}: "
+                    f"{fg(PRIMARY)}{masked}{RESET}\n"
                 )
                 sys.stdout.write(out_line)
                 sys.stdout.flush()

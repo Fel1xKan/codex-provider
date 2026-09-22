@@ -164,10 +164,17 @@ def test_agent_update_cli(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_agent_install_missing_npm() -> None:
     pi_adp = PiAdapter()
+    assert pi_adp.package_name == "@earendil-works/pi-coding-agent"
     with patch("lib.xpx.adapters.base.find_node_package_manager", return_value=None):
         ok, msg = pi_adp.install(dry_run=False)
         assert ok is False
         assert "Node.js package manager" in msg
+
+    # Pi uses native 'pi update' when installed
+    with patch.object(pi_adp, "get_binary_path", return_value="/fake/bin/pi"):
+        ok_up, msg_up = pi_adp.update(dry_run=True)
+        assert ok_up is True
+        assert "would execute: /fake/bin/pi update" in msg_up
 
 
 def test_agent_install_and_update_execution() -> None:

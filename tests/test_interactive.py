@@ -290,3 +290,100 @@ def test_apply_direct_exit_on_success() -> None:
     ):
         rc = run_interactive_main()
         assert rc == 0
+
+
+def test_theme_palette_and_components() -> None:
+    from lib.xpx.interactive import theme
+
+    # Test RGB conversion
+    r, g, b = theme.hex_to_rgb("#38BDF8")
+    assert (r, g, b) == (56, 189, 248)
+
+    # Test 256 color mapping
+    idx = theme.rgb_to_256(r, g, b)
+    assert 16 <= idx <= 255
+
+    # Test breadcrumb
+    bc = theme.breadcrumb(1, 4, "选择目标", context="codex")
+    assert "步骤 1/4" in bc
+    assert "选择目标" in bc
+    assert "codex" in bc
+
+    # Test pill and keycap
+    with patch.object(theme, "supports_color", return_value=True):
+        p = theme.pill("codex", "#1E3A8A", "#93C5FD")
+        assert "codex" in p
+        kc = theme.keycap("Enter", "确认")
+        assert "Enter" in kc
+        assert "确认" in kc
+
+
+def test_render_banner_output() -> None:
+    from io import StringIO
+
+    from lib.xpx.interactive.wizards import _render_banner
+
+    out = StringIO()
+    with patch("sys.stdout", out):
+        _render_banner()
+
+    val = out.getvalue()
+    assert "xpx control plane" in val
+    assert "╭" in val
+    assert "╰" in val
+
+
+def test_windows_terminal_event_reading() -> None:
+    import sys
+    from unittest.mock import MagicMock
+
+    session = TerminalSession(enable_mouse=False, hide_cursor=False)
+
+    # Mock msvcrt for Windows key press: scan code for UP arrow (\xe0 + H)
+    mock_msvcrt = MagicMock()
+    mock_msvcrt.kbhit.side_effect = [True, True, False]
+    mock_msvcrt.getwch.side_effect = ["\xe0", "H"]
+    with patch.dict(sys.modules, {"msvcrt": mock_msvcrt}):
+        ev = session._read_event_windows()
+        assert ev.code == KeyCode.UP
+
+    # Mock Enter (\r)
+    mock_msvcrt2 = MagicMock()
+    mock_msvcrt2.kbhit.return_value = True
+    mock_msvcrt2.getwch.return_value = "\r"
+    with patch.dict(sys.modules, {"msvcrt": mock_msvcrt2}):
+        ev_enter = session._read_event_windows()
+        assert ev_enter.code == KeyCode.ENTER
+
+
+def test_clear_screen_behavior() -> None:
+    from io import StringIO
+
+    from lib.xpx.interactive.theme import clear_screen
+
+    # 1. TTY enabled: writes ANSI clear screen sequence
+    fake_out = StringIO()
+    fake_out.isatty = lambda: True  # type: ignore[assignment]
+    with patch("sys.stdout", fake_out):
+        clear_screen()
+        assert fake_out.getvalue() == "\033[2J\033[H"
+
+    # 2. Non-TTY: does not write escape sequence
+    fake_pipe = StringIO()
+    fake_pipe.isatty = lambda: False  # type: ignore[assignment]
+    with patch("sys.stdout", fake_pipe):
+        clear_screen()
+        assert fake_pipe.getvalue() == ""
+
+
+def test_wizards_clear_screen_called() -> None:
+    from lib.xpx.interactive.wizards import run_interactive_main
+
+    with (
+        patch("lib.xpx.interactive.wizards.clear_screen") as mock_clear,
+        patch("lib.xpx.interactive.wizards.select", return_value="exit"),
+        patch("lib.xpx.interactive.wizards._render_banner"),
+    ):
+        rc = run_interactive_main()
+        assert rc == 0
+        assert mock_clear.called

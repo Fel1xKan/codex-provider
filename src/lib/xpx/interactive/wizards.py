@@ -4,6 +4,7 @@ import argparse
 import sys
 from typing import Any
 
+from lib.common.constants import VERSION
 from lib.xpx.adapters.registry import detect_installed_adapters, get_all_adapters
 from lib.xpx.commands.cmd_account import (
     run_account_list,
@@ -26,7 +27,6 @@ from lib.xpx.i18n import get_language, set_language, t
 from lib.xpx.interactive.selector import (
     BOLD,
     CYAN,
-    DIM,
     GREEN,
     RESET,
     YELLOW,
@@ -35,6 +35,17 @@ from lib.xpx.interactive.selector import (
     prompt_text,
     render_card,
     select,
+)
+from lib.xpx.interactive.theme import (
+    DIM_TEXT,
+    MUTED,
+    SUCCESS,
+    TEXT,
+    WARNING,
+    breadcrumb,
+    clear_screen,
+    styled,
+    target_badge,
 )
 from lib.xpx.store.account_store import AccountStore
 from lib.xpx.store.provider_store import ProviderStore
@@ -102,35 +113,57 @@ def _confirm_action(prompt: str, *, default_confirm: bool = True) -> bool:
 
 
 def _render_banner() -> None:
-    """Renders a clean status banner above the menu."""
+    """Renders a modern, structured status dashboard card above the menu."""
     state_store = StateStore()
     current_state = state_store.load()
+    adapters = get_all_adapters()
 
-    sys.stdout.write(f"\n{BOLD}{CYAN}=== {t('banner.title')} ==={RESET}\n")
-    has_active = False
-    for target in sorted(current_state.targets.keys()):
-        ts = current_state.targets[target]
-        if ts.active_type == "provider" and ts.active_name:
-            has_active = True
-            model_info = f" ({ts.active_model})" if ts.active_model else ""
-            sys.stdout.write(
-                f"  {GREEN}●{RESET} {BOLD}{target}{RESET}: "
-                f"{CYAN}{ts.active_name}{model_info}{RESET}\n"
-            )
-        elif ts.active_type == "account" and ts.active_name:
-            has_active = True
-            sys.stdout.write(
-                f"  {GREEN}●{RESET} {BOLD}{target}{RESET}: "
-                f"{YELLOW}account:{ts.active_name}{RESET}\n"
-            )
-    if not has_active:
-        sys.stdout.write(f"  {DIM}{t('banner.default_state')}{RESET}\n")
-    sys.stdout.write("\n")
+    lines: list[str] = []
+    for t_name in sorted(adapters.keys()):
+        adp = adapters[t_name]
+        ts = current_state.targets.get(t_name)
+        ver = adp.get_cli_version()
+        ver_str = f"[{ver}]" if ver else ""
+        t_tag = target_badge(t_name)
+
+        if ts and ts.active_name:
+            if ts.active_type == "provider":
+                model_info = f" ({ts.active_model})" if ts.active_model else ""
+                status_str = (
+                    f"{styled('●', fg_color=SUCCESS)} "
+                    f"{styled(ts.active_name, fg_color=TEXT, bold=True)}"
+                    f"{styled(model_info, fg_color=MUTED)}"
+                )
+            else:
+                status_str = (
+                    f"{styled('●', fg_color=SUCCESS)} "
+                    f"{styled(ts.active_name, fg_color=WARNING)} "
+                    f"{styled('(account)', fg_color=MUTED)}"
+                )
+        else:
+            if adp.get_binary_path():
+                status_str = (
+                    f"{styled('○', fg_color=DIM_TEXT)} "
+                    f"{styled('(inactive)', fg_color=DIM_TEXT)}"
+                )
+            else:
+                status_str = (
+                    f"{styled('-', fg_color=DIM_TEXT)} "
+                    f"{styled('(not installed)', fg_color=DIM_TEXT)}"
+                )
+
+        v_col = styled(ver_str, fg_color=DIM_TEXT) if ver_str else ""
+        lines.append(f"{t_tag}  {status_str}  {v_col}".strip())
+
+    title = f"◈  xpx control plane v{VERSION}"
+    card = render_card(title, lines)
+    sys.stdout.write(f"\n{card}\n")
     sys.stdout.flush()
 
 
 def run_interactive_language() -> None:
     """Interactive language switcher."""
+    clear_screen()
     current = get_language()
     choices = [
         Choice("中文 (Simplified Chinese)", "zh"),
@@ -142,11 +175,13 @@ def run_interactive_language() -> None:
     if chosen and chosen != "back":
         set_language(chosen, persist=True)
         sys.stdout.write(f"\n{GREEN}✔ Language switched to: {chosen}{RESET}\n")
+        _wait_enter()
 
 
 def run_interactive_agents() -> int:
     """Agent CLI installation and update management wizard."""
     while True:
+        clear_screen()
         sys.stdout.write(f"\n{BOLD}{t('agent.title')}{RESET}\n")
         choices = [
             Choice(t("agent.action_list"), "list"),
@@ -159,6 +194,7 @@ def run_interactive_agents() -> int:
             return 0
 
         if action == "list":
+            clear_screen()
             run_agent_list(argparse.Namespace())
             _wait_enter()
         elif action == "install":
@@ -184,6 +220,7 @@ def run_interactive_agents() -> int:
             chosen = select(t("agent.select_install"), opts)
             if chosen == "__all__":
                 if _confirm_action(t("agent.confirm_install_all", count=len(missing))):
+                    clear_screen()
                     run_agent_install(
                         argparse.Namespace(
                             target=None, all=True, dry_run=False, force=False
@@ -195,6 +232,7 @@ def run_interactive_agents() -> int:
                 and chosen != "back"
                 and _confirm_action(t("agent.confirm_install", name=chosen))
             ):
+                clear_screen()
                 run_agent_install(
                     argparse.Namespace(
                         target=chosen, all=False, dry_run=False, force=False
@@ -225,6 +263,7 @@ def run_interactive_agents() -> int:
             chosen = select(t("agent.select_update"), opts)
             if chosen == "__all__":
                 if _confirm_action(t("agent.confirm_update_all", count=len(installed))):
+                    clear_screen()
                     run_agent_update(
                         argparse.Namespace(target=None, all=True, dry_run=False)
                     )
@@ -234,6 +273,7 @@ def run_interactive_agents() -> int:
                 and chosen != "back"
                 and _confirm_action(t("agent.confirm_update", name=chosen))
             ):
+                clear_screen()
                 run_agent_update(
                     argparse.Namespace(target=chosen, all=False, dry_run=False)
                 )
@@ -243,6 +283,7 @@ def run_interactive_agents() -> int:
 def run_interactive_main() -> int:
     """Main interactive menu dispatch loop."""
     while True:
+        clear_screen()
         _render_banner()
 
         choices = [
@@ -259,7 +300,6 @@ def run_interactive_main() -> int:
 
         action = select(t("main.prompt"), choices, page_size=9)
         if not action or action == "exit":
-            sys.stdout.write(f"{t('ui.exit_msg')}\n")
             return 0
 
         try:
@@ -493,8 +533,6 @@ def run_interactive_apply(
     pre_provider: str | None = None,
 ) -> int:
     """Guided Apply flow with Esc step-back and Enter final confirmation."""
-    sys.stdout.write(f"\n{BOLD}{t('apply.title')}{RESET}\n")
-
     installed = detect_installed_adapters()
     state_store = StateStore()
     current_state = state_store.load()
@@ -521,6 +559,9 @@ def run_interactive_apply(
 
     while True:
         if step == "TARGETS":
+            clear_screen()
+            sys.stdout.write(f"\n{BOLD}{t('apply.title')}{RESET}\n")
+            sys.stdout.write(f"\n{breadcrumb(1, 4, t('apply.target_prompt'))}")
             target_choices: list[Choice] = []
             for t_name in sorted(installed.keys()):
                 ts = current_state.targets.get(t_name)
@@ -548,7 +589,13 @@ def run_interactive_apply(
             step = "MODE"
 
         elif step == "MODE":
+            clear_screen()
+            sys.stdout.write(f"\n{BOLD}{t('apply.title')}{RESET}\n")
             targets_str = ", ".join(target_names)
+            bc = breadcrumb(
+                2, 4, t("apply.mode_prompt", targets=targets_str), context=targets_str
+            )
+            sys.stdout.write(f"\n{bc}")
             mode_choices = [
                 Choice(
                     t("apply.mode_provider"),
@@ -584,6 +631,8 @@ def run_interactive_apply(
                 step = "PROVIDER"
 
         elif step == "ACCOUNT":
+            clear_screen()
+            sys.stdout.write(f"\n{BOLD}{t('apply.title')}{RESET}\n")
             saved_accounts = acc_store.list_all()
             if not saved_accounts:
                 sys.stdout.write(f"{YELLOW}{t('apply.account_none')}{RESET}\n")
@@ -612,6 +661,12 @@ def run_interactive_apply(
                 step = "MODEL"
                 continue
 
+            clear_screen()
+            sys.stdout.write(f"\n{BOLD}{t('apply.title')}{RESET}\n")
+            targets_str = ", ".join(target_names)
+            sys.stdout.write(
+                f"\n{breadcrumb(3, 4, t('apply.provider_prompt'), context=targets_str)}"
+            )
             pv_choices: list[Choice] = []
             for pv in providers:
                 model_hint = f" | {pv.default_model}" if pv.default_model else ""
@@ -627,6 +682,16 @@ def run_interactive_apply(
 
         elif step == "MODEL":
             assert provider_name is not None
+            clear_screen()
+            sys.stdout.write(f"\n{BOLD}{t('apply.title')}{RESET}\n")
+            targets_str = ", ".join(target_names)
+            bc = breadcrumb(
+                4,
+                4,
+                t("apply.model_prompt", provider=provider_name),
+                context=f"{targets_str} › {provider_name}",
+            )
+            sys.stdout.write(f"\n{bc}")
             chosen_model_action = _prompt_select_model(
                 provider_name,
                 include_keep=True,
@@ -644,6 +709,8 @@ def run_interactive_apply(
             step = "FORK_GATE"
 
         elif step == "FORK_GATE":
+            clear_screen()
+            sys.stdout.write(f"\n{BOLD}{t('apply.title')}{RESET}\n")
             has_codex = "codex" in target_names
             gate_adv_desc = (
                 t("apply.gate_adv_desc")
@@ -678,6 +745,8 @@ def run_interactive_apply(
                 step = "CONFIRM_EXECUTE"
 
         elif step == "ADVANCED_OPTIONS":
+            clear_screen()
+            sys.stdout.write(f"\n{BOLD}{t('apply.title')}{RESET}\n")
             has_codex = "codex" in target_names
             flag_choices = []
             if has_codex:
@@ -750,6 +819,8 @@ def run_interactive_apply(
             step = "CONFIRM_EXECUTE"
 
         elif step == "CONFIRM_EXECUTE":
+            clear_screen()
+            sys.stdout.write(f"\n{BOLD}{t('apply.title')}{RESET}\n")
             targets_str = ",".join(target_names)
             cmd_parts = ["xpx", "apply", targets_str]
             summary_lines: list[str] = [f"Targets:     {targets_str}"]
@@ -855,6 +926,7 @@ def run_interactive_apply(
                     step = "FORK_GATE"
                 continue
 
+            clear_screen()
             rc = run_apply(args)
             return rc
 
@@ -862,6 +934,7 @@ def run_interactive_apply(
 def run_interactive_providers() -> int:
     """Providers management wizard."""
     while True:
+        clear_screen()
         sys.stdout.write(f"\n{BOLD}{t('pv.title')}{RESET}\n")
         pv_store = ProviderStore()
         providers = pv_store.list_all()
@@ -881,6 +954,7 @@ def run_interactive_providers() -> int:
         elif action == "list":
             _wizard_manage_providers(providers)
         elif action == "sync_all":
+            clear_screen()
             if not providers:
                 sys.stdout.write(f"{YELLOW}{t('apply.provider_none')}{RESET}\n")
             else:
@@ -888,13 +962,11 @@ def run_interactive_providers() -> int:
                     sys.stdout.write(f"Syncing models for {pv.name}...\n")
                     run_models_sync(argparse.Namespace(provider=pv.name, force=False))
                 sys.stdout.write(f"{GREEN}✔ All models synchronized.{RESET}\n")
-                _wait_enter()
+            _wait_enter()
 
 
 def _wizard_add_provider() -> None:
     """Step-by-step wizard to add a new provider with Esc back and Enter confirm."""
-    sys.stdout.write(f"\n{BOLD}{t('pv.add_title')}{RESET}\n")
-
     name: str | None = None
     base_url: str | None = None
     protocol: str = "openai"
@@ -903,6 +975,8 @@ def _wizard_add_provider() -> None:
 
     step = 1
     while True:
+        clear_screen()
+        sys.stdout.write(f"\n{BOLD}{t('pv.add_title')}{RESET}\n")
         if step == 1:
             res_name = prompt_text(
                 t("pv.name_prompt"),
@@ -1052,6 +1126,7 @@ def _wizard_add_provider() -> None:
                 step = 5
                 continue
 
+            clear_screen()
             args = argparse.Namespace(
                 name=name,
                 base_url=base_url,
@@ -1070,9 +1145,12 @@ def _wizard_manage_providers(providers: list[Any]) -> None:
     """Manage an individual provider."""
     if not providers:
         sys.stdout.write(f"{YELLOW}{t('apply.provider_none')}{RESET}\n")
+        _wait_enter()
         return
 
     while True:
+        clear_screen()
+        sys.stdout.write(f"\n{BOLD}{t('pv.title')}{RESET}\n")
         pv_choices = [
             Choice(
                 pv.name,
@@ -1085,6 +1163,7 @@ def _wizard_manage_providers(providers: list[Any]) -> None:
         if not target_pv:
             return
 
+        clear_screen()
         sys.stdout.write(f"\n{BOLD}{t('pv.details_title', name=target_pv)}{RESET}\n")
         run_show(argparse.Namespace(name=target_pv))
 
@@ -1107,6 +1186,7 @@ def _wizard_manage_providers(providers: list[Any]) -> None:
                 allow_empty=False,
             )
             if new_key and _confirm_action(f"Update API Key for '{target_pv}'?"):
+                clear_screen()
                 run_auth_set(
                     argparse.Namespace(name=target_pv, key=new_key, key_stdin=False)
                 )
@@ -1114,6 +1194,7 @@ def _wizard_manage_providers(providers: list[Any]) -> None:
         elif sub_action == "model_set":
             chosen_m = _prompt_select_model(target_pv, include_keep=False)
             if chosen_m:
+                clear_screen()
                 pv_store = ProviderStore()
                 pv = pv_store.require(target_pv)
                 pv.default_model = chosen_m
@@ -1122,9 +1203,11 @@ def _wizard_manage_providers(providers: list[Any]) -> None:
                 _wait_enter()
         elif sub_action == "sync":
             if _confirm_action(f"Synchronize remote models for '{target_pv}'?"):
+                clear_screen()
                 run_models_sync(argparse.Namespace(provider=target_pv, force=False))
                 _wait_enter()
         elif sub_action == "test":
+            clear_screen()
             run_test(argparse.Namespace(provider=target_pv, all=False))
             _wait_enter()
         elif sub_action == "delete":
@@ -1133,6 +1216,7 @@ def _wizard_manage_providers(providers: list[Any]) -> None:
                 default_confirm=False,
             )
             if del_confirmed:
+                clear_screen()
                 run_delete(argparse.Namespace(name=target_pv, full=True, dry_run=False))
                 _wait_enter()
                 return
@@ -1141,6 +1225,7 @@ def _wizard_manage_providers(providers: list[Any]) -> None:
 def run_interactive_doctor_ping() -> int:
     """Doctor health check, connectivity testing, and prompt ping wizard."""
     while True:
+        clear_screen()
         sys.stdout.write(f"\n{BOLD}{t('doc.title')}{RESET}\n")
 
         choices = [
@@ -1155,10 +1240,12 @@ def run_interactive_doctor_ping() -> int:
             return 0
 
         if action == "doctor":
+            clear_screen()
             run_doctor(argparse.Namespace(fix=False))
             _wait_enter()
         elif action == "doctor_fix":
             if _confirm_action(t("doc.fix_confirm")):
+                clear_screen()
                 run_doctor(argparse.Namespace(fix=True))
                 _wait_enter()
         elif action == "test":
@@ -1179,6 +1266,7 @@ def run_interactive_doctor_ping() -> int:
             if selected_pvs and _confirm_action(
                 t("doc.test_confirm", count=len(selected_pvs))
             ):
+                clear_screen()
                 for p in selected_pvs:
                     run_test(argparse.Namespace(provider=p, all=False))
                 _wait_enter()
@@ -1195,6 +1283,7 @@ def run_interactive_doctor_ping() -> int:
                     default="say hi",
                 )
                 if prompt_str and _confirm_action(t("doc.ping_confirm", target=target)):
+                    clear_screen()
                     run_ping(
                         argparse.Namespace(
                             target=target,
@@ -1210,11 +1299,13 @@ def run_interactive_doctor_ping() -> int:
 def run_interactive_models() -> int:
     """Models list and sync wizard."""
     while True:
+        clear_screen()
         sys.stdout.write(f"\n{BOLD}{t('models.title')}{RESET}\n")
         pv_store = ProviderStore()
         providers = pv_store.list_all()
         if not providers:
             sys.stdout.write(f"{YELLOW}{t('apply.provider_none')}{RESET}\n")
+            _wait_enter()
             return 0
 
         pv_name = select(
@@ -1224,6 +1315,7 @@ def run_interactive_models() -> int:
         if not pv_name:
             return 0
 
+        clear_screen()
         sub_action = select(
             f"[{pv_name}]",
             [
@@ -1233,11 +1325,13 @@ def run_interactive_models() -> int:
             ],
         )
         if sub_action == "list":
+            clear_screen()
             run_models_list(argparse.Namespace(provider=pv_name, remote=False))
             _wait_enter()
         elif sub_action == "sync" and _confirm_action(
             t("models.sync_confirm", name=pv_name)
         ):
+            clear_screen()
             run_models_sync(argparse.Namespace(provider=pv_name, force=False))
             _wait_enter()
 
@@ -1245,6 +1339,7 @@ def run_interactive_models() -> int:
 def run_interactive_accounts() -> int:
     """OAuth and session account management wizard."""
     while True:
+        clear_screen()
         sys.stdout.write(f"\n{BOLD}{t('acc.title')}{RESET}\n")
         choices = [
             Choice(t("acc.list"), "list"),
@@ -1257,6 +1352,7 @@ def run_interactive_accounts() -> int:
             return 0
 
         if action == "list":
+            clear_screen()
             run_account_list(argparse.Namespace())
             _wait_enter()
         elif action == "login":
@@ -1269,17 +1365,20 @@ def run_interactive_accounts() -> int:
                 if alias is not None and _confirm_action(
                     t("acc.login_confirm", target=target)
                 ):
+                    clear_screen()
                     run_account_login(
                         argparse.Namespace(target=target, name=alias or None)
                     )
                     _wait_enter()
         elif action == "usage":
+            clear_screen()
             run_account_usage(argparse.Namespace(target="agy", name=None))
             _wait_enter()
 
 
 def run_interactive_status() -> int | None:
     """Displays global status dashboard and allows instant action."""
+    clear_screen()
     run_status(argparse.Namespace())
     sub = select(
         t("main.prompt"),

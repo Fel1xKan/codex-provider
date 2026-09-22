@@ -229,3 +229,12 @@ class CursorAdapter(TargetAdapter):
             return proc.returncode == 0, out
         except Exception as exc:
             return False, str(exc)
+
+    def update(self, dry_run: bool = False) -> tuple[bool, str]:
+        msg = (
+            "Cursor updates automatically in the background. Check for updates "
+            "inside Cursor (Help > Check for Updates) or visit https://cursor.com."
+        )
+        if dry_run:
+            return True, f"guide: {msg}"
+        return True, msg

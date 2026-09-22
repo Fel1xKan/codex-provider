@@ -26,7 +26,7 @@ class PiAdapter(TargetAdapter):
     display_name = "Pi Coding Agent"
     supported_protocols = ["openai"]
     binary_name = "pi"
-    package_name = "@withpi/pi"
+    package_name = "@earendil-works/pi-coding-agent"
 
     def __init__(self, config_path: Path | None = None) -> None:
         self._config_path = config_path

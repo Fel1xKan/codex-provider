@@ -135,6 +135,7 @@ class TargetAdapter(ABC):
             "claude": [bin_path or "claude", "update"],
             "opencode": [bin_path or "opencode", "upgrade"],
             "agy": [bin_path or "agy", "update"],
+            "pi": [bin_path or "pi", "update"],
         }
         if bin_path and self.binary_name in native_cmds:
             cmd = native_cmds[self.binary_name]

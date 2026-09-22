@@ -9,6 +9,13 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-22
+
+- Smooth screen transitions with page-level clearing across interactive wizard steps and submenus.
+- Fix cursor alignment and indentation jitter when moving through interactive selection items.
+- Fix Pi CLI agent package reference to `@earendil-works/pi-coding-agent` with native update support.
+- Silent exit when quitting interactive control plane wizard.
+
 ## [2.2.0] - 2026-09-22
 
 - Display installed CLI version of each agent in `xpx status` dashboard.
