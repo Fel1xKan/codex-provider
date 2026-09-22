@@ -9,6 +9,14 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-22
+
+- Display installed CLI version of each agent in `xpx status` dashboard.
+- New `xpx agent` command domain for listing, installing, and updating target agent CLIs.
+- Support `xpx agent install [target] [--all]` to automate installation of missing agent CLIs.
+- Support `xpx agent update [target] [--all]` to update installed agent CLIs.
+- Interactive Agent Management wizard in `xpx` main menu with full i18n support.
+
 ## [2.1.0] - 2026-09-21
 
 - Interactive control plane wizard (`xpx` / `xpx interactive`) with live status dashboard and fuzzy search.

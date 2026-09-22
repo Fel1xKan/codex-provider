@@ -27,6 +27,9 @@ class ClaudeAdapter(TargetAdapter):
     display_name = "Claude Code"
     supported_protocols = ["anthropic", "openai"]
 
+    binary_name = "claude"
+    package_name = "@anthropic-ai/claude-code"
+
     def __init__(self, settings_path: Path | None = None) -> None:
         self._settings_path = settings_path
 
@@ -38,12 +41,16 @@ class ClaudeAdapter(TargetAdapter):
         return self.path.parent.is_dir() or shutil.which("claude") is not None
 
     def get_status(self) -> TargetStatus:
+        ver = self.get_cli_version()
+        bin_p = self.get_binary_path()
         if not self.path.is_file():
             return TargetStatus(
                 installed=self.detect(),
                 active_type="none",
                 active_name="-",
                 config_path=str(self.path),
+                cli_version=ver,
+                binary_path=bin_p,
             )
         try:
             raw = self.path.read_text(encoding="utf-8")
@@ -58,6 +65,8 @@ class ClaudeAdapter(TargetAdapter):
                     active_name=base_url,
                     active_model=model,
                     config_path=str(self.path),
+                    cli_version=ver,
+                    binary_path=bin_p,
                 )
             return TargetStatus(
                 installed=True,
@@ -65,6 +74,8 @@ class ClaudeAdapter(TargetAdapter):
                 active_name="anthropic",
                 active_model=model,
                 config_path=str(self.path),
+                cli_version=ver,
+                binary_path=bin_p,
             )
         except Exception as exc:
             return TargetStatus(
@@ -72,6 +83,8 @@ class ClaudeAdapter(TargetAdapter):
                 active_type="error",
                 active_name=f"read error: {exc}",
                 config_path=str(self.path),
+                cli_version=ver,
+                binary_path=bin_p,
             )
 
     def apply(self, spec: MergedProviderSpec) -> None:

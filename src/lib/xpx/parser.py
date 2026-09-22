@@ -9,6 +9,11 @@ from lib.xpx.commands.cmd_account import (
     run_account_snapshot,
     run_account_usage,
 )
+from lib.xpx.commands.cmd_agent import (
+    run_agent_install,
+    run_agent_list,
+    run_agent_update,
+)
 from lib.xpx.commands.cmd_apply import run_apply
 from lib.xpx.commands.cmd_auth import run_auth_set, run_auth_show
 from lib.xpx.commands.cmd_config import run_config_set, run_config_show
@@ -340,6 +345,84 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     p_upgrade.add_argument("--notes", action="store_true", help="Show release notes")
     p_upgrade.add_argument("--dry-run", action="store_true", help="Preview upgrade")
     p_upgrade.set_defaults(func=run_upgrade)
+
+    # 9. Target Agent CLI Management
+    p_agent = subparsers.add_parser(
+        "agent", help="Manage target agent CLIs (list, install, update)"
+    )
+    agent_sub = p_agent.add_subparsers(dest="agent_action", metavar="<action>")
+
+    p_agent_list = agent_sub.add_parser(
+        "list", help="List supported agent CLIs, versions, and installation status"
+    )
+    p_agent_list.set_defaults(func=run_agent_list)
+
+    p_agent_install = agent_sub.add_parser(
+        "install", help="Install target agent CLI(s)"
+    )
+    p_agent_install.add_argument(
+        "target", nargs="?", help="Target agent name (e.g. claude, codex)"
+    )
+    p_agent_install.add_argument(
+        "--all", action="store_true", help="Install all missing agent CLIs"
+    )
+    p_agent_install.add_argument(
+        "--dry-run", action="store_true", help="Preview install command"
+    )
+    p_agent_install.add_argument(
+        "--force", action="store_true", help="Reinstall even if already installed"
+    )
+    p_agent_install.set_defaults(func=run_agent_install)
+
+    p_agent_update = agent_sub.add_parser("update", help="Update target agent CLI(s)")
+    p_agent_update.add_argument(
+        "target", nargs="?", help="Target agent name (e.g. claude, codex)"
+    )
+    p_agent_update.add_argument(
+        "--all", action="store_true", help="Update all installed agent CLIs"
+    )
+    p_agent_update.add_argument(
+        "--dry-run", action="store_true", help="Preview update command"
+    )
+    p_agent_update.set_defaults(func=run_agent_update)
+
+    p_agent.set_defaults(func=run_agent_list)
+
+    # Top-level convenience shortcuts
+    p_install = subparsers.add_parser(
+        "install",
+        help="Install target agent CLI(s) (alias for 'xpx agent install')",
+        description="Install target agent CLI(s)",
+    )
+    p_install.add_argument(
+        "target", nargs="?", help="Target agent name (e.g. claude, codex)"
+    )
+    p_install.add_argument(
+        "--all", action="store_true", help="Install all missing agent CLIs"
+    )
+    p_install.add_argument(
+        "--dry-run", action="store_true", help="Preview install command"
+    )
+    p_install.add_argument(
+        "--force", action="store_true", help="Reinstall even if already installed"
+    )
+    p_install.set_defaults(func=run_agent_install)
+
+    p_update = subparsers.add_parser(
+        "update",
+        help="Update target agent CLI(s) (alias for 'xpx agent update')",
+        description="Update target agent CLI(s)",
+    )
+    p_update.add_argument(
+        "target", nargs="?", help="Target agent name (e.g. claude, codex)"
+    )
+    p_update.add_argument(
+        "--all", action="store_true", help="Update all installed agent CLIs"
+    )
+    p_update.add_argument(
+        "--dry-run", action="store_true", help="Preview update command"
+    )
+    p_update.set_defaults(func=run_agent_update)
 
     p_interactive = subparsers.add_parser(
         "interactive",

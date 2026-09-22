@@ -54,6 +54,8 @@ class OpenCodeAdapter(TargetAdapter):
     name = "opencode"
     display_name = "OpenCode CLI"
     supported_protocols = ["openai"]
+    binary_name = "opencode"
+    package_name = "opencode-ai"
 
     def __init__(
         self,
@@ -87,6 +89,8 @@ class OpenCodeAdapter(TargetAdapter):
         return self.config_dir_path.is_dir() or shutil.which("opencode") is not None
 
     def get_status(self) -> TargetStatus:
+        ver = self.get_cli_version()
+        bin_p = self.get_binary_path()
         cfg = self.find_config_file()
         if not cfg.is_file():
             return TargetStatus(
@@ -94,6 +98,8 @@ class OpenCodeAdapter(TargetAdapter):
                 active_type="none",
                 active_name="-",
                 config_path=str(cfg),
+                cli_version=ver,
+                binary_path=bin_p,
             )
         try:
             raw = cfg.read_text(encoding="utf-8")
@@ -104,6 +110,8 @@ class OpenCodeAdapter(TargetAdapter):
                     active_type="none",
                     active_name="-",
                     config_path=str(cfg),
+                    cli_version=ver,
+                    binary_path=bin_p,
                 )
             model_str = data.get("model", "")
             active_provider = ""
@@ -125,6 +133,8 @@ class OpenCodeAdapter(TargetAdapter):
                 active_name=active_provider or "-",
                 active_model=active_model,
                 config_path=str(cfg),
+                cli_version=ver,
+                binary_path=bin_p,
             )
         except Exception as exc:
             return TargetStatus(
@@ -132,6 +142,8 @@ class OpenCodeAdapter(TargetAdapter):
                 active_type="error",
                 active_name=f"parse error: {exc}",
                 config_path=str(cfg),
+                cli_version=ver,
+                binary_path=bin_p,
             )
 
     def apply(self, spec: MergedProviderSpec) -> None:

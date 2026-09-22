@@ -25,6 +25,8 @@ class CodexAdapter(TargetAdapter):
     name = "codex"
     display_name = "Codex CLI"
     supported_protocols = ["openai"]
+    binary_name = "codex"
+    package_name = "@openai/codex"
     supports_fast = True
     supports_web_search = True
     supports_wire_api = True
@@ -48,12 +50,16 @@ class CodexAdapter(TargetAdapter):
         return self.home_dir.is_dir() or shutil.which("codex") is not None
 
     def get_status(self) -> TargetStatus:
+        ver = self.get_cli_version()
+        bin_p = self.get_binary_path()
         if not self.config_path.is_file():
             return TargetStatus(
                 installed=self.detect(),
                 active_type="none",
                 active_name="-",
                 config_path=str(self.config_path),
+                cli_version=ver,
+                binary_path=bin_p,
             )
         try:
             doc = tomlkit.parse(self.config_path.read_text(encoding="utf-8"))
@@ -71,6 +77,8 @@ class CodexAdapter(TargetAdapter):
                     active_model=active_model,
                     config_path=str(self.config_path),
                     extra_summary=extra,
+                    cli_version=ver,
+                    binary_path=bin_p,
                 )
             return TargetStatus(
                 installed=True,
@@ -79,6 +87,8 @@ class CodexAdapter(TargetAdapter):
                 active_model=active_model,
                 config_path=str(self.config_path),
                 extra_summary=extra,
+                cli_version=ver,
+                binary_path=bin_p,
             )
         except Exception as exc:
             return TargetStatus(
@@ -86,6 +96,8 @@ class CodexAdapter(TargetAdapter):
                 active_type="error",
                 active_name=f"parse error: {exc}",
                 config_path=str(self.config_path),
+                cli_version=ver,
+                binary_path=bin_p,
             )
 
     def apply(self, spec: MergedProviderSpec) -> None:

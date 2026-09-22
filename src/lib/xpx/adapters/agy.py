@@ -29,6 +29,11 @@ class AgyAdapter(TargetAdapter):
     name = "agy"
     display_name = "Antigravity CLI"
     supported_protocols = ["google-oauth"]
+    binary_name = "agy"
+    install_guide = (
+        "Please install Antigravity CLI (AGY) according to your "
+        "organization's setup guide."
+    )
 
     def __init__(self, cli_dir: Path | None = None) -> None:
         self._cli_dir = cli_dir
@@ -49,12 +54,16 @@ class AgyAdapter(TargetAdapter):
         return self.cli_dir_path.is_dir() or shutil.which("agy") is not None
 
     def get_status(self) -> TargetStatus:
+        ver = self.get_cli_version()
+        bin_p = self.get_binary_path()
         if not self.token_path.is_file():
             return TargetStatus(
                 installed=self.detect(),
                 active_type="none",
                 active_name="-",
                 config_path=str(self.token_path),
+                cli_version=ver,
+                binary_path=bin_p,
             )
         try:
             raw = self.token_path.read_text(encoding="utf-8")
@@ -71,6 +80,8 @@ class AgyAdapter(TargetAdapter):
                 active_name=email or "google-oauth",
                 config_path=str(self.token_path),
                 extra_summary=f"Identity: {email}" if email else "",
+                cli_version=ver,
+                binary_path=bin_p,
             )
         except Exception as exc:
             return TargetStatus(
@@ -78,6 +89,8 @@ class AgyAdapter(TargetAdapter):
                 active_type="error",
                 active_name=f"read error: {exc}",
                 config_path=str(self.token_path),
+                cli_version=ver,
+                binary_path=bin_p,
             )
 
     def apply(self, spec: MergedProviderSpec) -> None:

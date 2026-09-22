@@ -12,11 +12,11 @@ def run_status(args: Any) -> int:
     global_state = state_store.load()
 
     header = (
-        f"{'Target':<12} {'Type':<10} {'Active Source':<18} "
+        f"{'Target':<10} {'Version':<12} {'Type':<10} {'Active Source':<18} "
         f"{'Active Model':<20} {'Status':<18}"
     )
     print(header)
-    print("-" * 78)
+    print("-" * 90)
 
     for name in ("codex", "pi", "opencode", "cursor", "claude", "agy"):
         if name not in adapters:
@@ -26,6 +26,7 @@ def run_status(args: Any) -> int:
         recorded = global_state.targets.get(name)
 
         target_col = name
+        version_col = tstatus.cli_version or "-"
         type_col = tstatus.active_type
         source_col = tstatus.active_name
         model_col = tstatus.active_model or "-"
@@ -42,6 +43,7 @@ def run_status(args: Any) -> int:
             type_col = "none"
             source_col = "-"
             model_col = "-"
+            version_col = "-"
         elif tstatus.active_type == "provider":
             fast_info = f" ({tstatus.extra_summary})" if tstatus.extra_summary else ""
             status_col = f"● Active{fast_info}"
@@ -56,7 +58,7 @@ def run_status(args: Any) -> int:
             model_col = "-"
 
         print(
-            f"{target_col:<12} {type_col:<10} {source_col:<18} "
+            f"{target_col:<10} {version_col:<12} {type_col:<10} {source_col:<18} "
             f"{model_col:<20} {status_col:<18}"
         )
 

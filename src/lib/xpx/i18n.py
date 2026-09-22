@@ -114,6 +114,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "main.apply_desc": "切换客户端绑定的 Provider / 模型 / 账号",
         "main.status": "📊 状态看板 (Status)",
         "main.status_desc": "查看所有客户端与提供商详细生效状态",
+        "main.agents": "🛠️ 客户端管理 (Agents)",
+        "main.agents_desc": "安装与升级各 Agent CLI (Codex, Claude 等)",
         "main.providers": "🏢 供应商管理 (Providers)",
         "main.providers_desc": "新增、查看、修改 API Key / 远程同步",
         "main.models": "🤖 模型与偏好 (Models)",
@@ -236,6 +238,22 @@ MESSAGES: dict[str, dict[str, str]] = {
         "acc.select_target": "选择目标客户端 (如 agy，Esc 返回)",
         "acc.alias_prompt": "账号别名 (可选，如 personal / work，Esc 取消)",
         "acc.login_confirm": "确认启动 '{target}' 登录向导？",
+        # Agent Wizard
+        "agent.title": "=== Agent 客户端管理 ===",
+        "agent.select_install": "请选择要安装的客户端 (Esc 返回)",
+        "agent.select_update": "请选择要更新的客户端 (Esc 返回)",
+        "agent.install_all": "一键安装全部缺失客户端",
+        "agent.update_all": "一键更新全部已安装客户端",
+        "agent.confirm_install": "确认安装客户端 '{name}'？",
+        "agent.confirm_install_all": "确认一键安装所有 {count} 个缺失的客户端？",
+        "agent.confirm_update": "确认更新客户端 '{name}'？",
+        "agent.confirm_update_all": "确认一键更新所有 {count} 个已安装的客户端？",
+        "agent.all_installed": "所有支持的 Agent CLI 均已安装。",
+        "agent.no_installed": "未检测到已安装的 Agent CLI。",
+        "agent.action_install_missing": "📥 一键安装缺失客户端",
+        "agent.action_update_all": "🔄 一键更新已安装客户端",
+        "agent.action_list": "📋 查看客户端列表与版本",
+        "agent.not_installed": "未安装",
     },
     "en": {
         # Select & Checkbox primitives
@@ -270,6 +288,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "main.apply_desc": "Switch Provider, Model, or Account for target clients",
         "main.status": "📊 Status Dashboard (Status)",
         "main.status_desc": ("Inspect global client and provider binding status"),
+        "main.agents": "🛠️ Agent Management (Agents)",
+        "main.agents_desc": "Install and update Agent CLIs (Codex, Claude, etc.)",
         "main.providers": "🏢 Provider Assets (Providers)",
         "main.providers_desc": ("Manage API providers, endpoints, and credentials"),
         "main.models": "🤖 Models & Preferences (Models)",
@@ -416,6 +436,26 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Account alias (optional, e.g. personal / work; Esc: cancel)"
         ),
         "acc.login_confirm": "Confirm launching login wizard for '{target}'?",
+        # Agent Wizard
+        "agent.title": "=== Agent CLI Management ===",
+        "agent.select_install": "Select agent CLI to install (Esc: back)",
+        "agent.select_update": "Select agent CLI to update (Esc: back)",
+        "agent.install_all": "Install all missing agent CLIs",
+        "agent.update_all": "Update all installed agent CLIs",
+        "agent.confirm_install": "Confirm installing agent '{name}'?",
+        "agent.confirm_install_all": (
+            "Confirm installing all {count} missing agent CLIs?"
+        ),
+        "agent.confirm_update": "Confirm updating agent '{name}'?",
+        "agent.confirm_update_all": (
+            "Confirm updating all {count} installed agent CLIs?"
+        ),
+        "agent.all_installed": "All supported agent CLIs are already installed.",
+        "agent.no_installed": "No installed agent CLIs detected.",
+        "agent.action_install_missing": "📥 Install Missing Agents",
+        "agent.action_update_all": "🔄 Update All Installed Agents",
+        "agent.action_list": "📋 View Agent List & Versions",
+        "agent.not_installed": "Not installed",
     },
 }
 

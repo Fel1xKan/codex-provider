@@ -36,6 +36,11 @@ class CursorAdapter(TargetAdapter):
     name = "cursor"
     display_name = "Cursor IDE"
     supported_protocols = ["openai"]
+    binary_name = "cursor"
+    install_guide = (
+        "Cursor is a desktop AI editor. Download and install from https://cursor.com, "
+        "then run 'Install cursor command in PATH' inside Cursor."
+    )
 
     def __init__(self, db_path_override: Path | None = None) -> None:
         self._db_path = db_path_override
@@ -98,12 +103,16 @@ class CursorAdapter(TargetAdapter):
         )
 
     def get_status(self) -> TargetStatus:
+        ver = self.get_cli_version()
+        bin_p = self.get_binary_path()
         if not self.path.is_file():
             return TargetStatus(
                 installed=self.detect(),
                 active_type="none",
                 active_name="-",
                 config_path=str(self.path),
+                cli_version=ver,
+                binary_path=bin_p,
             )
         try:
             con = self._connect()
@@ -132,6 +141,8 @@ class CursorAdapter(TargetAdapter):
                         active_name=str(base_url),
                         active_model=str(model) if model else None,
                         config_path=str(self.path),
+                        cli_version=ver,
+                        binary_path=bin_p,
                     )
                 return TargetStatus(
                     installed=True,
@@ -139,6 +150,8 @@ class CursorAdapter(TargetAdapter):
                     active_name="cursor",
                     active_model=str(model) if model else None,
                     config_path=str(self.path),
+                    cli_version=ver,
+                    binary_path=bin_p,
                 )
             finally:
                 con.close()
@@ -148,6 +161,8 @@ class CursorAdapter(TargetAdapter):
                 active_type="error",
                 active_name=f"read error: {exc}",
                 config_path=str(self.path),
+                cli_version=ver,
+                binary_path=bin_p,
             )
 
     def apply(self, spec: MergedProviderSpec) -> None:

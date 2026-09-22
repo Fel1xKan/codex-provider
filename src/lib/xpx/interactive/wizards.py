@@ -4,11 +4,16 @@ import argparse
 import sys
 from typing import Any
 
-from lib.xpx.adapters.registry import detect_installed_adapters
+from lib.xpx.adapters.registry import detect_installed_adapters, get_all_adapters
 from lib.xpx.commands.cmd_account import (
     run_account_list,
     run_account_login,
     run_account_usage,
+)
+from lib.xpx.commands.cmd_agent import (
+    run_agent_install,
+    run_agent_list,
+    run_agent_update,
 )
 from lib.xpx.commands.cmd_apply import run_apply
 from lib.xpx.commands.cmd_auth import run_auth_set
@@ -139,6 +144,102 @@ def run_interactive_language() -> None:
         sys.stdout.write(f"\n{GREEN}✔ Language switched to: {chosen}{RESET}\n")
 
 
+def run_interactive_agents() -> int:
+    """Agent CLI installation and update management wizard."""
+    while True:
+        sys.stdout.write(f"\n{BOLD}{t('agent.title')}{RESET}\n")
+        choices = [
+            Choice(t("agent.action_list"), "list"),
+            Choice(t("agent.action_install_missing"), "install"),
+            Choice(t("agent.action_update_all"), "update"),
+            Choice(t("ui.back_menu"), "back"),
+        ]
+        action = select(t("pv.action_prompt"), choices)
+        if not action or action == "back":
+            return 0
+
+        if action == "list":
+            run_agent_list(argparse.Namespace())
+            _wait_enter()
+        elif action == "install":
+            adapters = get_all_adapters()
+            missing = [
+                name
+                for name in ("codex", "claude", "opencode", "agy", "pi", "cursor")
+                if name in adapters and not adapters[name].get_binary_path()
+            ]
+            if not missing:
+                sys.stdout.write(f"\n{GREEN}{t('agent.all_installed')}{RESET}\n")
+                _wait_enter()
+                continue
+            opts = (
+                [
+                    Choice(
+                        f"🌟 {t('agent.install_all')} ({', '.join(missing)})", "__all__"
+                    )
+                ]
+                + [Choice(name, name) for name in missing]
+                + [Choice(t("ui.back"), "back")]
+            )
+            chosen = select(t("agent.select_install"), opts)
+            if chosen == "__all__":
+                if _confirm_action(t("agent.confirm_install_all", count=len(missing))):
+                    run_agent_install(
+                        argparse.Namespace(
+                            target=None, all=True, dry_run=False, force=False
+                        )
+                    )
+                    _wait_enter()
+            elif (
+                chosen
+                and chosen != "back"
+                and _confirm_action(t("agent.confirm_install", name=chosen))
+            ):
+                run_agent_install(
+                    argparse.Namespace(
+                        target=chosen, all=False, dry_run=False, force=False
+                    )
+                )
+                _wait_enter()
+        elif action == "update":
+            adapters = get_all_adapters()
+            installed = [
+                name
+                for name in ("codex", "claude", "opencode", "agy", "pi", "cursor")
+                if name in adapters and adapters[name].get_binary_path()
+            ]
+            if not installed:
+                sys.stdout.write(f"\n{YELLOW}{t('agent.no_installed')}{RESET}\n")
+                _wait_enter()
+                continue
+            opts = (
+                [
+                    Choice(
+                        f"🌟 {t('agent.update_all')} ({', '.join(installed)})",
+                        "__all__",
+                    )
+                ]
+                + [Choice(name, name) for name in installed]
+                + [Choice(t("ui.back"), "back")]
+            )
+            chosen = select(t("agent.select_update"), opts)
+            if chosen == "__all__":
+                if _confirm_action(t("agent.confirm_update_all", count=len(installed))):
+                    run_agent_update(
+                        argparse.Namespace(target=None, all=True, dry_run=False)
+                    )
+                    _wait_enter()
+            elif (
+                chosen
+                and chosen != "back"
+                and _confirm_action(t("agent.confirm_update", name=chosen))
+            ):
+                run_agent_update(
+                    argparse.Namespace(target=chosen, all=False, dry_run=False)
+                )
+                _wait_enter()
+
+
 def run_interactive_main() -> int:
     """Main interactive menu dispatch loop."""
     while True:
@@ -147,6 +248,7 @@ def run_interactive_main() -> int:
         choices = [
             Choice(t("main.apply"), "apply", t("main.apply_desc")),
             Choice(t("main.status"), "status", t("main.status_desc")),
+            Choice(t("main.agents"), "agents", t("main.agents_desc")),
             Choice(t("main.providers"), "providers", t("main.providers_desc")),
             Choice(t("main.models"), "models", t("main.models_desc")),
             Choice(t("main.doctor"), "doctor_ping", t("main.doctor_desc")),
@@ -155,7 +257,7 @@ def run_interactive_main() -> int:
             Choice(t("main.exit"), "exit", t("main.exit_desc")),
         ]
 
-        action = select(t("main.prompt"), choices, page_size=8)
+        action = select(t("main.prompt"), choices, page_size=9)
         if not action or action == "exit":
             sys.stdout.write(f"{t('ui.exit_msg')}\n")
             return 0
@@ -169,6 +271,8 @@ def run_interactive_main() -> int:
                 rc = run_interactive_status()
                 if rc == 0:
                     return 0
+            elif action == "agents":
+                run_interactive_agents()
             elif action == "providers":
                 run_interactive_providers()
             elif action == "models":
@@ -420,10 +524,13 @@ def run_interactive_apply(
             target_choices: list[Choice] = []
             for t_name in sorted(installed.keys()):
                 ts = current_state.targets.get(t_name)
+                adp = installed.get(t_name)
+                ver = adp.get_cli_version() if adp else None
+                ver_tag = f"[{ver}] " if ver else ""
                 if ts and ts.active_name:
-                    act_str = f"({ts.active_type}:{ts.active_name})"
+                    act_str = f"{ver_tag}({ts.active_type}:{ts.active_name})"
                 else:
-                    act_str = "(default)"
+                    act_str = f"{ver_tag}(default)"
                 target_choices.append(Choice(t_name, t_name, description=act_str))
 
             if not target_choices:

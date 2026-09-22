@@ -25,6 +25,8 @@ class PiAdapter(TargetAdapter):
     name = "pi"
     display_name = "Pi Coding Agent"
     supported_protocols = ["openai"]
+    binary_name = "pi"
+    package_name = "@withpi/pi"
 
     def __init__(self, config_path: Path | None = None) -> None:
         self._config_path = config_path
@@ -37,12 +39,16 @@ class PiAdapter(TargetAdapter):
         return self.config_file.parent.exists() or shutil.which("pi") is not None
 
     def get_status(self) -> TargetStatus:
+        ver = self.get_cli_version()
+        bin_p = self.get_binary_path()
         if not self.config_file.exists():
             return TargetStatus(
                 installed=self.detect(),
                 active_type="none",
                 active_name="-",
                 config_path=str(self.config_file),
+                cli_version=ver,
+                binary_path=bin_p,
             )
         try:
             data = yaml.safe_load(self.config_file.read_text(encoding="utf-8")) or {}
@@ -53,6 +59,8 @@ class PiAdapter(TargetAdapter):
                 active_name=pv.get("name", "unknown"),
                 active_model=pv.get("model"),
                 config_path=str(self.config_file),
+                cli_version=ver,
+                binary_path=bin_p,
             )
         except Exception:
             return TargetStatus(
@@ -60,6 +68,8 @@ class PiAdapter(TargetAdapter):
                 active_type="none",
                 active_name="error",
                 config_path=str(self.config_file),
+                cli_version=ver,
+                binary_path=bin_p,
             )
 
     def apply(self, spec: MergedProviderSpec) -> None:
