@@ -56,10 +56,18 @@ def test_codex_adapter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert doc["model"] == "deepseek-reasoner"
     assert doc["service_tier"] == "priority"
     assert doc["web_search"] == "live"
+    assert doc["model_catalog_json"] == str(codex_home / "models.json")
     pv_entry = doc["model_providers"]["deepseek"]
     assert pv_entry["base_url"] == "https://api.deepseek.com/v1"
     assert pv_entry["wire_api"] == "chat"
     assert pv_entry["http_headers"]["x-user"] == "dev1"
+
+    # Verify models.json
+    assert (codex_home / "models.json").is_file()
+    models_data = json.loads((codex_home / "models.json").read_text(encoding="utf-8"))
+    assert "models" in models_data
+    slugs = {m["slug"] for m in models_data["models"]}
+    assert "deepseek-reasoner" in slugs
 
     # Verify auth
     auth = json.loads((codex_home / "auth.json").read_text(encoding="utf-8"))
@@ -72,6 +80,38 @@ def test_codex_adapter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert cleared_doc["model_provider"] == "openai"
     assert "service_tier" not in cleared_doc
+    assert "model_catalog_json" not in cleared_doc
+    assert not (codex_home / "models.json").is_file()
+
+
+def test_codex_catalog_retention_and_refresh(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir(parents=True)
+    # Pre-existing config with previous session model
+    (codex_home / "config.toml").write_text(
+        'model = "gpt-5.6-luna"\nmodel_provider = "openai"\n', encoding="utf-8"
+    )
+
+    adapter = CodexAdapter(home=codex_home)
+    spec = MergedProviderSpec(
+        name="cistern",
+        base_url="http://127.0.0.1:4000/v1",
+        api_key="sk-test",
+        protocol="openai",
+        model="deepseek-v4-flash",
+    )
+    adapter.apply(spec)
+
+    # Both previous session model and applied model must exist in models.json
+    assert (codex_home / "models.json").is_file()
+    models_data = json.loads((codex_home / "models.json").read_text(encoding="utf-8"))
+    slugs = {m["slug"] for m in models_data["models"]}
+    assert "deepseek-v4-flash" in slugs
+    assert "gpt-5.6-luna" in slugs
+
+    # Verify refresh_catalog
+    assert adapter.refresh_catalog("cistern") is True
+    assert adapter.refresh_catalog("other_provider") is False
 
 
 def test_opencode_adapter(tmp_path: Path) -> None:

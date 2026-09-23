@@ -9,6 +9,13 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-09-23
+
+- Automatically generate and emit `models.json` catalog for Codex CLI upon `xpx apply`.
+- Configure `model_catalog_json` in `~/.codex/config.toml` to support session resumption and model switching in `/models`.
+- Retain previously active models in `models.json` to prevent session resume lookup failures.
+- Automatically refresh Codex `models.json` when synchronizing or updating provider models.
+
 ## [2.2.1] - 2026-09-22
 
 - Smooth screen transitions with page-level clearing across interactive wizard steps and submenus.

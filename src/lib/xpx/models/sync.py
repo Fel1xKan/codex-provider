@@ -113,4 +113,16 @@ def sync_provider_models(
         pv.default_model = model_ids[0]
         pv_store.save(pv)
 
+    # Refresh active codex adapter catalog if applicable
+    try:
+        from lib.xpx.adapters.codex import CodexAdapter
+
+        codex_adp = CodexAdapter()
+        if codex_adp.detect():
+            st = codex_adp.get_status()
+            if st.active_type == "provider" and st.active_name == provider_name:
+                codex_adp.refresh_catalog(provider_name)
+    except Exception:
+        pass
+
     return cat
