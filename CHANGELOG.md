@@ -9,6 +9,15 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.3] - 2026-09-24
+
+- Automatically generate and emit model catalog in OpenCode configuration (`opencode.json` and `models.json`) upon `xpx apply`.
+- Automatically generate and emit `models.json` for Pi coding agent upon `xpx apply`.
+- Synchronize provider models into Cursor IDE catalog (`availableDefaultModels2`) and multi-surface model settings upon `xpx apply`.
+- Retain previously active models in OpenCode, Pi, and Cursor to prevent model switching and session lookup failures.
+- Automatically refresh OpenCode, Pi, Cursor, and Claude model configurations when synchronizing or updating provider models.
+- Track active provider source names for Cursor and Claude in `xpx status`.
+
 ## [2.2.2] - 2026-09-23
 
 - Automatically generate and emit `models.json` catalog for Codex CLI upon `xpx apply`.

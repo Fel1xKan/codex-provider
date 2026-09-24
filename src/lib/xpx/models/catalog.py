@@ -121,6 +121,23 @@ def enrich_model_metadata(
     )
 
 
+def refresh_active_adapters(provider_name: str) -> None:
+    """Refresh model catalog across all active and detected target adapters."""
+    try:
+        from lib.xpx.adapters.registry import get_all_adapters
+
+        for adp in get_all_adapters().values():
+            try:
+                if adp.detect():
+                    st = adp.get_status()
+                    if st.active_type == "provider" and st.active_name == provider_name:
+                        adp.refresh_catalog(provider_name)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def update_model_preference(
     provider_name: str,
     model_id: str,
@@ -171,16 +188,7 @@ def update_model_preference(
         pv.default_model = model_id
         pv_store.save(pv)
 
-    # Refresh active codex adapter catalog if applicable
-    try:
-        from lib.xpx.adapters.codex import CodexAdapter
-
-        codex_adp = CodexAdapter()
-        if codex_adp.detect():
-            st = codex_adp.get_status()
-            if st.active_type == "provider" and st.active_name == provider_name:
-                codex_adp.refresh_catalog(provider_name)
-    except Exception:
-        pass
+    # Refresh active target adapter catalogs if applicable
+    refresh_active_adapters(provider_name)
 
     return meta

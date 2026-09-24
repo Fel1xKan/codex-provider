@@ -211,3 +211,7 @@ class TargetAdapter(ABC):
         Returns (success, stdout/summary or error message).
         """
         pass
+
+    def refresh_catalog(self, provider_name: str | None = None) -> bool:
+        """Refresh model catalog in native files if this client is active."""
+        return False

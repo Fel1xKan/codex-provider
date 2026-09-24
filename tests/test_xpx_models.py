@@ -128,3 +128,59 @@ def test_update_model_preference(xpx_env: Path) -> None:
 
     with pytest.raises(SwitchError):
         update_model_preference("myprovider", "deepseek-reasoner", context=-1)
+
+
+def test_refresh_active_adapters_opencode(
+    xpx_env: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pv_store = ProviderStore()
+    pv_store.save(
+        ProviderSpec(
+            name="openpv",
+            base_url="https://api.open.com/v1",
+            api_key="sk-test",
+        )
+    )
+
+    opencode_cfg = tmp_path / "opencode_conf"
+    opencode_cfg.mkdir(parents=True)
+    monkeypatch.setenv("OPENCODE_CONFIG_DIR", str(opencode_cfg))
+
+    (opencode_cfg / "opencode.json").write_text(
+        json.dumps(
+            {
+                "provider": {
+                    "openpv": {
+                        "options": {"baseURL": "https://api.open.com/v1"},
+                    }
+                },
+                "model": "openpv/initial-model",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def mock_urlopen(req: urllib.request.Request, timeout: int = 15) -> MockResponse:
+        return MockResponse({"data": [{"id": "synced-model-1"}]})
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+    sync_provider_models("openpv")
+
+    # Verify that opencode config was refreshed with synced-model-1
+    cfg_data = json.loads((opencode_cfg / "opencode.json").read_text(encoding="utf-8"))
+    models = cfg_data["provider"]["openpv"]["models"]
+    assert "synced-model-1" in models
+    assert (opencode_cfg / "models.json").is_file()
+
+    # Update model preference and verify opencode reflects it
+    update_model_preference("openpv", "synced-model-1", context=32000)
+    refreshed_data = json.loads(
+        (opencode_cfg / "opencode.json").read_text(encoding="utf-8")
+    )
+    assert (
+        refreshed_data["provider"]["openpv"]["models"]["synced-model-1"]["limit"][
+            "context"
+        ]
+        == 32000
+    )

@@ -7,7 +7,7 @@ from typing import Any
 
 from lib.common.constants import MAX_HTTP_BODY_BYTES, VERSION
 from lib.common.errors import SwitchError
-from lib.xpx.models.catalog import enrich_model_metadata
+from lib.xpx.models.catalog import enrich_model_metadata, refresh_active_adapters
 from lib.xpx.store.catalog_store import CatalogStore, ProviderCatalog
 from lib.xpx.store.provider_store import ProviderStore
 
@@ -113,16 +113,7 @@ def sync_provider_models(
         pv.default_model = model_ids[0]
         pv_store.save(pv)
 
-    # Refresh active codex adapter catalog if applicable
-    try:
-        from lib.xpx.adapters.codex import CodexAdapter
-
-        codex_adp = CodexAdapter()
-        if codex_adp.detect():
-            st = codex_adp.get_status()
-            if st.active_type == "provider" and st.active_name == provider_name:
-                codex_adp.refresh_catalog(provider_name)
-    except Exception:
-        pass
+    # Refresh active target adapter catalogs if applicable
+    refresh_active_adapters(provider_name)
 
     return cat

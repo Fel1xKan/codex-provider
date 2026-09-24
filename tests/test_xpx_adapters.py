@@ -142,10 +142,65 @@ def test_opencode_adapter(tmp_path: Path) -> None:
     assert prov["options"]["baseURL"] == "https://openrouter.ai/api/v1"
     assert prov["options"]["apiKey"] == "sk-or-test"
     assert cfg_data["model"] == "openrouter/anthropic/claude-3.7-sonnet"
+    assert "anthropic/claude-3.7-sonnet" in prov["models"]
+
+    # Verify models.json
+    assert (cfg_dir / "models.json").is_file()
+    models_json = json.loads((cfg_dir / "models.json").read_text(encoding="utf-8"))
+    assert models_json["provider"] == "openrouter"
+    model_ids = {m["id"] for m in models_json["models"]}
+    assert "anthropic/claude-3.7-sonnet" in model_ids
 
     adapter.clear()
     cleared_cfg = json.loads((cfg_dir / "opencode.json").read_text(encoding="utf-8"))
     assert "model" not in cleared_cfg
+    assert not (cfg_dir / "models.json").is_file()
+
+
+def test_opencode_catalog_retention_and_refresh(tmp_path: Path) -> None:
+    cfg_dir = tmp_path / "config" / "opencode"
+    data_dir = tmp_path / "data" / "opencode"
+    cfg_dir.mkdir(parents=True)
+    # Pre-existing config with previous session model
+    (cfg_dir / "opencode.json").write_text(
+        json.dumps(
+            {
+                "provider": {
+                    "cistern": {
+                        "options": {"baseURL": "http://127.0.0.1:4000/v1"},
+                    }
+                },
+                "model": "cistern/gpt-5.6-luna",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    adapter = OpenCodeAdapter(config_dir=cfg_dir, data_dir=data_dir)
+    spec = MergedProviderSpec(
+        name="cistern",
+        base_url="http://127.0.0.1:4000/v1",
+        api_key="sk-test",
+        protocol="openai",
+        model="deepseek-v4-flash",
+    )
+    adapter.apply(spec)
+
+    # Both previous session model and applied model must exist in models
+    cfg_data = json.loads((cfg_dir / "opencode.json").read_text(encoding="utf-8"))
+    models_dict = cfg_data["provider"]["cistern"]["models"]
+    assert "deepseek-v4-flash" in models_dict
+    assert "gpt-5.6-luna" in models_dict
+
+    assert (cfg_dir / "models.json").is_file()
+    models_json = json.loads((cfg_dir / "models.json").read_text(encoding="utf-8"))
+    slugs = {m["id"] for m in models_json["models"]}
+    assert "deepseek-v4-flash" in slugs
+    assert "gpt-5.6-luna" in slugs
+
+    # Verify refresh_catalog
+    assert adapter.refresh_catalog("cistern") is True
+    assert adapter.refresh_catalog("other_provider") is False
 
 
 def test_cursor_adapter(tmp_path: Path) -> None:
@@ -172,11 +227,28 @@ def test_cursor_adapter(tmp_path: Path) -> None:
     assert "applicationUser" in rows
     app_user = json.loads(rows["applicationUser"])
     assert app_user["openAIBaseUrl"] == "https://api.deepseek.com/v1"
+    assert app_user["xpxProviderName"] == "deepseek"
     assert "secret://cursorAuth/openAIKey" in rows
+
+    # Verify catalog models emitted into availableDefaultModels2
+    catalog = app_user.get("availableDefaultModels2", [])
+    catalog_names = {m.get("serverModelName") for m in catalog}
+    assert "deepseek-chat" in catalog_names
+
+    # Verify multi-surface model config
+    composer = app_user["aiSettings"]["modelConfig"]["composer"]
+    assert composer["modelName"] == "deepseek-chat"
+    cmdk = app_user["aiSettings"]["modelConfig"]["cmd-k"]
+    assert cmdk["modelName"] == "deepseek-chat"
 
     status = adapter.get_status()
     assert status.installed is True
     assert status.active_type == "provider"
+    assert status.active_name == "deepseek"
+
+    # Verify refresh_catalog
+    assert adapter.refresh_catalog("deepseek") is True
+    assert adapter.refresh_catalog("other_provider") is False
 
     adapter.clear()
     con = sqlite3.connect(str(db_file))
@@ -186,6 +258,7 @@ def test_cursor_adapter(tmp_path: Path) -> None:
         con.close()
     app_user = json.loads(rows["applicationUser"])
     assert "openAIBaseUrl" not in app_user
+    assert "xpxProviderName" not in app_user
     assert "secret://cursorAuth/openAIKey" not in rows
 
 
@@ -208,16 +281,22 @@ def test_claude_adapter(tmp_path: Path) -> None:
     assert data["env"]["ANTHROPIC_BASE_URL"] == "https://proxy.example.com"
     assert data["env"]["ANTHROPIC_AUTH_TOKEN"] == "sk-ant-test"
     assert data["env"]["ANTHROPIC_API_KEY"] == "sk-ant-test"
+    assert data["env"]["XPX_PROVIDER_NAME"] == "claude-custom"
     assert data["env"]["ANTHROPIC_MODEL"] == "claude-3-7-sonnet-20250219"
     assert data["env"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-3-7-sonnet-20250219"
 
     status = adapter.get_status()
     assert status.installed is True
     assert status.active_type == "provider"
+    assert status.active_name == "claude-custom"
+
+    # Verify refresh_catalog
+    assert adapter.refresh_catalog("other_provider") is False
 
     adapter.clear()
     cleared = json.loads(settings_file.read_text(encoding="utf-8"))
     assert "ANTHROPIC_BASE_URL" not in cleared["env"]
+    assert "XPX_PROVIDER_NAME" not in cleared["env"]
 
 
 def test_agy_adapter(tmp_path: Path) -> None:
@@ -285,9 +364,25 @@ def test_pi_adapter(tmp_path: Path) -> None:
     assert status.active_type == "provider"
     assert status.active_name == "siliconflow"
 
+    # Verify models.json in ~/.pi/agent/
+    models_file = tmp_path / ".pi" / "agent" / "models.json"
+    assert models_file.is_file()
+    models_data = json.loads(models_file.read_text(encoding="utf-8"))
+    assert "siliconflow" in models_data["providers"]
+    prov_models = models_data["providers"]["siliconflow"]["models"]
+    m_ids = {m["id"] for m in prov_models}
+    assert "Qwen/Qwen2.5-Coder-32B-Instruct" in m_ids
+
+    # Verify refresh_catalog
+    assert adapter.refresh_catalog("siliconflow") is True
+    assert adapter.refresh_catalog("other") is False
+
     adapter.clear()
     cleared = yaml.safe_load(cfg_file.read_text(encoding="utf-8"))
     assert "model_provider" not in cleared
+    if models_file.is_file():
+        cleared_models = json.loads(models_file.read_text(encoding="utf-8"))
+        assert "siliconflow" not in cleared_models.get("providers", {})
 
 
 def test_registry() -> None:

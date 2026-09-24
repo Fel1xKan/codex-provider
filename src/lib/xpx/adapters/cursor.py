@@ -6,12 +6,71 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 from lib.common.errors import SwitchError
 from lib.common.oscrypt import encrypt_secret_plaintext
 from lib.xpx.adapters.base import MergedProviderSpec, TargetAdapter, TargetStatus
+
+SURFACES = (
+    "composer",
+    "cmd-k",
+    "background-composer",
+    "composer-ensemble",
+    "plan-execution",
+    "spec",
+    "deep-search",
+    "quick-agent",
+)
+
+
+def _build_cursor_model_entry(model_id: str) -> dict[str, Any]:
+    return {
+        "name": model_id,
+        "defaultOn": False,
+        "supportsAgent": True,
+        "degradationStatus": 0,
+        "supportsThinking": True,
+        "supportsImages": True,
+        "supportsMaxMode": True,
+        "supportsNonMaxMode": True,
+        "serverModelName": model_id,
+        "isRecommendedForBackgroundComposer": False,
+        "supportsPlanMode": True,
+        "supportsSandboxing": True,
+        "isUserAdded": True,
+        "inputboxShortModelName": model_id,
+        "parameterDefinitions": [],
+        "variants": [],
+        "legacySlugs": [],
+        "idAliases": [],
+        "namedModelSectionIndex": 1,
+        "cloudAgentEffortModes": [],
+        "modelPickerBadges": [],
+    }
+
+
+def _ensure_catalog_models(app_user: dict[str, Any], model_ids: list[str]) -> int:
+    catalog = app_user.get("availableDefaultModels2")
+    if not isinstance(catalog, list):
+        catalog = []
+    known = {
+        str(m.get("serverModelName") or m.get("name"))
+        for m in catalog
+        if isinstance(m, dict)
+    }
+    added = 0
+    for model_id in model_ids:
+        if not model_id or model_id in known:
+            continue
+        catalog.append(_build_cursor_model_entry(model_id))
+        known.add(model_id)
+        added += 1
+    if added:
+        app_user["availableDefaultModels2"] = catalog
+    return added
 
 
 def get_cursor_dir() -> Path:
@@ -135,10 +194,11 @@ class CursorAdapter(TargetAdapter):
                     else None
                 )
                 if base_url:
+                    active_name = str(app_user.get("xpxProviderName") or base_url)
                     return TargetStatus(
                         installed=True,
                         active_type="provider",
-                        active_name=str(base_url),
+                        active_name=active_name,
                         active_model=str(model) if model else None,
                         config_path=str(self.path),
                         cli_version=ver,
@@ -172,6 +232,25 @@ class CursorAdapter(TargetAdapter):
             with con:
                 app_user = self._read_application_user(con)
                 app_user["openAIBaseUrl"] = spec.base_url
+                app_user["xpxProviderName"] = spec.name
+
+                model_ids: list[str] = []
+                if spec.model:
+                    model_ids.append(spec.model)
+                try:
+                    from lib.xpx.store.catalog_store import CatalogStore
+                    from lib.xpx.store.provider_store import ProviderStore
+
+                    cat = CatalogStore().get(spec.name)
+                    if cat:
+                        model_ids.extend(cat.models.keys())
+                    pv = ProviderStore().get(spec.name)
+                    if pv and pv.models:
+                        model_ids.extend(pv.models)
+                except Exception:
+                    pass
+
+                _ensure_catalog_models(app_user, model_ids)
 
                 if spec.model:
                     ai_settings = app_user.setdefault("aiSettings", {})
@@ -182,12 +261,22 @@ class CursorAdapter(TargetAdapter):
                     if not isinstance(model_config, dict):
                         model_config = {}
                         ai_settings["modelConfig"] = model_config
-                    composer = model_config.setdefault("composer", {})
-                    if not isinstance(composer, dict):
-                        composer = {}
-                        model_config["composer"] = composer
-                    composer["modelName"] = spec.model
-                    composer["modelId"] = spec.model
+
+                    now_ms = int(time.time() * 1000)
+                    for surface in SURFACES:
+                        entry = model_config.setdefault(surface, {})
+                        if not isinstance(entry, dict):
+                            entry = {}
+                            model_config[surface] = entry
+                        entry["modelName"] = spec.model
+                        entry["modelId"] = spec.model
+                        entry["selectedModels"] = [
+                            {"modelId": spec.model, "parameters": []}
+                        ]
+
+                    last_used = app_user.setdefault("modelLastUsedAt", {})
+                    if isinstance(last_used, dict):
+                        last_used[spec.model] = now_ms
 
                 self._write_application_user(con, app_user)
 
@@ -203,6 +292,78 @@ class CursorAdapter(TargetAdapter):
         finally:
             con.close()
 
+    def refresh_catalog(self, provider_name: str | None = None) -> bool:
+        if not self.path.is_file():
+            return False
+        try:
+            con = self._connect()
+            try:
+                with con:
+                    app_user = self._read_application_user(con)
+                    base_url = app_user.get("openAIBaseUrl")
+                    if not base_url:
+                        return False
+                    active_pv = app_user.get("xpxProviderName")
+                    if provider_name and active_pv and provider_name != active_pv:
+                        return False
+
+                    pv_name = provider_name or active_pv
+                    model_ids: list[str] = []
+                    default_model: str | None = None
+
+                    if pv_name:
+                        try:
+                            from lib.xpx.store.catalog_store import CatalogStore
+                            from lib.xpx.store.provider_store import ProviderStore
+
+                            cat = CatalogStore().get(pv_name)
+                            if cat:
+                                model_ids.extend(cat.models.keys())
+                            pv = ProviderStore().get(pv_name)
+                            if pv:
+                                if pv.default_model:
+                                    default_model = pv.default_model
+                                    model_ids.append(pv.default_model)
+                                if pv.models:
+                                    model_ids.extend(pv.models)
+                        except Exception:
+                            pass
+
+                    _ensure_catalog_models(app_user, model_ids)
+
+                    if default_model:
+                        ai_settings = app_user.setdefault("aiSettings", {})
+                        if not isinstance(ai_settings, dict):
+                            ai_settings = {}
+                            app_user["aiSettings"] = ai_settings
+                        model_config = ai_settings.setdefault("modelConfig", {})
+                        if not isinstance(model_config, dict):
+                            model_config = {}
+                            ai_settings["modelConfig"] = model_config
+
+                        now_ms = int(time.time() * 1000)
+                        for surface in SURFACES:
+                            entry = model_config.setdefault(surface, {})
+                            if not isinstance(entry, dict):
+                                entry = {}
+                                model_config[surface] = entry
+                            entry["modelName"] = default_model
+                            entry["modelId"] = default_model
+                            entry["selectedModels"] = [
+                                {"modelId": default_model, "parameters": []}
+                            ]
+
+                        last_used = app_user.setdefault("modelLastUsedAt", {})
+                        if isinstance(last_used, dict):
+                            last_used[default_model] = now_ms
+
+                    self._write_application_user(con, app_user)
+                    return True
+            finally:
+                con.close()
+        except Exception:
+            return False
+
     def clear(self) -> None:
         if self.path.is_file():
             con = self._connect()
@@ -210,6 +371,7 @@ class CursorAdapter(TargetAdapter):
                 with con:
                     app_user = self._read_application_user(con)
                     app_user.pop("openAIBaseUrl", None)
+                    app_user.pop("xpxProviderName", None)
                     self._write_application_user(con, app_user)
                     con.execute(
                         "DELETE FROM ItemTable WHERE key = 'secret://cursorAuth/openAIKey'"

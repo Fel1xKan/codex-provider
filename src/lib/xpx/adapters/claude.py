@@ -59,10 +59,11 @@ class ClaudeAdapter(TargetAdapter):
             base_url = env.get("ANTHROPIC_BASE_URL")
             model = env.get("ANTHROPIC_MODEL")
             if base_url:
+                active_name = str(env.get("XPX_PROVIDER_NAME") or base_url)
                 return TargetStatus(
                     installed=True,
                     active_type="provider",
-                    active_name=base_url,
+                    active_name=active_name,
                     active_model=model,
                     config_path=str(self.path),
                     cli_version=ver,
@@ -112,6 +113,7 @@ class ClaudeAdapter(TargetAdapter):
         env["ANTHROPIC_BASE_URL"] = base_url
         env["ANTHROPIC_AUTH_TOKEN"] = spec.api_key
         env["ANTHROPIC_API_KEY"] = spec.api_key
+        env["XPX_PROVIDER_NAME"] = spec.name
         if spec.model:
             env["ANTHROPIC_MODEL"] = spec.model
             env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = spec.model
@@ -123,6 +125,41 @@ class ClaudeAdapter(TargetAdapter):
         raw_json = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
         atomic_write_bytes(self.path, raw_json.encode("utf-8"))
 
+    def refresh_catalog(self, provider_name: str | None = None) -> bool:
+        if not self.path.is_file():
+            return False
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            env = data.get("env")
+            if not isinstance(env, dict):
+                return False
+            base_url = env.get("ANTHROPIC_BASE_URL")
+            if not base_url:
+                return False
+            active_pv = env.get("XPX_PROVIDER_NAME")
+            if provider_name and active_pv and provider_name != active_pv:
+                return False
+
+            pv_name = provider_name or active_pv
+            if pv_name:
+                from lib.xpx.store.provider_store import ProviderStore
+
+                pv = ProviderStore().get(pv_name)
+                if pv and pv.default_model:
+                    default_model = pv.default_model
+                    env["ANTHROPIC_MODEL"] = default_model
+                    env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = default_model
+                    env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = default_model
+                    env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = default_model
+                    env["ANTHROPIC_SUBAGENT_MODEL"] = default_model
+                    env["CLAUDE_CODE_SUBAGENT_MODEL"] = default_model
+                    raw_json = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+                    atomic_write_bytes(self.path, raw_json.encode("utf-8"))
+                    return True
+            return False
+        except Exception:
+            return False
+
     def clear(self) -> None:
         if self.path.is_file():
             try:
@@ -133,6 +170,7 @@ class ClaudeAdapter(TargetAdapter):
                         "ANTHROPIC_BASE_URL",
                         "ANTHROPIC_AUTH_TOKEN",
                         "ANTHROPIC_API_KEY",
+                        "XPX_PROVIDER_NAME",
                         "ANTHROPIC_MODEL",
                         "ANTHROPIC_DEFAULT_OPUS_MODEL",
                         "ANTHROPIC_DEFAULT_SONNET_MODEL",
