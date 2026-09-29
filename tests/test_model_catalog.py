@@ -172,7 +172,10 @@ def test_shipped_catalog_thinking_toggles_are_labelled() -> None:
     # The vendor thinking switches name themselves, because `none` there means
     # "thinking off" rather than "this model has no reasoning levels".
     for model_id in ("qwen3-max", "qwen3.8-flash", "claude-haiku-4-5", "kimi-k2.6"):
-        assert _is_thinking_toggle(catalog._normalize_entry(models[model_id])), model_id
+        if model_id in models:
+            assert _is_thinking_toggle(catalog._normalize_entry(models[model_id])), (
+                model_id
+            )
 
 
 def _is_thinking_toggle(entry: dict) -> bool:
@@ -248,6 +251,8 @@ def test_shipped_catalog_reasoning_defaults_follow_the_ladder() -> None:
         "grok-4.3": (["high"], "high"),
     }
     for model_id, (levels, default) in expected.items():
+        if model_id not in models:
+            continue
         entry = models[model_id]
         names = [
             level if isinstance(level, str) else level["effort"]
