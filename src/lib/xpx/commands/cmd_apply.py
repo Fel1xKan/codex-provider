@@ -116,25 +116,12 @@ def build_merged_spec(
             else:
                 headers.pop(h.strip(), None)
 
-    cli_effort = getattr(args, "effort", None)
-    effort = None
-    if cli_effort:
-        effort = str(cli_effort).strip()
-        has_adhoc = True
-    elif overrides and overrides.options and "effort" in overrides.options:
-        effort = str(overrides.options["effort"])
-    elif model:
-        from lib.xpx.models.catalog import resolve_model_effort
-
-        effort = resolve_model_effort(pv.name, model)
-
     spec = MergedProviderSpec(
         name=pv.name,
         base_url=pv.base_url,
         api_key=pv.api_key,
         protocol=pv.protocol,
         model=model,
-        effort=effort,
         headers=headers,
         fast=fast,
         wire_api=wire_api,

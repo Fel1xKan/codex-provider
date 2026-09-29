@@ -10,6 +10,7 @@ import pytest
 
 from lib.common.errors import SwitchError
 from lib.xpx.models.catalog import (
+    add_model_to_catalog,
     enrich_model_metadata,
     get_consolidated_provider_models,
     resolve_model_effort,
@@ -257,3 +258,103 @@ def test_get_consolidated_provider_models(xpx_env: Path) -> None:
     assert models["deepseek-reasoner"].supported_reasoning_levels
     assert models["deepseek-chat"].context_window > 0
     assert models["extra-model-1"].context_window == 128000
+
+
+def test_add_model_to_catalog(xpx_env: Path) -> None:
+    pv_store = ProviderStore()
+    pv_store.save(
+        ProviderSpec(
+            name="test-provider",
+            base_url="https://api.test.com/v1",
+            api_key="sk-test",
+        )
+    )
+
+    # 1. Add model with auto enrichment
+    meta, is_created = add_model_to_catalog("test-provider", "deepseek-reasoner")
+    assert is_created is True
+    assert meta.id == "deepseek-reasoner"
+    lower_name = meta.display_name.lower()
+    assert "deepseek" in lower_name or "reasoner" in lower_name
+    assert meta.context_window > 0
+    assert "high" in meta.supported_reasoning_levels
+
+    # 2. Add custom model with all explicit options
+    c_meta, c_created = add_model_to_catalog(
+        "test-provider",
+        "custom-special",
+        display_name="Custom Special Model",
+        context=200000,
+        max_output=16384,
+        effort="high",
+        modalities=["text", "image"],
+        is_default=True,
+    )
+    assert c_created is True
+    assert c_meta.display_name == "Custom Special Model"
+    assert c_meta.context_window == 200000
+    assert c_meta.max_output_tokens == 16384
+    assert c_meta.supported_reasoning_levels == ["high"]
+    assert c_meta.default_reasoning_level == "high"
+    assert c_meta.input_modalities == ["text", "image"]
+
+    # Verify multi-level comma-separated effort
+    m_meta, _ = add_model_to_catalog(
+        "test-provider",
+        "custom-multi",
+        effort="low, medium, high",
+    )
+    assert m_meta.supported_reasoning_levels == ["low", "medium", "high"]
+    assert m_meta.default_reasoning_level == "high"
+
+    # Verify disabled effort
+    d_meta, _ = add_model_to_catalog(
+        "test-provider",
+        "custom-disabled",
+        effort="none",
+    )
+    assert d_meta.supported_reasoning_levels == ["none"]
+    assert d_meta.default_reasoning_level is None
+
+    # Verify provider default_model updated
+    pv = pv_store.require("test-provider")
+    assert pv.default_model == "custom-special"
+
+    # 3. Update existing model without overwrite
+    u_meta, u_created = add_model_to_catalog(
+        "test-provider",
+        "custom-special",
+        context=250000,
+    )
+    assert u_created is False
+    assert u_meta.context_window == 250000
+    # display name and modalities preserved
+    assert u_meta.display_name == "Custom Special Model"
+    assert u_meta.input_modalities == ["text", "image"]
+
+    # 4. Overwrite existing model
+    o_meta, o_created = add_model_to_catalog(
+        "test-provider",
+        "custom-special",
+        overwrite=True,
+    )
+    assert o_created is False
+    # Defaults restored from enrichment
+    assert o_meta.context_window == 128000
+
+    # 5. Prefix strip
+    p_meta, _ = add_model_to_catalog(
+        "test-provider",
+        "test-provider/prefixed-model",
+    )
+    assert p_meta.id == "prefixed-model"
+
+    # 6. Errors
+    with pytest.raises(SwitchError, match="unknown provider"):
+        add_model_to_catalog("non-existent", "m1")
+
+    with pytest.raises(SwitchError, match="cannot be empty"):
+        add_model_to_catalog("test-provider", "   ")
+
+    with pytest.raises(SwitchError, match="positive integer"):
+        add_model_to_catalog("test-provider", "m1", context=-5)

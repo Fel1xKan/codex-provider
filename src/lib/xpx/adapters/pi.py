@@ -168,21 +168,14 @@ class PiAdapter(TargetAdapter):
                 if isinstance(st_data, dict):
                     pv_name = st_data.get("defaultProvider")
                     model = st_data.get("defaultModel")
-                    thinking = st_data.get("defaultThinkingLevel")
-                    mt_levels = st_data.get("modelThinkingLevels")
-                    if isinstance(mt_levels, dict) and pv_name and model:
-                        m_key = f"{pv_name}/{model}"
-                        if m_key in mt_levels:
-                            thinking = mt_levels[m_key]
                     if pv_name:
-                        extra = f"Thinking: {thinking}" if thinking else ""
                         return TargetStatus(
                             installed=True,
                             active_type="provider",
                             active_name=pv_name,
                             active_model=model,
                             config_path=str(self.settings_path),
-                            extra_summary=extra,
+                            extra_summary="",
                             cli_version=ver,
                             binary_path=bin_p,
                         )
@@ -346,12 +339,11 @@ class PiAdapter(TargetAdapter):
                 if isinstance(compat, dict):
                     compat["supportsReasoningEffort"] = True
 
-            eff = _resolve_model_effort(target_pv, current_model)
             prov["models"] = self._generate_pi_models(
                 provider_name=target_pv,
                 applied_model=current_model if target_pv == active_pv else None,
                 previous_model=None,
-                applied_effort=eff,
+                applied_effort=None,
             )
 
             payload_models = (
@@ -366,11 +358,6 @@ class PiAdapter(TargetAdapter):
                         changed = False
                         if not st_data.get("defaultModel") and current_model:
                             st_data["defaultModel"] = current_model
-                            changed = True
-                        eff = _resolve_model_effort(target_pv, current_model)
-                        pi_th = _normalize_pi_thinking_level(eff)
-                        if pi_th and not st_data.get("defaultThinkingLevel"):
-                            st_data["defaultThinkingLevel"] = pi_th
                             changed = True
                         if changed:
                             atomic_write_bytes(
@@ -405,9 +392,6 @@ class PiAdapter(TargetAdapter):
             except Exception:
                 pass
 
-        effort = _resolve_model_effort(spec.name, clean_model, spec.effort)
-        pi_thinking = _normalize_pi_thinking_level(effort)
-
         ensure_private_dir(self.agent_dir)
 
         # 1. Update ~/.pi/agent/settings.json
@@ -426,21 +410,12 @@ class PiAdapter(TargetAdapter):
         if clean_model:
             settings_data["defaultModel"] = clean_model
 
-        if pi_thinking:
-            settings_data["defaultThinkingLevel"] = pi_thinking
-            mt_levels = settings_data.setdefault("modelThinkingLevels", {})
-            if isinstance(mt_levels, dict) and clean_model:
-                mt_levels[f"{spec.name}/{clean_model}"] = pi_thinking
-        elif clean_model:
-            mt_levels = settings_data.get("modelThinkingLevels")
-            if (
-                isinstance(mt_levels, dict)
-                and mt_levels.get(f"{spec.name}/{clean_model}") == "off"
-            ):
-                del mt_levels[f"{spec.name}/{clean_model}"]
-
-        if not settings_data.get("defaultThinkingLevel"):
-            settings_data["defaultThinkingLevel"] = pi_thinking or "high"
+        settings_data.pop("defaultThinkingLevel", None)
+        mt_levels = settings_data.get("modelThinkingLevels")
+        if isinstance(mt_levels, dict) and clean_model:
+            mt_levels.pop(f"{spec.name}/{clean_model}", None)
+            if not mt_levels:
+                settings_data.pop("modelThinkingLevels", None)
 
         payload_settings = (
             json.dumps(settings_data, indent=2, ensure_ascii=False) + "\n"
@@ -502,7 +477,7 @@ class PiAdapter(TargetAdapter):
             provider_name=spec.name,
             applied_model=clean_model or spec.model,
             previous_model=None,
-            applied_effort=pi_thinking,
+            applied_effort=None,
         )
 
         payload_models = (

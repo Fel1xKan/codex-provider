@@ -9,6 +9,13 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.6] - 2026-09-29
+
+- Add `xpx models add` command to register custom models and capability preferences directly into provider catalogs.
+- Configure supported reasoning effort ladders via `--effort` in `xpx models add` and `xpx models set`.
+- Remove effort pinning during `xpx apply`, delegating runtime thinking switching to agent CLIs via catalog definitions.
+- Introduce automated i18n key parity, placeholder, and leak scanner tool.
+
 ## [2.2.5] - 2026-09-29
 
 - Normalize model catalog loading, resolution, and fallback into unified control plane domain services across all target adapters.

@@ -280,8 +280,8 @@ class CodexAdapter(TargetAdapter):
         if spec.model:
             doc["model"] = spec.model
 
-        if spec.effort:
-            doc["model_reasoning_effort"] = spec.effort
+        if "model_reasoning_effort" in doc:
+            del doc["model_reasoning_effort"]
 
         if spec.fast is True:
             doc["service_tier"] = "priority"

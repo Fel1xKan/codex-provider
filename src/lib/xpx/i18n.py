@@ -106,6 +106,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ui.back_menu": "< 返回主菜单",
         "ui.action_confirm": "🚀 确认执行 (Enter)",
         "ui.action_back": "↩ 返回上一步修改 (Esc)",
+        "ui.step": "步骤 {step}/{total}",
+        "ui.status_inactive": "未激活",
         # Banner & Main Menu
         "banner.title": "xpx · 统一 AI Agent 控制平面",
         "banner.default_state": "(当前各客户端均处于官方默认状态)",
@@ -198,6 +200,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "pv.proto_prompt": "[{name}] 协议类型 (Esc 返回上一步)",
         "pv.key_prompt": "[{name}] API Key (掩码隐藏，可留空，Esc 返回上一步)",
         "pv.model_prompt": "[{name}] 默认主力模型 (可选，Esc 返回上一步)",
+        "pv.model_recommended": "[推荐预设]",
+        "pv.model_none": "（无）留空稍后配置",
+        "pv.model_none_desc": "不指定默认模型",
         "pv.confirm_add_title": "确认添加供应商",
         "pv.confirm_add_prompt": "确认添加供应商 '{name}'？",
         "pv.add_success": "✔ 供应商 '{name}' 添加成功！",
@@ -230,6 +235,11 @@ MESSAGES: dict[str, dict[str, str]] = {
         "models.list": "📋 查看已缓存的模型列表",
         "models.sync": "🌐 立即从远端同步最新模型 (Sync)",
         "models.sync_confirm": "确认同步 '{name}' 的远程模型列表？",
+        "models.add": "➕ 手动添加模型 (Add)",
+        "models.add_title": "=== 手动添加模型: {name} ===",
+        "models.add_prompt": "请输入模型 ID (如 gpt-4o, deepseek-chat，Esc 取消):",
+        "models.add_success": "成功添加模型 '{model}' 到 '{provider}'",
+        "models.update_success": "成功更新 '{provider}' 中的模型 '{model}'",
         # Accounts Wizard
         "acc.title": "=== 账号管理 (Accounts) ===",
         "acc.list": "📋 查看已保存的账号列表",
@@ -280,6 +290,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ui.back_menu": "< Back to Main Menu",
         "ui.action_confirm": "🚀 Confirm Execution (Enter)",
         "ui.action_back": "↩ Back to Previous Step (Esc)",
+        "ui.step": "Step {step}/{total}",
+        "ui.status_inactive": "inactive",
         # Banner & Main Menu
         "banner.title": "xpx · Unified AI Agent Control Plane",
         "banner.default_state": "(All clients currently in official default state)",
@@ -392,6 +404,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "pv.proto_prompt": "[{name}] Protocol Type (Esc: back)",
         "pv.key_prompt": "[{name}] API Key (masked, optional; Esc: back)",
         "pv.model_prompt": "[{name}] Default Primary Model (optional; Esc: back)",
+        "pv.model_recommended": "[Recommended Preset]",
+        "pv.model_none": "(None) Configure later",
+        "pv.model_none_desc": "Do not configure a default model",
         "pv.confirm_add_title": "Confirm Adding Provider",
         "pv.confirm_add_prompt": "Confirm adding provider '{name}'?",
         "pv.add_success": "✔ Provider '{name}' added successfully!",
@@ -426,6 +441,13 @@ MESSAGES: dict[str, dict[str, str]] = {
         "models.list": "📋 View cached models catalog",
         "models.sync": "🌐 Synchronize latest remote models (Sync)",
         "models.sync_confirm": "Confirm syncing remote models for '{name}'?",
+        "models.add": "➕ Manually add model (Add)",
+        "models.add_title": "=== Manually Add Model: {name} ===",
+        "models.add_prompt": (
+            "Enter model ID (e.g. gpt-4o, deepseek-chat; Esc: cancel):"
+        ),
+        "models.add_success": "Successfully added model '{model}' to '{provider}'",
+        "models.update_success": "Successfully updated model '{model}' in '{provider}'",
         # Accounts Wizard
         "acc.title": "=== Account Management ===",
         "acc.list": "📋 List saved accounts",

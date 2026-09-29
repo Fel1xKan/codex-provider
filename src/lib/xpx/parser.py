@@ -20,6 +20,7 @@ from lib.xpx.commands.cmd_config import run_config_set, run_config_show
 from lib.xpx.commands.cmd_doctor import run_doctor
 from lib.xpx.commands.cmd_import_export import run_export, run_import, run_migrate
 from lib.xpx.commands.cmd_models import (
+    run_models_add,
     run_models_list,
     run_models_set,
     run_models_sync,
@@ -167,6 +168,49 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     )
     p_mod_sync.set_defaults(func=run_models_sync)
 
+    p_mod_add = mod_sub.add_parser(
+        "add", help="Add or update a model in provider catalog"
+    )
+    p_mod_add.add_argument(
+        "first",
+        help="Provider name or Model ID (or provider/model)",
+    )
+    p_mod_add.add_argument(
+        "second",
+        nargs="?",
+        default=None,
+        help="Model ID or Provider name (optional if provider/model specified)",
+    )
+    p_mod_add.add_argument(
+        "-p", "--provider", dest="flag_provider", help="Explicit provider name"
+    )
+    p_mod_add.add_argument("--display-name", help="Display name for the model")
+    p_mod_add.add_argument(
+        "--default", action="store_true", help="Mark as provider default model"
+    )
+    p_mod_add.add_argument(
+        "--context", type=int, help="Context window limit (e.g. 128000)"
+    )
+    p_mod_add.add_argument(
+        "--max-output", type=int, help="Max output tokens limit (e.g. 8192)"
+    )
+    p_mod_add.add_argument(
+        "--effort",
+        help=(
+            "Supported reasoning effort / thinking levels "
+            "(e.g. 'high' or 'low,medium,high')"
+        ),
+    )
+    p_mod_add.add_argument(
+        "--modalities", help="Comma-separated input modalities (e.g. text,image)"
+    )
+    p_mod_add.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing model configuration instead of merging",
+    )
+    p_mod_add.set_defaults(func=run_models_add)
+
     p_mod_list = mod_sub.add_parser("list", help="List cached or remote models")
     p_mod_list.add_argument("provider", nargs="?", help="Provider name")
     p_mod_list.add_argument(
@@ -182,7 +226,13 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     )
     p_mod_set.add_argument("--context", type=int, help="Context window limit")
     p_mod_set.add_argument("--max-output", type=int, help="Max output tokens limit")
-    p_mod_set.add_argument("--effort", help="Default reasoning level")
+    p_mod_set.add_argument(
+        "--effort",
+        help=(
+            "Supported reasoning effort / thinking levels "
+            "(e.g. 'high' or 'low,medium,high')"
+        ),
+    )
     p_mod_set.set_defaults(func=run_models_set)
 
     # 5. Apply
@@ -202,10 +252,6 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     )
     p_apply.add_argument("--account", help="Apply named OAuth account")
     p_apply.add_argument("--model", help="Explicit model override")
-    p_apply.add_argument(
-        "--effort",
-        help="Reasoning effort / thinking level (e.g. none, low, medium, high, max)",
-    )
     p_apply.add_argument(
         "--clear", action="store_true", help="Reset client to official default state"
     )

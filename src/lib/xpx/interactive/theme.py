@@ -4,6 +4,8 @@ import os
 import re
 import sys
 
+from lib.xpx.i18n import t
+
 _ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
@@ -209,7 +211,8 @@ def keycap(key: str, action: str = "") -> str:
 
 def breadcrumb(step: int, total: int, title: str, context: str = "") -> str:
     """Render a step breadcrumb header with clear visual progress."""
-    badge = styled(f"步骤 {step}/{total}", fg_color=PRIMARY, bold=True)
+    step_label = t("ui.step", step=step, total=total)
+    badge = styled(step_label, fg_color=PRIMARY, bold=True)
     step_str = styled(title, bold=True)
     ctx_str = f"  {fg(BORDER)}│{RESET}  {fg(MUTED)}{context}{RESET}" if context else ""
     return f"{fg(ACCENT)}🎯{RESET} {badge} {fg(BORDER)}›{RESET} {step_str}{ctx_str}\n"

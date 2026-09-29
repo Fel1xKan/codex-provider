@@ -303,11 +303,18 @@ def test_theme_palette_and_components() -> None:
     idx = theme.rgb_to_256(r, g, b)
     assert 16 <= idx <= 255
 
-    # Test breadcrumb
-    bc = theme.breadcrumb(1, 4, "选择目标", context="codex")
-    assert "步骤 1/4" in bc
-    assert "选择目标" in bc
-    assert "codex" in bc
+    # Test breadcrumb (bilingual)
+    from lib.xpx import i18n
+
+    i18n.set_language("zh")
+    bc_zh = theme.breadcrumb(1, 4, "选择目标", context="codex")
+    assert "步骤 1/4" in bc_zh
+    assert "选择目标" in bc_zh
+    assert "codex" in bc_zh
+
+    i18n.set_language("en")
+    bc_en = theme.breadcrumb(1, 4, "Select Target", context="codex")
+    assert "Step 1/4" in bc_en
 
     # Test pill and keycap
     with patch.object(theme, "supports_color", return_value=True):
@@ -328,7 +335,8 @@ def test_render_banner_output() -> None:
         _render_banner()
 
     val = out.getvalue()
-    assert "xpx control plane" in val
+    assert "xpx" in val.lower()
+    assert "control plane" in val.lower() or "控制平面" in val
     assert "╭" in val
     assert "╰" in val
 

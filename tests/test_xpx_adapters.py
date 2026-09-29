@@ -385,26 +385,20 @@ def test_pi_adapter(tmp_path: Path) -> None:
     m_ids = {m["id"] for m in prov_models}
     assert "Qwen/Qwen2.5-Coder-32B-Instruct" in m_ids
 
-    # Verify applying with effort
-    spec_effort = MergedProviderSpec(
+    # Verify applying without pinning thinking level
+    spec_applied = MergedProviderSpec(
         name="siliconflow",
         base_url="https://api.siliconflow.cn/v1",
         api_key="sk-pi-test",
         protocol="openai",
         model="Qwen/Qwen2.5-Coder-32B-Instruct",
-        effort="high",
     )
-    adapter.apply(spec_effort)
+    adapter.apply(spec_applied)
     st_data_eff = json.loads(settings_file.read_text(encoding="utf-8"))
-    assert st_data_eff["defaultThinkingLevel"] == "high"
-    assert (
-        st_data_eff["modelThinkingLevels"][
-            "siliconflow/Qwen/Qwen2.5-Coder-32B-Instruct"
-        ]
-        == "high"
-    )
+    assert "defaultThinkingLevel" not in st_data_eff
+    assert "modelThinkingLevels" not in st_data_eff
     status_eff = adapter.get_status()
-    assert "Thinking: high" in status_eff.extra_summary
+    assert status_eff.extra_summary == ""
 
     # Verify refresh_catalog
     assert adapter.refresh_catalog("siliconflow") is True
@@ -514,7 +508,7 @@ def test_pi_thinking_support_and_anthropic_protocol(tmp_path: Path) -> None:
     st_data = json.loads(settings_file.read_text(encoding="utf-8"))
     assert st_data["defaultProvider"] == "deepseek"
     assert st_data["defaultModel"] == "deepseek-v4-flash"
-    assert st_data["defaultThinkingLevel"] == "high"
+    assert "defaultThinkingLevel" not in st_data
     # Should not force "off" into modelThinkingLevels
     model_th = st_data.get("modelThinkingLevels", {})
     assert model_th.get("deepseek/deepseek-v4-flash") != "off"

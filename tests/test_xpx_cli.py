@@ -323,6 +323,29 @@ def test_models_cli(
     )
     assert store.require("openrouter").default_model == "deepseek-reasoner"
 
+    # Test models add - standard <provider> <model>
+    assert (
+        xpx_cli.main(["models", "add", "openrouter", "claude-3-7-sonnet", "--default"])
+        == 0
+    )
+    assert "Added model 'claude-3-7-sonnet'" in capsys.readouterr().out
+    assert store.require("openrouter").default_model == "claude-3-7-sonnet"
+
+    # Test models add - reverse <model> <provider>
+    assert xpx_cli.main(["models", "add", "custom-gpt-5", "openrouter"]) == 0
+    assert "Added model 'custom-gpt-5'" in capsys.readouterr().out
+
+    # Test models add - provider/model syntax
+    assert xpx_cli.main(["models", "add", "openrouter/qwen-2.5-coder"]) == 0
+    assert "Added model 'qwen-2.5-coder'" in capsys.readouterr().out
+
+    # Verify models list shows added models
+    assert xpx_cli.main(["models", "list", "openrouter"]) == 0
+    list_out = capsys.readouterr().out
+    assert "claude-3-7-sonnet" in list_out
+    assert "custom-gpt-5" in list_out
+    assert "qwen-2.5-coder" in list_out
+
 
 def test_import_and_export_cli(
     xpx_isolated_env: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -881,7 +904,7 @@ def test_apply_fast_and_web_search_codex_only(
     assert "does not support --wire-api (Codex only)" in capsys.readouterr().err
 
 
-def test_apply_pi_with_effort(
+def test_apply_pi(
     xpx_isolated_env: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -895,10 +918,8 @@ def test_apply_pi_with_effort(
         )
     )
 
-    # 1. Apply to pi with explicit --effort
-    rc = xpx_cli.main(
-        ["apply", "pi", "deepseek", "--model", "deepseek-reasoner", "--effort", "high"]
-    )
+    # 1. Apply to pi without pinning effort
+    rc = xpx_cli.main(["apply", "pi", "deepseek", "--model", "deepseek-reasoner"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "Applied 'deepseek/deepseek-reasoner' to pi" in out
@@ -913,8 +934,8 @@ def test_apply_pi_with_effort(
     st_data = json.loads(settings_file.read_text(encoding="utf-8"))
     assert st_data["defaultProvider"] == "deepseek"
     assert st_data["defaultModel"] == "deepseek-reasoner"
-    assert st_data["defaultThinkingLevel"] == "high"
-    assert st_data["modelThinkingLevels"]["deepseek/deepseek-reasoner"] == "high"
+    assert "defaultThinkingLevel" not in st_data
+    assert "modelThinkingLevels" not in st_data
 
     # Check ~/.pi/agent/auth.json
     assert auth_file.is_file()
@@ -926,13 +947,16 @@ def test_apply_pi_with_effort(
     assert models_file.is_file()
     m_data = json.loads(models_file.read_text(encoding="utf-8"))
     assert "deepseek" in m_data["providers"]
+    prov_models = m_data["providers"]["deepseek"]["models"]
+    applied_m = next(m for m in prov_models if m["id"] == "deepseek-reasoner")
+    assert applied_m["reasoning"] is True
 
-    # 2. Check xpx status output
+    # 2. Check xpx status output (no redundant Thinking: high)
     rc_stat = xpx_cli.main(["status"])
     assert rc_stat == 0
     status_out = capsys.readouterr().out
     assert "deepseek" in status_out
-    assert "Thinking: high" in status_out
+    assert "Thinking:" not in status_out
 
     # 3. Clear pi
     rc_clear = xpx_cli.main(["apply", "pi", "--clear"])

@@ -66,3 +66,21 @@ def test_t_translation() -> None:
     assert i18n.t("unknown.key.foo") == "unknown.key.foo"
     # Custom default
     assert i18n.t("unknown.key.bar", default="Fallback") == "Fallback"
+
+
+def test_i18n_scan_full_parity_and_coverage() -> None:
+    from scripts.i18n_scan import run_i18n_scan
+
+    result = run_i18n_scan()
+    assert not result.missing_in_en, f"Missing en keys: {result.missing_in_en}"
+    assert not result.missing_in_zh, f"Missing zh keys: {result.missing_in_zh}"
+    assert not result.param_mismatches, (
+        f"Placeholder mismatches: {result.param_mismatches}"
+    )
+    assert not result.code_missing_in_zh, (
+        f"Keys used in code missing in zh: {result.code_missing_in_zh}"
+    )
+    assert not result.code_missing_in_en, (
+        f"Keys used in code missing in en: {result.code_missing_in_en}"
+    )
+    assert not result.cjk_leaks, f"Untranslated CJK leaks: {result.cjk_leaks}"

@@ -28,6 +28,7 @@ from lib.xpx.interactive.selector import (
     BOLD,
     CYAN,
     GREEN,
+    RED,
     RESET,
     YELLOW,
     Choice,
@@ -135,27 +136,30 @@ def _render_banner() -> None:
                     f"{styled(model_info, fg_color=MUTED)}"
                 )
             else:
+                account_tag = f"({t('apply.mode_account')})"
                 status_str = (
                     f"{styled('●', fg_color=SUCCESS)} "
                     f"{styled(ts.active_name, fg_color=WARNING)} "
-                    f"{styled('(account)', fg_color=MUTED)}"
+                    f"{styled(account_tag, fg_color=MUTED)}"
                 )
         else:
             if adp.get_binary_path():
+                inactive_tag = f"({t('ui.status_inactive')})"
                 status_str = (
                     f"{styled('○', fg_color=DIM_TEXT)} "
-                    f"{styled('(inactive)', fg_color=DIM_TEXT)}"
+                    f"{styled(inactive_tag, fg_color=DIM_TEXT)}"
                 )
             else:
+                not_inst_tag = f"({t('agent.not_installed')})"
                 status_str = (
                     f"{styled('-', fg_color=DIM_TEXT)} "
-                    f"{styled('(not installed)', fg_color=DIM_TEXT)}"
+                    f"{styled(not_inst_tag, fg_color=DIM_TEXT)}"
                 )
 
         v_col = styled(ver_str, fg_color=DIM_TEXT) if ver_str else ""
         lines.append(f"{t_tag}  {status_str}  {v_col}".strip())
 
-    title = f"◈  xpx control plane v{VERSION}"
+    title = f"◈  {t('banner.title')} v{VERSION}"
     card = render_card(title, lines)
     sys.stdout.write(f"\n{card}\n")
     sys.stdout.flush()
@@ -300,6 +304,7 @@ def run_interactive_main() -> int:
 
         action = select(t("main.prompt"), choices, page_size=9)
         if not action or action == "exit":
+            sys.stdout.write(f"\n{t('ui.exit_msg')}\n")
             return 0
 
         try:
@@ -1046,10 +1051,18 @@ def _wizard_add_provider() -> None:
             m_choices: list[Choice] = []
             if def_model:
                 m_choices.append(
-                    Choice(f"🌟 {def_model}", def_model, description="[推荐预设]")
+                    Choice(
+                        f"🌟 {def_model}",
+                        def_model,
+                        description=t("pv.model_recommended"),
+                    )
                 )
             m_choices.append(
-                Choice("（无）留空稍后配置", "__none__", description="不指定默认模型")
+                Choice(
+                    t("pv.model_none"),
+                    "__none__",
+                    description=t("pv.model_none_desc"),
+                )
             )
             m_choices.append(
                 Choice(
@@ -1321,6 +1334,7 @@ def run_interactive_models() -> int:
             [
                 Choice(t("models.list"), "list"),
                 Choice(t("models.sync"), "sync"),
+                Choice(t("models.add"), "add"),
                 Choice(t("ui.back"), "back"),
             ],
         )
@@ -1334,6 +1348,23 @@ def run_interactive_models() -> int:
             clear_screen()
             run_models_sync(argparse.Namespace(provider=pv_name, force=False))
             _wait_enter()
+        elif sub_action == "add":
+            clear_screen()
+            sys.stdout.write(f"\n{BOLD}{t('models.add_title', name=pv_name)}{RESET}\n")
+            mid = prompt_text(t("models.add_prompt"), allow_empty=False)
+            if mid and mid.strip():
+                try:
+                    from lib.xpx.models.catalog import add_model_to_catalog
+
+                    meta, is_created = add_model_to_catalog(pv_name, mid.strip())
+                    msg_key = (
+                        "models.add_success" if is_created else "models.update_success"
+                    )
+                    res_msg = t(msg_key, model=meta.id, provider=pv_name)
+                    sys.stdout.write(f"\n{GREEN}✔ {res_msg}{RESET}\n")
+                except Exception as exc:
+                    sys.stdout.write(f"\n{RED}✘ {exc}{RESET}\n")
+                _wait_enter()
 
 
 def run_interactive_accounts() -> int:

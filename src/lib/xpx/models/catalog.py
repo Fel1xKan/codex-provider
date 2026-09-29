@@ -285,16 +285,34 @@ def refresh_active_adapters(provider_name: str) -> None:
         pass
 
 
-def update_model_preference(
+def add_model_to_catalog(
     provider_name: str,
     model_id: str,
     *,
-    is_default: bool = False,
+    display_name: str | None = None,
     context: int | None = None,
     max_output: int | None = None,
     effort: str | None = None,
-) -> ModelMetadata:
-    """Update settings for a model and optionally set as provider default."""
+    reasoning_levels: list[str] | None = None,
+    modalities: list[str] | None = None,
+    is_default: bool = False,
+    overwrite: bool = False,
+) -> tuple[ModelMetadata, bool]:
+    """Add or update a model in a provider's catalog and optionally set as default.
+
+    Returns:
+        (metadata, is_created): Resulting metadata and whether it was newly added.
+    """
+    clean_id = model_id.strip()
+    if not clean_id:
+        raise SwitchError("model ID cannot be empty")
+
+    prefix = f"{provider_name}/"
+    if clean_id.startswith(prefix):
+        clean_id = clean_id[len(prefix) :].strip()
+    if not clean_id:
+        raise SwitchError("model ID cannot be empty")
+
     pv_store = ProviderStore()
     pv = pv_store.require(provider_name)
 
@@ -303,8 +321,13 @@ def update_model_preference(
     if cat is None:
         cat = ProviderCatalog(provider=provider_name, updated_at="")
 
-    existing = cat.models.get(model_id)
-    meta = enrich_model_metadata(model_id, existing=existing)
+    is_created = clean_id not in cat.models
+    existing = None if overwrite else cat.models.get(clean_id)
+
+    meta = enrich_model_metadata(clean_id, existing=existing, force_reset=overwrite)
+
+    if display_name is not None and display_name.strip():
+        meta.display_name = display_name.strip()
 
     if context is not None:
         if context <= 0:
@@ -317,25 +340,71 @@ def update_model_preference(
         meta.max_output_tokens = max_output
 
     if effort is not None:
-        clean_effort = effort.strip().lower()
-        if (
-            meta.supported_reasoning_levels
-            and clean_effort not in meta.supported_reasoning_levels
-        ):
-            avail = ", ".join(meta.supported_reasoning_levels)
-            raise SwitchError(
-                f"unsupported reasoning level '{effort}'. Supported: {avail}"
-            )
-        meta.default_reasoning_level = clean_effort
+        if isinstance(effort, str):
+            clean_levels = [
+                lvl.strip().lower() for lvl in effort.split(",") if lvl.strip()
+            ]
+        elif isinstance(effort, (list, tuple)):
+            clean_levels = [
+                str(lvl).strip().lower() for lvl in effort if str(lvl).strip()
+            ]
+        else:
+            clean_levels = [str(effort).strip().lower()]
 
-    cat.models[model_id] = meta
+        meta.supported_reasoning_levels = clean_levels
+        active_levels = [lvl for lvl in clean_levels if lvl not in ("none", "off", "0")]
+        if active_levels:
+            meta.default_reasoning_level = (
+                "high" if "high" in active_levels else active_levels[0]
+            )
+        else:
+            meta.default_reasoning_level = None
+    elif reasoning_levels is not None:
+        clean_levels = [lvl.strip().lower() for lvl in reasoning_levels if lvl.strip()]
+        meta.supported_reasoning_levels = clean_levels
+        active_levels = [lvl for lvl in clean_levels if lvl not in ("none", "off", "0")]
+        if active_levels:
+            meta.default_reasoning_level = (
+                "high" if "high" in active_levels else active_levels[0]
+            )
+        else:
+            meta.default_reasoning_level = None
+
+    if modalities is not None:
+        clean_modalities = [m.strip().lower() for m in modalities if m.strip()]
+        if clean_modalities:
+            meta.input_modalities = clean_modalities
+
+    cat.models[clean_id] = meta
     cat_store.save(cat)
 
     if is_default:
-        pv.default_model = model_id
+        pv.default_model = clean_id
         pv_store.save(pv)
 
     # Refresh active target adapter catalogs if applicable
     refresh_active_adapters(provider_name)
 
+    return meta, is_created
+
+
+def update_model_preference(
+    provider_name: str,
+    model_id: str,
+    *,
+    is_default: bool = False,
+    context: int | None = None,
+    max_output: int | None = None,
+    effort: str | None = None,
+) -> ModelMetadata:
+    """Update settings for a model and optionally set as provider default."""
+    meta, _ = add_model_to_catalog(
+        provider_name,
+        model_id,
+        is_default=is_default,
+        context=context,
+        max_output=max_output,
+        effort=effort,
+        overwrite=False,
+    )
     return meta
