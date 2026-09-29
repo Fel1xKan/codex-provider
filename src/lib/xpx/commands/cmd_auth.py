@@ -67,12 +67,18 @@ def run_auth_set(args: Any) -> int:
                 adp = get_adapter(target_name)
                 # Build merged spec for this target
                 overrides = spec.targets.get(target_name)
+                effort = (
+                    str(overrides.options["effort"])
+                    if overrides and overrides.options and "effort" in overrides.options
+                    else None
+                )
                 merged = MergedProviderSpec(
                     name=spec.name,
                     base_url=spec.base_url,
                     api_key=spec.api_key,
                     protocol=spec.protocol,
                     model=ts.active_model or spec.default_model,
+                    effort=effort,
                     headers=dict(spec.headers),
                     fast=overrides.fast if overrides else None,
                     wire_api=overrides.wire_api if overrides else None,

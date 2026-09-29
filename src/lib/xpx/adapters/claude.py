@@ -122,6 +122,10 @@ class ClaudeAdapter(TargetAdapter):
             env["ANTHROPIC_SUBAGENT_MODEL"] = spec.model
             env["CLAUDE_CODE_SUBAGENT_MODEL"] = spec.model
 
+        if spec.effort:
+            data["effortLevel"] = spec.effort
+            env["CLAUDE_CODE_EFFORT_LEVEL"] = spec.effort
+
         raw_json = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
         atomic_write_bytes(self.path, raw_json.encode("utf-8"))
 
@@ -177,8 +181,10 @@ class ClaudeAdapter(TargetAdapter):
                         "ANTHROPIC_DEFAULT_HAIKU_MODEL",
                         "ANTHROPIC_SUBAGENT_MODEL",
                         "CLAUDE_CODE_SUBAGENT_MODEL",
+                        "CLAUDE_CODE_EFFORT_LEVEL",
                     ]:
                         env.pop(key, None)
+                    data.pop("effortLevel", None)
                     raw_json = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
                     atomic_write_bytes(self.path, raw_json.encode("utf-8"))
             except Exception as exc:

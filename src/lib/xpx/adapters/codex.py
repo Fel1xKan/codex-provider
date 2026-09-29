@@ -315,6 +315,9 @@ class CodexAdapter(TargetAdapter):
         if spec.model:
             doc["model"] = spec.model
 
+        if spec.effort:
+            doc["model_reasoning_effort"] = spec.effort
+
         if spec.fast is True:
             doc["service_tier"] = "priority"
         elif spec.fast is False and "service_tier" in doc:
@@ -366,6 +369,8 @@ class CodexAdapter(TargetAdapter):
                     del doc["service_tier"]
                 if "web_search" in doc:
                     del doc["web_search"]
+                if "model_reasoning_effort" in doc:
+                    del doc["model_reasoning_effort"]
                 if "model_catalog_json" in doc:
                     del doc["model_catalog_json"]
                 atomic_write_bytes(self.config_path, tomlkit.dumps(doc).encode("utf-8"))

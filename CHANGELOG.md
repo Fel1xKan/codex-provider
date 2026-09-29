@@ -9,6 +9,14 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.4] - 2026-09-29
+
+- Support `--effort` argument on `xpx apply` to configure reasoning effort and thinking levels.
+- Update Pi coding agent runtime configuration with active provider, model, and thinking levels in `settings.json`.
+- Manage Pi credentials in `auth.json` and configure `thinkingLevelMap` in `models.json`.
+- Propagate reasoning effort across Codex (`model_reasoning_effort`) and Claude Code (`effortLevel`).
+- Display active thinking level for Pi in `xpx status` dashboard.
+
 ## [2.2.3] - 2026-09-24
 
 - Automatically generate and emit model catalog in OpenCode configuration (`opencode.json` and `models.json`) upon `xpx apply`.

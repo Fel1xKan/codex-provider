@@ -103,12 +103,20 @@ def run_config_set(args: Any) -> int:
                     try:
                         adp = get_adapter(t_name)
                         overrides = spec.targets.get(t_name)
+                        effort = (
+                            str(overrides.options["effort"])
+                            if overrides
+                            and overrides.options
+                            and "effort" in overrides.options
+                            else None
+                        )
                         merged = MergedProviderSpec(
                             name=spec.name,
                             base_url=spec.base_url,
                             api_key=spec.api_key,
                             protocol=spec.protocol,
                             model=ts.active_model or spec.default_model,
+                            effort=effort,
                             headers=dict(spec.headers),
                             fast=overrides.fast if overrides else None,
                             wire_api=overrides.wire_api if overrides else None,
@@ -198,12 +206,18 @@ def run_config_set(args: Any) -> int:
     if ts and ts.active_type == "provider" and ts.active_name == name:
         try:
             adp = get_adapter(target)
+            effort = (
+                str(overrides.options["effort"])
+                if overrides and overrides.options and "effort" in overrides.options
+                else None
+            )
             merged = MergedProviderSpec(
                 name=spec.name,
                 base_url=spec.base_url,
                 api_key=spec.api_key,
                 protocol=spec.protocol,
                 model=ts.active_model or spec.default_model,
+                effort=effort,
                 headers=dict(spec.headers),
                 fast=overrides.fast,
                 wire_api=overrides.wire_api,

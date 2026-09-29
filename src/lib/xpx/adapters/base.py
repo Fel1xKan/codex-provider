@@ -39,6 +39,7 @@ class MergedProviderSpec:
     api_key: str
     protocol: str = "openai"
     model: str | None = None
+    effort: str | None = None
     headers: dict[str, str] = field(default_factory=dict)
     fast: bool | None = None
     wire_api: str | None = None

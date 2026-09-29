@@ -879,3 +879,65 @@ def test_apply_fast_and_web_search_codex_only(
     )
     assert rc_wire == 1
     assert "does not support --wire-api (Codex only)" in capsys.readouterr().err
+
+
+def test_apply_pi_with_effort(
+    xpx_isolated_env: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(
+            name="deepseek",
+            base_url="https://api.deepseek.com/v1",
+            api_key="sk-test-pi",
+            default_model="deepseek-reasoner",
+        )
+    )
+
+    # 1. Apply to pi with explicit --effort
+    rc = xpx_cli.main(
+        ["apply", "pi", "deepseek", "--model", "deepseek-reasoner", "--effort", "high"]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Applied 'deepseek/deepseek-reasoner' to pi" in out
+
+    # Check ~/.pi/agent/settings.json
+    agent_dir = Path.home() / ".pi" / "agent"
+    settings_file = agent_dir / "settings.json"
+    auth_file = agent_dir / "auth.json"
+    models_file = agent_dir / "models.json"
+
+    assert settings_file.is_file()
+    st_data = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert st_data["defaultProvider"] == "deepseek"
+    assert st_data["defaultModel"] == "deepseek-reasoner"
+    assert st_data["defaultThinkingLevel"] == "high"
+    assert st_data["modelThinkingLevels"]["deepseek/deepseek-reasoner"] == "high"
+
+    # Check ~/.pi/agent/auth.json
+    assert auth_file.is_file()
+    auth_data = json.loads(auth_file.read_text(encoding="utf-8"))
+    assert auth_data["deepseek"]["type"] == "api_key"
+    assert auth_data["deepseek"]["key"] == "sk-test-pi"
+
+    # Check ~/.pi/agent/models.json
+    assert models_file.is_file()
+    m_data = json.loads(models_file.read_text(encoding="utf-8"))
+    assert "deepseek" in m_data["providers"]
+
+    # 2. Check xpx status output
+    rc_stat = xpx_cli.main(["status"])
+    assert rc_stat == 0
+    status_out = capsys.readouterr().out
+    assert "deepseek" in status_out
+    assert "Thinking: high" in status_out
+
+    # 3. Clear pi
+    rc_clear = xpx_cli.main(["apply", "pi", "--clear"])
+    assert rc_clear == 0
+    cleared_st = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert "defaultProvider" not in cleared_st
+    assert "defaultModel" not in cleared_st
+    assert "defaultThinkingLevel" not in cleared_st

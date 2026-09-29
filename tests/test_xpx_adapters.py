@@ -364,6 +364,18 @@ def test_pi_adapter(tmp_path: Path) -> None:
     assert status.active_type == "provider"
     assert status.active_name == "siliconflow"
 
+    # Verify settings.json and auth.json in ~/.pi/agent/
+    settings_file = tmp_path / ".pi" / "agent" / "settings.json"
+    auth_file = tmp_path / ".pi" / "agent" / "auth.json"
+    assert settings_file.is_file()
+    assert auth_file.is_file()
+    st_data = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert st_data["defaultProvider"] == "siliconflow"
+    assert st_data["defaultModel"] == "Qwen/Qwen2.5-Coder-32B-Instruct"
+    auth_data = json.loads(auth_file.read_text(encoding="utf-8"))
+    assert auth_data["siliconflow"]["type"] == "api_key"
+    assert auth_data["siliconflow"]["key"] == "sk-pi-test"
+
     # Verify models.json in ~/.pi/agent/
     models_file = tmp_path / ".pi" / "agent" / "models.json"
     assert models_file.is_file()
@@ -372,6 +384,27 @@ def test_pi_adapter(tmp_path: Path) -> None:
     prov_models = models_data["providers"]["siliconflow"]["models"]
     m_ids = {m["id"] for m in prov_models}
     assert "Qwen/Qwen2.5-Coder-32B-Instruct" in m_ids
+
+    # Verify applying with effort
+    spec_effort = MergedProviderSpec(
+        name="siliconflow",
+        base_url="https://api.siliconflow.cn/v1",
+        api_key="sk-pi-test",
+        protocol="openai",
+        model="Qwen/Qwen2.5-Coder-32B-Instruct",
+        effort="high",
+    )
+    adapter.apply(spec_effort)
+    st_data_eff = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert st_data_eff["defaultThinkingLevel"] == "high"
+    assert (
+        st_data_eff["modelThinkingLevels"][
+            "siliconflow/Qwen/Qwen2.5-Coder-32B-Instruct"
+        ]
+        == "high"
+    )
+    status_eff = adapter.get_status()
+    assert "Thinking: high" in status_eff.extra_summary
 
     # Verify refresh_catalog
     assert adapter.refresh_catalog("siliconflow") is True
@@ -383,6 +416,14 @@ def test_pi_adapter(tmp_path: Path) -> None:
     if models_file.is_file():
         cleared_models = json.loads(models_file.read_text(encoding="utf-8"))
         assert "siliconflow" not in cleared_models.get("providers", {})
+    if settings_file.is_file():
+        cleared_st = json.loads(settings_file.read_text(encoding="utf-8"))
+        assert "defaultProvider" not in cleared_st
+        assert "defaultModel" not in cleared_st
+        assert "defaultThinkingLevel" not in cleared_st
+    if auth_file.is_file():
+        cleared_auth = json.loads(auth_file.read_text(encoding="utf-8"))
+        assert "siliconflow" not in cleared_auth
 
 
 def test_registry() -> None:

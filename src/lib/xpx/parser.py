@@ -203,6 +203,10 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     p_apply.add_argument("--account", help="Apply named OAuth account")
     p_apply.add_argument("--model", help="Explicit model override")
     p_apply.add_argument(
+        "--effort",
+        help="Reasoning effort / thinking level (e.g. none, low, medium, high, max)",
+    )
+    p_apply.add_argument(
         "--clear", action="store_true", help="Reset client to official default state"
     )
     p_apply.add_argument("--reset", action="store_true", help="Alias for --clear")

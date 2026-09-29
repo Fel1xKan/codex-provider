@@ -116,12 +116,41 @@ def build_merged_spec(
             else:
                 headers.pop(h.strip(), None)
 
+    cli_effort = getattr(args, "effort", None)
+    effort = None
+    if cli_effort:
+        effort = str(cli_effort).strip()
+        has_adhoc = True
+    elif overrides and overrides.options and "effort" in overrides.options:
+        effort = str(overrides.options["effort"])
+    elif model:
+        try:
+            from lib.xpx.store.catalog_store import CatalogStore
+
+            clean_m = model.split("/", 1)[-1].strip()
+            cat = CatalogStore().get(pv.name)
+            if (
+                cat
+                and clean_m in cat.models
+                and cat.models[clean_m].default_reasoning_level
+            ):
+                effort = cat.models[clean_m].default_reasoning_level
+            else:
+                from lib.xpx.models.catalog import enrich_model_metadata
+
+                meta = enrich_model_metadata(clean_m)
+                if meta.default_reasoning_level:
+                    effort = meta.default_reasoning_level
+        except Exception:
+            pass
+
     spec = MergedProviderSpec(
         name=pv.name,
         base_url=pv.base_url,
         api_key=pv.api_key,
         protocol=pv.protocol,
         model=model,
+        effort=effort,
         headers=headers,
         fast=fast,
         wire_api=wire_api,
