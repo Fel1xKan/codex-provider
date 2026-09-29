@@ -68,6 +68,16 @@ def find_model_entry(model_id: str) -> dict[str, Any]:
 
     # Case-insensitive or suffix search
     lower_id = clean_id.lower()
+    for ak, av in aliases.items():
+        ak_lower = ak.lower()
+        matched = (
+            ak_lower == lower_id
+            or clean_id.endswith(f"/{ak}")
+            or lower_id.endswith(f"/{ak_lower}")
+        )
+        if matched and av in models:
+            return dict(models[av])
+
     for k, v in models.items():
         if k.lower() == lower_id or clean_id.endswith(f"/{k}"):
             return dict(v)
@@ -119,6 +129,143 @@ def enrich_model_metadata(
         default_reasoning_level=default_effort,
         input_modalities=modalities,
     )
+
+
+def resolve_model_effort(
+    provider_name: str,
+    model_id: str | None,
+    explicit_effort: str | None = None,
+) -> str | None:
+    """Resolve the effective reasoning effort for a model.
+
+    Resolution order:
+    1. Explicit effort passed directly (CLI flag or target override)
+    2. Provider's cached catalog default_reasoning_level
+    3. Provider's cached catalog supported_reasoning_levels (prefers 'high')
+    4. Authoritative shared model-catalog default_reasoning_level
+    5. Authoritative shared model-catalog supported_reasoning_levels
+    """
+    if explicit_effort:
+        clean = str(explicit_effort).strip()
+        if clean:
+            return clean
+    if not model_id:
+        return None
+
+    clean_id = model_id.strip()
+    prefix = f"{provider_name}/"
+    if clean_id.startswith(prefix):
+        clean_id = clean_id[len(prefix) :].strip()
+
+    # 1. Try provider's cached catalog
+    try:
+        cat = CatalogStore().get(provider_name)
+        if cat and clean_id in cat.models:
+            meta = cat.models[clean_id]
+            if meta.default_reasoning_level:
+                return meta.default_reasoning_level
+            if meta.supported_reasoning_levels:
+                levels = [
+                    lvl
+                    for lvl in meta.supported_reasoning_levels
+                    if lvl and str(lvl).lower() not in ("none", "off")
+                ]
+                if levels:
+                    return "high" if "high" in levels else levels[-1]
+    except Exception:
+        pass
+
+    # 2. Fallback to authoritative shared catalog metadata
+    try:
+        meta = enrich_model_metadata(clean_id)
+        if meta.default_reasoning_level:
+            return meta.default_reasoning_level
+        if meta.supported_reasoning_levels:
+            levels = [
+                lvl
+                for lvl in meta.supported_reasoning_levels
+                if lvl and str(lvl).lower() not in ("none", "off")
+            ]
+            if levels:
+                return "high" if "high" in levels else levels[-1]
+    except Exception:
+        pass
+
+    return None
+
+
+def get_consolidated_provider_models(
+    provider_name: str,
+    applied_model: str | None = None,
+    previous_model: str | None = None,
+    extra_models: list[str] | dict[str, Any] | None = None,
+) -> dict[str, ModelMetadata]:
+    """Retrieve and consolidate all effective models for a provider.
+
+    Combines:
+    - Provider's cached catalog models
+    - Applied model (current target selection)
+    - Previous model
+    - Provider's configured default model
+    - Any client-specific extra models
+    - Metadata enrichment from the shared catalog
+    - Standard fallback models if empty
+    """
+    cat_store = CatalogStore()
+    catalog = cat_store.get(provider_name)
+    models_map: dict[str, ModelMetadata] = {}
+
+    if catalog and catalog.models:
+        for mid, m_meta in catalog.models.items():
+            if not m_meta.supported_reasoning_levels:
+                models_map[mid] = enrich_model_metadata(mid, existing=m_meta)
+            else:
+                models_map[mid] = m_meta
+
+    prefix = f"{provider_name}/"
+
+    def _strip_and_add(raw_name: str | None) -> str | None:
+        if not raw_name or not str(raw_name).strip():
+            return None
+        clean = str(raw_name).strip()
+        if clean.startswith(prefix):
+            clean = clean[len(prefix) :].strip()
+        if not clean:
+            return None
+        if clean not in models_map:
+            models_map[clean] = enrich_model_metadata(clean)
+        elif not models_map[clean].supported_reasoning_levels:
+            models_map[clean] = enrich_model_metadata(clean, existing=models_map[clean])
+        return clean
+
+    _strip_and_add(applied_model)
+    _strip_and_add(previous_model)
+
+    try:
+        pv = ProviderStore().get(provider_name)
+        if pv and pv.default_model:
+            _strip_and_add(pv.default_model)
+    except Exception:
+        pass
+
+    if extra_models:
+        for em in extra_models:
+            _strip_and_add(em)
+
+    if not models_map:
+        try:
+            shared = load_shared_catalog_data()
+            shared_models = shared.get("models") or {}
+            for mid in shared_models:
+                models_map[mid] = enrich_model_metadata(mid)
+        except Exception:
+            pass
+
+    if not models_map:
+        for mid in ("gpt-5.4", "gpt-5.5", "deepseek-v4-flash"):
+            models_map[mid] = enrich_model_metadata(mid)
+
+    return models_map
 
 
 def refresh_active_adapters(provider_name: str) -> None:

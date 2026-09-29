@@ -426,6 +426,100 @@ def test_pi_adapter(tmp_path: Path) -> None:
         assert "siliconflow" not in cleared_auth
 
 
+def test_pi_thinking_support_and_anthropic_protocol(tmp_path: Path) -> None:
+    from lib.xpx.adapters.pi import _build_pi_model_entry, _resolve_model_effort
+    from lib.xpx.store.catalog_store import ModelMetadata
+
+    # Test _resolve_model_effort from catalog and aliases
+    assert _resolve_model_effort("deepseek", "deepseek-v4-flash") == "high"
+    assert _resolve_model_effort("deepseek", "deepseek-chat") == "high"
+    assert _resolve_model_effort("deepseek", "deepseek-reasoner") == "high"
+    assert _resolve_model_effort("unknown", "random-text-model") is None
+
+    # Test _build_pi_model_entry with catalog reasoning levels
+    meta_reasoning = ModelMetadata(
+        id="deepseek-v4-flash",
+        display_name="DeepSeek V4 Flash",
+        context_window=1000000,
+        max_output_tokens=384000,
+        supported_reasoning_levels=["none", "low", "high", "max"],
+        default_reasoning_level="high",
+    )
+    entry_reasoning = _build_pi_model_entry(meta_reasoning)
+    assert entry_reasoning["reasoning"] is True
+    assert "thinkingLevelMap" in entry_reasoning
+    t_map = entry_reasoning["thinkingLevelMap"]
+    assert "off" not in t_map or t_map["off"] is not None
+    assert t_map.get("high") == "high"
+    assert t_map.get("low") == "low"
+
+    # Explicit applied effort enables reasoning even on uncataloged models
+    meta_custom = ModelMetadata(
+        id="custom-uncataloged-model",
+        display_name="Custom Uncataloged",
+        context_window=128000,
+        max_output_tokens=8192,
+        supported_reasoning_levels=[],
+        default_reasoning_level=None,
+    )
+    entry_custom_no_eff = _build_pi_model_entry(meta_custom)
+    assert entry_custom_no_eff["reasoning"] is False
+
+    entry_custom_eff = _build_pi_model_entry(meta_custom, applied_effort="high")
+    assert entry_custom_eff["reasoning"] is True
+
+    # Explicitly disabled model
+    meta_disabled = ModelMetadata(
+        id="dumb-model",
+        display_name="Dumb Model",
+        context_window=128000,
+        max_output_tokens=8192,
+        supported_reasoning_levels=["none"],
+        default_reasoning_level=None,
+    )
+    entry_disabled = _build_pi_model_entry(meta_disabled)
+    assert entry_disabled["reasoning"] is False
+
+    # Test PiAdapter with anthropic protocol
+    cfg_file = tmp_path / ".pi" / "config.yaml"
+    adapter = PiAdapter(config_path=cfg_file)
+    assert "anthropic" in adapter.supported_protocols
+    assert "openai" in adapter.supported_protocols
+
+    spec_anthropic = MergedProviderSpec(
+        name="deepseek",
+        base_url="https://api.deepseek.com/anthropic",
+        api_key="sk-test-deepseek",
+        protocol="anthropic",
+        model="deepseek-v4-flash",
+    )
+    adapter.apply(spec_anthropic)
+
+    models_file = tmp_path / ".pi" / "agent" / "models.json"
+    settings_file = tmp_path / ".pi" / "agent" / "settings.json"
+    assert models_file.is_file()
+    assert settings_file.is_file()
+
+    models_data = json.loads(models_file.read_text(encoding="utf-8"))
+    prov = models_data["providers"]["deepseek"]
+    assert prov["api"] == "anthropic-messages"
+    assert prov["baseUrl"] == "https://api.deepseek.com/anthropic"
+    assert prov["apiKey"] == "sk-test-deepseek"
+
+    applied_m = next(m for m in prov["models"] if m["id"] == "deepseek-v4-flash")
+    assert applied_m["reasoning"] is True
+    m_tmap = applied_m["thinkingLevelMap"]
+    assert "off" not in m_tmap or m_tmap["off"] is not None
+
+    st_data = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert st_data["defaultProvider"] == "deepseek"
+    assert st_data["defaultModel"] == "deepseek-v4-flash"
+    assert st_data["defaultThinkingLevel"] == "high"
+    # Should not force "off" into modelThinkingLevels
+    model_th = st_data.get("modelThinkingLevels", {})
+    assert model_th.get("deepseek/deepseek-v4-flash") != "off"
+
+
 def test_registry() -> None:
     all_adps = get_all_adapters()
     assert set(all_adps.keys()) == {

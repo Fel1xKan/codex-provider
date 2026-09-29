@@ -238,15 +238,12 @@ class CursorAdapter(TargetAdapter):
                 if spec.model:
                     model_ids.append(spec.model)
                 try:
-                    from lib.xpx.store.catalog_store import CatalogStore
-                    from lib.xpx.store.provider_store import ProviderStore
+                    from lib.xpx.models.catalog import get_consolidated_provider_models
 
-                    cat = CatalogStore().get(spec.name)
-                    if cat:
-                        model_ids.extend(cat.models.keys())
-                    pv = ProviderStore().get(spec.name)
-                    if pv and pv.models:
-                        model_ids.extend(pv.models)
+                    models_map = get_consolidated_provider_models(
+                        spec.name, applied_model=spec.model
+                    )
+                    model_ids.extend(models_map.keys())
                 except Exception:
                     pass
 
@@ -313,19 +310,16 @@ class CursorAdapter(TargetAdapter):
 
                     if pv_name:
                         try:
-                            from lib.xpx.store.catalog_store import CatalogStore
+                            from lib.xpx.models.catalog import (
+                                get_consolidated_provider_models,
+                            )
                             from lib.xpx.store.provider_store import ProviderStore
 
-                            cat = CatalogStore().get(pv_name)
-                            if cat:
-                                model_ids.extend(cat.models.keys())
+                            models_map = get_consolidated_provider_models(pv_name)
+                            model_ids.extend(models_map.keys())
                             pv = ProviderStore().get(pv_name)
-                            if pv:
-                                if pv.default_model:
-                                    default_model = pv.default_model
-                                    model_ids.append(pv.default_model)
-                                if pv.models:
-                                    model_ids.extend(pv.models)
+                            if pv and pv.default_model:
+                                default_model = pv.default_model
                         except Exception:
                             pass
 

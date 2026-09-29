@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -43,40 +44,32 @@ def _resolve_model_effort(
     model_id: str | None,
     explicit_effort: str | None = None,
 ) -> str | None:
-    if explicit_effort:
-        return explicit_effort
-    if not model_id:
-        return None
-    clean_id = model_id.split("/", 1)[-1].strip()
-    try:
-        from lib.xpx.store.catalog_store import CatalogStore
+    from lib.xpx.models.catalog import resolve_model_effort
 
-        cat = CatalogStore().get(provider_name)
-        if cat and clean_id in cat.models:
-            meta = cat.models[clean_id]
-            if meta.default_reasoning_level:
-                return meta.default_reasoning_level
-    except Exception:
-        pass
-    try:
-        from lib.xpx.models.catalog import enrich_model_metadata
-
-        meta = enrich_model_metadata(clean_id)
-        if meta.default_reasoning_level:
-            return meta.default_reasoning_level
-    except Exception:
-        pass
-    return None
+    return resolve_model_effort(provider_name, model_id, explicit_effort)
 
 
-def _build_pi_model_entry(meta: ModelMetadata) -> dict[str, Any]:
-    has_reasoning = bool(
-        meta.supported_reasoning_levels
-        and not (
-            len(meta.supported_reasoning_levels) == 1
-            and str(meta.supported_reasoning_levels[0]).lower() in ("none", "off")
-        )
-    )
+def _build_pi_model_entry(
+    meta: ModelMetadata,
+    applied_effort: str | None = None,
+) -> dict[str, Any]:
+    levels_clean = [
+        str(lvl).lower()
+        for lvl in (meta.supported_reasoning_levels or [])
+        if lvl and str(lvl).lower() not in ("none", "off")
+    ]
+    explicitly_disabled = bool(meta.supported_reasoning_levels and not levels_clean)
+    if explicitly_disabled and not (
+        applied_effort and str(applied_effort).lower() not in ("none", "off", "0")
+    ):
+        has_reasoning = False
+    elif levels_clean or (
+        applied_effort and str(applied_effort).lower() not in ("none", "off", "0")
+    ):
+        has_reasoning = True
+    else:
+        has_reasoning = False
+
     entry: dict[str, Any] = {
         "id": meta.id,
         "reasoning": has_reasoning,
@@ -86,19 +79,21 @@ def _build_pi_model_entry(meta: ModelMetadata) -> dict[str, Any]:
         entry["maxTokens"] = meta.max_output_tokens
 
     if has_reasoning:
-        levels = (
-            [
-                lvl
-                for lvl in meta.supported_reasoning_levels
-                if lvl and str(lvl).lower() not in ("none", "off")
-            ]
-            if meta.supported_reasoning_levels
-            else []
-        ) or ["low", "medium", "high", "xhigh", "max"]
-        t_map: dict[str, Any] = {lvl: lvl for lvl in levels}
-        t_map["off"] = None
-        if "medium" in levels and "minimal" not in t_map:
-            t_map["minimal"] = "low" if "low" in levels else levels[0]
+        valid_levels = levels_clean or (
+            [applied_effort]
+            if (
+                applied_effort
+                and str(applied_effort).lower() not in ("none", "off", "0")
+            )
+            else ["low", "medium", "high", "xhigh", "max"]
+        )
+        t_map: dict[str, Any] = {lvl: lvl for lvl in valid_levels}
+        if "low" in valid_levels and "minimal" not in t_map:
+            t_map["minimal"] = "low"
+        if "high" in valid_levels and "xhigh" not in t_map:
+            t_map["xhigh"] = "high"
+        if ("max" in valid_levels or "high" in valid_levels) and "max" not in t_map:
+            t_map["max"] = t_map.get("high", "max")
         entry["thinkingLevelMap"] = t_map
     return entry
 
@@ -106,7 +101,7 @@ def _build_pi_model_entry(meta: ModelMetadata) -> dict[str, Any]:
 class PiAdapter(TargetAdapter):
     name = "pi"
     display_name = "Pi Coding Agent"
-    supported_protocols = ["openai"]
+    supported_protocols = ["openai", "anthropic"]
     binary_name = "pi"
     package_name = "@earendil-works/pi-coding-agent"
 
@@ -174,6 +169,11 @@ class PiAdapter(TargetAdapter):
                     pv_name = st_data.get("defaultProvider")
                     model = st_data.get("defaultModel")
                     thinking = st_data.get("defaultThinkingLevel")
+                    mt_levels = st_data.get("modelThinkingLevels")
+                    if isinstance(mt_levels, dict) and pv_name and model:
+                        m_key = f"{pv_name}/{model}"
+                        if m_key in mt_levels:
+                            thinking = mt_levels[m_key]
                     if pv_name:
                         extra = f"Thinking: {thinking}" if thinking else ""
                         return TargetStatus(
@@ -229,61 +229,38 @@ class PiAdapter(TargetAdapter):
         provider_name: str,
         applied_model: str | None = None,
         previous_model: str | None = None,
+        applied_effort: str | None = None,
     ) -> list[dict[str, Any]]:
-        from lib.xpx.models.catalog import (
-            enrich_model_metadata,
-            load_shared_catalog_data,
-        )
-        from lib.xpx.store.catalog_store import CatalogStore
-        from lib.xpx.store.provider_store import ProviderStore
+        from lib.xpx.models.catalog import get_consolidated_provider_models
 
-        cat_store = CatalogStore()
-        catalog = cat_store.get(provider_name)
-        models_map: dict[str, ModelMetadata] = {}
-        if catalog and catalog.models:
-            models_map.update(catalog.models)
+        models_map = get_consolidated_provider_models(
+            provider_name=provider_name,
+            applied_model=applied_model,
+            previous_model=previous_model,
+        )
 
         prefix = f"{provider_name}/"
+        clean_applied = None
         if applied_model and applied_model.strip():
-            m_clean = applied_model.strip()
-            if m_clean.startswith(prefix):
-                m_clean = m_clean[len(prefix) :].strip()
-            if m_clean not in models_map:
-                models_map[m_clean] = enrich_model_metadata(m_clean)
+            clean_applied = applied_model.strip()
+            if clean_applied.startswith(prefix):
+                clean_applied = clean_applied[len(prefix) :].strip()
 
-        if previous_model and previous_model.strip():
-            p_clean = previous_model.strip()
-            if p_clean.startswith(prefix):
-                p_clean = p_clean[len(prefix) :].strip()
-            if p_clean not in models_map:
-                models_map[p_clean] = enrich_model_metadata(p_clean)
-
-        try:
-            pv = ProviderStore().get(provider_name)
-            if pv and pv.default_model and pv.default_model.strip():
-                d_clean = pv.default_model.strip()
-                if d_clean.startswith(prefix):
-                    d_clean = d_clean[len(prefix) :].strip()
-                if d_clean not in models_map:
-                    models_map[d_clean] = enrich_model_metadata(d_clean)
-        except Exception:
-            pass
-
-        if not models_map:
-            try:
-                shared = load_shared_catalog_data()
-                shared_models = shared.get("models") or {}
-                if shared_models:
-                    for mid in shared_models:
-                        models_map[mid] = enrich_model_metadata(mid)
-            except Exception:
-                pass
-
-        if not models_map:
-            for mid in ("gpt-5.4", "gpt-5.5", "deepseek-v4-flash"):
-                models_map[mid] = enrich_model_metadata(mid)
-
-        pi_models = [_build_pi_model_entry(meta) for meta in models_map.values()]
+        pi_models = []
+        for meta in models_map.values():
+            is_active = bool(
+                clean_applied
+                and (
+                    meta.id == clean_applied
+                    or (applied_model and meta.id == applied_model.strip())
+                )
+            )
+            pi_models.append(
+                _build_pi_model_entry(
+                    meta,
+                    applied_effort=applied_effort if is_active else None,
+                )
+            )
         pi_models.sort(key=lambda x: str(x.get("id", "")).lower())
         return pi_models
 
@@ -353,11 +330,28 @@ class PiAdapter(TargetAdapter):
                 except Exception:
                     pass
 
-            prov["api"] = "openai-completions"
+            from lib.xpx.store.provider_store import ProviderStore
+
+            pv_obj = None
+            with contextlib.suppress(Exception):
+                pv_obj = ProviderStore().get(target_pv)
+            prov_protocol = pv_obj.protocol if pv_obj else "openai"
+            prov["api"] = (
+                "anthropic-messages"
+                if prov_protocol == "anthropic"
+                else "openai-completions"
+            )
+            if prov["api"] == "openai-completions":
+                compat = prov.setdefault("compat", {})
+                if isinstance(compat, dict):
+                    compat["supportsReasoningEffort"] = True
+
+            eff = _resolve_model_effort(target_pv, current_model)
             prov["models"] = self._generate_pi_models(
                 provider_name=target_pv,
                 applied_model=current_model if target_pv == active_pv else None,
                 previous_model=None,
+                applied_effort=eff,
             )
 
             payload_models = (
@@ -435,15 +429,18 @@ class PiAdapter(TargetAdapter):
         if pi_thinking:
             settings_data["defaultThinkingLevel"] = pi_thinking
             mt_levels = settings_data.setdefault("modelThinkingLevels", {})
-            if not isinstance(mt_levels, dict):
-                mt_levels = {}
-                settings_data["modelThinkingLevels"] = mt_levels
-            if clean_model:
-                mt_levels[f"{spec.name}/{clean_model}"] = pi_thinking
-        elif "defaultThinkingLevel" in settings_data and not spec.effort:
-            mt_levels = settings_data.setdefault("modelThinkingLevels", {})
             if isinstance(mt_levels, dict) and clean_model:
-                mt_levels[f"{spec.name}/{clean_model}"] = "off"
+                mt_levels[f"{spec.name}/{clean_model}"] = pi_thinking
+        elif clean_model:
+            mt_levels = settings_data.get("modelThinkingLevels")
+            if (
+                isinstance(mt_levels, dict)
+                and mt_levels.get(f"{spec.name}/{clean_model}") == "off"
+            ):
+                del mt_levels[f"{spec.name}/{clean_model}"]
+
+        if not settings_data.get("defaultThinkingLevel"):
+            settings_data["defaultThinkingLevel"] = pi_thinking or "high"
 
         payload_settings = (
             json.dumps(settings_data, indent=2, ensure_ascii=False) + "\n"
@@ -490,13 +487,22 @@ class PiAdapter(TargetAdapter):
             providers[spec.name] = prov
 
         prov["baseUrl"] = spec.base_url
-        prov["api"] = "openai-completions"
+        prov["api"] = (
+            "anthropic-messages"
+            if spec.protocol == "anthropic"
+            else "openai-completions"
+        )
+        if prov["api"] == "openai-completions":
+            compat = prov.setdefault("compat", {})
+            if isinstance(compat, dict):
+                compat["supportsReasoningEffort"] = True
         if spec.api_key:
             prov["apiKey"] = spec.api_key
         prov["models"] = self._generate_pi_models(
             provider_name=spec.name,
             applied_model=clean_model or spec.model,
             previous_model=None,
+            applied_effort=pi_thinking,
         )
 
         payload_models = (

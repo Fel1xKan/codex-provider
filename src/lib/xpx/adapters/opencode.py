@@ -14,9 +14,8 @@ from lib.common.common_store import atomic_write_bytes, ensure_private_dir
 from lib.common.constants import SECRET_FILE_MODE
 from lib.common.errors import SwitchError
 from lib.xpx.adapters.base import MergedProviderSpec, TargetAdapter, TargetStatus
-from lib.xpx.models.catalog import enrich_model_metadata, load_shared_catalog_data
-from lib.xpx.store.catalog_store import CatalogStore, ModelMetadata
-from lib.xpx.store.provider_store import ProviderStore
+from lib.xpx.models.catalog import get_consolidated_provider_models
+from lib.xpx.store.catalog_store import ModelMetadata
 
 CONFIG_NAMES = (
     "opencode.json",
@@ -209,57 +208,17 @@ class OpenCodeAdapter(TargetAdapter):
         previous_model: str | None = None,
         existing_models: dict[str, Any] | None = None,
     ) -> dict[str, dict[str, Any]]:
-        cat_store = CatalogStore()
-        catalog = cat_store.get(provider_name)
-        models_map: dict[str, ModelMetadata] = {}
-        if catalog and catalog.models:
-            models_map.update(catalog.models)
-
-        prefix = f"{provider_name}/"
-        if applied_model and applied_model.strip():
-            m_clean = applied_model.strip()
-            if m_clean.startswith(prefix):
-                m_clean = m_clean[len(prefix) :].strip()
-            if m_clean not in models_map:
-                models_map[m_clean] = enrich_model_metadata(m_clean)
-
-        if previous_model and previous_model.strip():
-            p_clean = previous_model.strip()
-            if p_clean.startswith(prefix):
-                p_clean = p_clean[len(prefix) :].strip()
-            if p_clean not in models_map:
-                models_map[p_clean] = enrich_model_metadata(p_clean)
-
-        try:
-            pv = ProviderStore().get(provider_name)
-            if pv and pv.default_model and pv.default_model.strip():
-                d_clean = pv.default_model.strip()
-                if d_clean.startswith(prefix):
-                    d_clean = d_clean[len(prefix) :].strip()
-                if d_clean not in models_map:
-                    models_map[d_clean] = enrich_model_metadata(d_clean)
-        except Exception:
-            pass
-
-        if existing_models and isinstance(existing_models, dict):
-            for k in existing_models:
-                if k not in models_map:
-                    models_map[k] = enrich_model_metadata(k)
-
-        if not models_map:
-            try:
-                shared = load_shared_catalog_data()
-                shared_models = shared.get("models") or {}
-                if shared_models:
-                    for mid in shared_models:
-                        models_map[mid] = enrich_model_metadata(mid)
-            except Exception:
-                pass
-
-        if not models_map:
-            for mid in ("gpt-5.4", "gpt-5.5", "deepseek-v4-flash"):
-                models_map[mid] = enrich_model_metadata(mid)
-
+        extra_models = (
+            list(existing_models.keys())
+            if existing_models and isinstance(existing_models, dict)
+            else None
+        )
+        models_map = get_consolidated_provider_models(
+            provider_name=provider_name,
+            applied_model=applied_model,
+            previous_model=previous_model,
+            extra_models=extra_models,
+        )
         existing = existing_models if isinstance(existing_models, dict) else {}
         result: dict[str, dict[str, Any]] = {}
         for mid in sorted(models_map.keys(), key=lambda s: s.lower()):

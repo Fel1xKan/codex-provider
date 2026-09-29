@@ -9,6 +9,12 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.5] - 2026-09-29
+
+- Normalize model catalog loading, resolution, and fallback into unified control plane domain services across all target adapters.
+- Consolidate reasoning effort resolution across Codex, OpenCode, Pi, and Cursor using authoritative shared catalog metadata.
+- Automatically enrich provider models with context windows, output limits, and thinking levels during configuration emission.
+
 ## [2.2.4] - 2026-09-29
 
 - Support `--effort` argument on `xpx apply` to configure reasoning effort and thinking levels.

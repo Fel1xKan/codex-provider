@@ -124,25 +124,9 @@ def build_merged_spec(
     elif overrides and overrides.options and "effort" in overrides.options:
         effort = str(overrides.options["effort"])
     elif model:
-        try:
-            from lib.xpx.store.catalog_store import CatalogStore
+        from lib.xpx.models.catalog import resolve_model_effort
 
-            clean_m = model.split("/", 1)[-1].strip()
-            cat = CatalogStore().get(pv.name)
-            if (
-                cat
-                and clean_m in cat.models
-                and cat.models[clean_m].default_reasoning_level
-            ):
-                effort = cat.models[clean_m].default_reasoning_level
-            else:
-                from lib.xpx.models.catalog import enrich_model_metadata
-
-                meta = enrich_model_metadata(clean_m)
-                if meta.default_reasoning_level:
-                    effort = meta.default_reasoning_level
-        except Exception:
-            pass
+        effort = resolve_model_effort(pv.name, model)
 
     spec = MergedProviderSpec(
         name=pv.name,

@@ -11,6 +11,8 @@ import pytest
 from lib.common.errors import SwitchError
 from lib.xpx.models.catalog import (
     enrich_model_metadata,
+    get_consolidated_provider_models,
+    resolve_model_effort,
     update_model_preference,
 )
 from lib.xpx.models.sync import fetch_remote_models, sync_provider_models
@@ -184,3 +186,74 @@ def test_refresh_active_adapters_opencode(
         ]
         == 32000
     )
+
+
+def test_resolve_model_effort(xpx_env: Path) -> None:
+    # 1. Explicit effort overrides everything
+    assert resolve_model_effort("pv", "any-model", explicit_effort="low") == "low"
+    assert resolve_model_effort("pv", "any-model", explicit_effort="  max  ") == "max"
+
+    # 2. None model
+    assert resolve_model_effort("pv", None) is None
+
+    # 3. Model from shared catalog with reasoning default
+    effort = resolve_model_effort("pv", "deepseek-reasoner")
+    assert effort in {"high", "default", "medium", "low"}
+
+    # 4. Model with provider prefix stripped
+    effort_prefixed = resolve_model_effort("my-pv", "my-pv/deepseek-reasoner")
+    assert effort_prefixed == effort
+
+    # 5. Model with provider-specific custom catalog override
+    pv_store = ProviderStore()
+    pv_store.save(
+        ProviderSpec(
+            name="my-pv",
+            base_url="https://api.test.com/v1",
+            api_key="sk-test",
+        )
+    )
+    update_model_preference(
+        "my-pv",
+        "custom-model",
+        effort="medium",
+    )
+    # Give it reasoning levels
+    cat_store = CatalogStore()
+    cat = cat_store.get("my-pv")
+    assert cat is not None
+    cat.models["custom-model"].supported_reasoning_levels = ["low", "medium", "high"]
+    cat.models["custom-model"].default_reasoning_level = "medium"
+    cat_store.save(cat)
+
+    assert resolve_model_effort("my-pv", "custom-model") == "medium"
+
+
+def test_get_consolidated_provider_models(xpx_env: Path) -> None:
+    pv_store = ProviderStore()
+    pv_store.save(
+        ProviderSpec(
+            name="consolidated-pv",
+            base_url="https://api.test.com/v1",
+            api_key="sk-test",
+            default_model="consolidated-pv/deepseek-chat",
+        )
+    )
+
+    models = get_consolidated_provider_models(
+        provider_name="consolidated-pv",
+        applied_model="consolidated-pv/deepseek-reasoner",
+        previous_model="previous-model",
+        extra_models=["extra-model-1"],
+    )
+
+    # All models stripped of provider prefix
+    assert "deepseek-reasoner" in models
+    assert "deepseek-chat" in models
+    assert "previous-model" in models
+    assert "extra-model-1" in models
+
+    # Metadata enrichment occurred
+    assert models["deepseek-reasoner"].supported_reasoning_levels
+    assert models["deepseek-chat"].context_window > 0
+    assert models["extra-model-1"].context_window == 128000
