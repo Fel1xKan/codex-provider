@@ -321,3 +321,94 @@ def test_current_version_has_release_notes() -> None:
     assert section.strip()
     # Notes are read in a terminal, so they must render to plain lines.
     assert notes.render_notes(section)
+
+
+def test_fetch_latest_release_falls_back_on_rate_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import urllib.error
+
+    def mock_urlopen(req, *args, **kwargs):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "api.github.com" in url:
+            raise urllib.error.HTTPError(
+                url, 403, "rate limit exceeded", hdrs=None, fp=None
+            )
+        # Fallback redirects
+        if url.endswith("/releases/latest"):
+
+            class MockRedirectResp:
+                def geturl(self):
+                    return (
+                        "https://github.com/Fel1xKan/codex-provider/releases/tag/v2.2.6"
+                    )
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    pass
+
+            return MockRedirectResp()
+        if "expanded_assets" in url:
+
+            class MockAssetsResp:
+                def read(self):
+                    return (
+                        b'<a href="/Fel1xKan/codex-provider/releases/download/'
+                        b'v2.2.6/xpx-2.2.6-linux-x86_64">asset</a>'
+                    )
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    pass
+
+            return MockAssetsResp()
+        if "CHANGELOG.md" in url:
+
+            class MockChangelogResp:
+                def read(self):
+                    return b"## [2.2.6] - 2026-09-29\n\n- new feature\n"
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    pass
+
+            return MockChangelogResp()
+        raise urllib.error.URLError("not found")
+
+    import urllib.request
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+    payload = self_upgrade.fetch_latest_release("Fel1xKan/codex-provider")
+    assert payload["tag_name"] == "v2.2.6"
+    assert "xpx-2.2.6-linux-x86_64" in [a["name"] for a in payload["assets"]]
+    assert "- new feature" in payload["body"]
+
+
+def test_fetch_latest_release_uses_github_token_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import io
+    import json
+    import urllib.request
+
+    recorded_headers = {}
+
+    def mock_urlopen(req, *args, **kwargs):
+        nonlocal recorded_headers
+        recorded_headers = req.headers
+        resp_data = json.dumps({"tag_name": "v2.2.6", "assets": []}).encode("utf-8")
+        return io.BytesIO(resp_data)
+
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_test123456")
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+    payload = self_upgrade.fetch_latest_release("Fel1xKan/codex-provider")
+    assert payload["tag_name"] == "v2.2.6"
+    assert recorded_headers.get("Authorization") == "Bearer ghp_test123456"

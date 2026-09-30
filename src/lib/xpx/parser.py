@@ -248,6 +248,11 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
         help="Provider spec (e.g. deepseek, deepseek/reasoner, or :chat)",
     )
     p_apply.add_argument(
+        "model_arg",
+        nargs="?",
+        help="Optional model override when provider is specified separately",
+    )
+    p_apply.add_argument(
         "--all", action="store_true", help="Apply to all detected target clients"
     )
     p_apply.add_argument("--account", help="Apply named OAuth account")

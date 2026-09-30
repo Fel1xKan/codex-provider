@@ -134,17 +134,18 @@ def build_merged_spec(
 def run_apply(args: Any) -> int:
     target_arg = getattr(args, "target", None)
     provider_spec = getattr(args, "provider_spec", None)
+    model_arg = getattr(args, "model_arg", None)
+    explicit_model = getattr(args, "model", None) or model_arg
     all_targets = getattr(args, "all", False)
 
     if all_targets:
-        if target_arg and not provider_spec:
+        if target_arg and not provider_spec and not model_arg:
             provider_spec = target_arg
             target_arg = None
         elif target_arg and provider_spec:
-            if not getattr(args, "model", None):
-                provider_spec = f"{target_arg}/{provider_spec}"
-            else:
-                provider_spec = target_arg
+            if not explicit_model:
+                explicit_model = provider_spec
+            provider_spec = target_arg
             target_arg = None
 
         installed = detect_installed_adapters()
@@ -281,9 +282,7 @@ def run_apply(args: Any) -> int:
                         f"(provider '{ts.active_name}' not found in store)"
                     )
                     continue
-                model = (
-                    getattr(args, "model", None) or ts.active_model or pv.default_model
-                )
+                model = explicit_model or ts.active_model or pv.default_model
                 merged_spec, has_adhoc = build_merged_spec(pv, t, model, args)
                 if is_dry_run:
                     fast_info = " (fast)" if merged_spec.fast else ""
@@ -293,10 +292,12 @@ def run_apply(args: Any) -> int:
                     )
                 else:
                     adp.apply(merged_spec)
-                    model_str = f"/{merged_spec.model}" if merged_spec.model else ""
+                    model_info = (
+                        f" (model: {merged_spec.model})" if merged_spec.model else ""
+                    )
                     fast_str = " (fast mode enabled)" if merged_spec.fast else ""
                     applied_msg = (
-                        f"✔ Applied provider '{pv.name}{model_str}' to {t}{fast_str}."
+                        f"✔ Applied provider '{pv.name}'{model_info} to {t}{fast_str}."
                     )
                     print(applied_msg)
 
@@ -327,7 +328,7 @@ def run_apply(args: Any) -> int:
                 return 0
 
     # 5. Provider Apply mode
-    explicit_model = getattr(args, "model", None)
+    explicit_model = explicit_model or getattr(args, "model", None)
     is_dry_run = getattr(args, "dry_run", False)
     no_save = getattr(args, "no_save", False)
 
@@ -391,8 +392,8 @@ def run_apply(args: Any) -> int:
             active_model=merged_spec.model,
         )
 
-        model_str = f"/{merged_spec.model}" if merged_spec.model else ""
+        model_info = f" (model: {merged_spec.model})" if merged_spec.model else ""
         fast_str = " (fast mode enabled)" if merged_spec.fast else ""
-        print(f"✔ Applied '{pv.name}{model_str}' to {t}{fast_str}.")
+        print(f"✔ Applied provider '{pv.name}'{model_info} to {t}{fast_str}.")
 
     return 0

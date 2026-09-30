@@ -53,8 +53,12 @@ esac
 
 if [[ "$VERSION" == "latest" ]]; then
   API_URL="https://api.github.com/repos/${REPO}/releases/latest"
-  TAG="$(curl -fsSL "$API_URL" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
+  TAG="$(curl -fsSL "$API_URL" 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true)"
   if [[ -z "$TAG" ]]; then
+    REDIRECT_URL="$(curl -fsSL -o /dev/null -w "%{url_effective}" "https://github.com/${REPO}/releases/latest" 2>/dev/null || true)"
+    TAG="$(basename "$REDIRECT_URL")"
+  fi
+  if [[ -z "$TAG" || "$TAG" == "latest" ]]; then
     echo "error: could not determine latest release" >&2
     exit 1
   fi

@@ -8,8 +8,16 @@ $ErrorActionPreference = "Stop"
 
 function Get-Version {
     if ($Version -eq "latest") {
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "install" }
-        return $release.tag_name.TrimStart("v")
+        try {
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "install" }
+            return $release.tag_name.TrimStart("v")
+        } catch {
+            $resp = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/latest" -MaximumRedirection 0 -ErrorAction SilentlyContinue
+            if ($resp.Headers.Location) {
+                return (Split-Path $resp.Headers.Location -Leaf).TrimStart("v")
+            }
+            throw $_
+        }
     }
     return $Version.TrimStart("v")
 }

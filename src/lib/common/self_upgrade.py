@@ -16,6 +16,7 @@ from typing import Any, TextIO
 
 from lib.common.common_store import atomic_write_bytes
 from lib.common.errors import SwitchError
+from lib.common.release_notes import changelog_section
 
 DEFAULT_REPOSITORY = "Fel1xKan/codex-provider"
 GITHUB_API_RELEASES = "https://api.github.com/repos/{repo}/releases"
@@ -136,28 +137,125 @@ def parse_version(value: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups())  # type: ignore[return-value]
 
 
+def _fetch_latest_release_fallback(repository: str) -> dict[str, Any]:
+    """Fetch release metadata via web redirect when GitHub API is rate-limited."""
+    latest_url = f"https://github.com/{repository}/releases/latest"
+    req = urllib.request.Request(
+        latest_url,
+        headers={"User-Agent": "codex-provider"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            final_url = resp.geturl()
+    except (urllib.error.URLError, OSError) as exc:
+        raise SwitchError(f"failed to resolve latest release URL: {exc}") from exc
+
+    tag = final_url.rstrip("/").split("/")[-1]
+    if not tag or tag == "latest":
+        raise SwitchError(f"could not determine latest release tag from {final_url}")
+
+    version = tag.lstrip("v") if tag.startswith("v") else tag
+
+    notes = ""
+    for branch in ("master", "main"):
+        raw_url = (
+            f"https://raw.githubusercontent.com/{repository}/{branch}/CHANGELOG.md"
+        )
+        try:
+            req_notes = urllib.request.Request(
+                raw_url,
+                headers={"User-Agent": "codex-provider"},
+            )
+            with urllib.request.urlopen(req_notes, timeout=10) as resp_notes:
+                changelog_text = resp_notes.read().decode("utf-8")
+                extracted = changelog_section(version, changelog_text)
+                if extracted:
+                    notes = extracted
+                    break
+        except Exception:
+            continue
+
+    discovered_assets: set[str] = set()
+    expanded_url = f"https://github.com/{repository}/releases/expanded_assets/{tag}"
+    try:
+        req_exp = urllib.request.Request(
+            expanded_url,
+            headers={"User-Agent": "codex-provider"},
+        )
+        with urllib.request.urlopen(req_exp, timeout=10) as resp_exp:
+            html = resp_exp.read().decode("utf-8")
+            for m in re.findall(
+                rf"/releases/download/{re.escape(tag)}/([^\"/\s?#]+)", html
+            ):
+                discovered_assets.add(m)
+    except Exception:
+        pass
+
+    # Ensure standard platform assets are always present so build_upgrade_plan
+    # finds what it needs.
+    known_platforms = [
+        ("xpx", "linux-x86_64", ""),
+        ("xpx", "linux-arm64", ""),
+        ("xpx", "macos-arm64", ""),
+        ("xpx", "macos-x86_64", ""),
+        ("xpx", "windows-x86_64", ".exe"),
+        ("codex-provider", "linux-x86_64", ""),
+        ("codex-provider", "linux-arm64", ""),
+        ("codex-provider", "macos-arm64", ""),
+        ("codex-provider", "macos-x86_64", ""),
+        ("codex-provider", "windows-x86_64", ".exe"),
+    ]
+    for prog, plat, ext in known_platforms:
+        discovered_assets.add(f"{prog}-{version}-{plat}{ext}")
+        discovered_assets.add(f"{prog}-{version}-{plat}{ext}.sha256")
+
+    assets = [
+        {
+            "name": name,
+            "browser_download_url": f"https://github.com/{repository}/releases/download/{tag}/{name}",
+        }
+        for name in sorted(discovered_assets)
+    ]
+
+    return {
+        "tag_name": tag,
+        "name": tag,
+        "html_url": f"https://github.com/{repository}/releases/tag/{tag}",
+        "body": notes,
+        "assets": assets,
+    }
+
+
 def fetch_latest_release(repository: str = DEFAULT_REPOSITORY) -> dict[str, Any]:
     url = GITHUB_API_RELEASES.format(repo=repository) + "/latest"
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "codex-provider",
-        },
-    )
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "codex-provider",
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token.strip()}"
+    request = urllib.request.Request(url, headers=headers)
+
+    api_exc: Exception | None = None
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
+            if isinstance(payload, dict) and "tag_name" in payload:
+                return payload
     except (
         urllib.error.URLError,
         urllib.error.HTTPError,
         OSError,
         json.JSONDecodeError,
     ) as exc:
-        raise SwitchError(f"failed to fetch latest release: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise SwitchError("unexpected GitHub API response")
-    return payload
+        api_exc = exc
+
+    try:
+        return _fetch_latest_release_fallback(repository)
+    except Exception as fallback_exc:
+        err = api_exc or fallback_exc
+        raise SwitchError(f"failed to fetch latest release: {err}") from err
 
 
 def build_upgrade_plan(

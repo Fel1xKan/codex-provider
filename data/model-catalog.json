@@ -269,6 +269,24 @@
       "reasoning_default": "high",
       "release_date": "2026-09-10"
     },
+    "deepseek-v4.1-flash-fast": {
+      "display_name": "DeepSeek: DeepSeek V4.1 Flash Fast",
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "deepseek",
+      "source": "https://openrouter.ai/models/deepseek/deepseek-v4.1-flash-fast",
+      "reasoning_levels": [
+        "low",
+        "high",
+        "max"
+      ],
+      "reasoning_default": "high",
+      "release_date": "2026-09-15"
+    },
     "gemini-3-pro-image": {
       "display_name": "Google: Nano Banana Pro (Gemini 3 Pro Image)",
       "context_window": 131072,
@@ -1448,6 +1466,7 @@
     "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
     "deepseek/deepseek-v4-pro-0813": "deepseek-v4-pro-0813",
     "deepseek/deepseek-v4.1-flash": "deepseek-v4.1-flash",
+    "deepseek/deepseek-v4.1-flash-fast": "deepseek-v4.1-flash-fast",
     "google/gemini-3-pro-image": "gemini-3-pro-image",
     "google/gemini-3.1-flash-image": "gemini-3.1-flash-image",
     "google/gemini-3.1-flash-lite": "gemini-3.1-flash-lite",

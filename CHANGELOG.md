@@ -9,6 +9,14 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.7] - 2026-09-30
+
+- Support slash-delimited model identifiers and multi-positional arguments in `xpx apply`.
+- Clarify provider and model distinction in `xpx apply` feedback and dry-run messages.
+- Expand status dashboard active model column width to accommodate longer model identifiers.
+- Register `deepseek-v4.1-flash-fast` and its alias in the shared model catalog.
+- Support unauthenticated release discovery and rate limit fallback in `xpx upgrade`.
+
 ## [2.2.6] - 2026-09-29
 
 - Add `xpx models add` command to register custom models and capability preferences directly into provider catalogs.

@@ -13,10 +13,10 @@ def run_status(args: Any) -> int:
 
     header = (
         f"{'Target':<10} {'Version':<12} {'Type':<10} {'Active Source':<18} "
-        f"{'Active Model':<20} {'Status':<18}"
+        f"{'Active Model':<35} {'Status':<18}"
     )
     print(header)
-    print("-" * 90)
+    print("-" * 105)
 
     for name in ("codex", "pi", "opencode", "cursor", "claude", "agy"):
         if name not in adapters:
@@ -59,7 +59,7 @@ def run_status(args: Any) -> int:
 
         print(
             f"{target_col:<10} {version_col:<12} {type_col:<10} {source_col:<18} "
-            f"{model_col:<20} {status_col:<18}"
+            f"{model_col:<35} {status_col:<18}"
         )
 
     return 0

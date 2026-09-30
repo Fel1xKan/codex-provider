@@ -233,7 +233,10 @@ def test_apply_and_memory_persistence(
         ]
     )
     assert rc == 0
-    assert "Applied 'deepseek/deepseek-reasoner' to codex" in capsys.readouterr().out
+    assert (
+        "Applied provider 'deepseek' (model: deepseek-reasoner) to codex"
+        in capsys.readouterr().out
+    )
 
     # Verify native file was written
     codex_status = CodexAdapter().get_status()
@@ -653,20 +656,20 @@ def test_apply_all_validation_and_positional_shift(
     assert rc == 0
     out = capsys.readouterr().out
     assert "• Skipping 'agy' (uses Google OAuth accounts, not API providers)" in out
-    assert "✔ Applied 'deepseek/deepseek-chat' to codex." in out
+    assert "✔ Applied provider 'deepseek' (model: deepseek-chat) to codex." in out
 
     # 5. Test apply --all deepseek/v3
     rc = xpx_cli.main(["apply", "--all", "deepseek/v3"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "• Skipping 'agy' (uses Google OAuth accounts, not API providers)" in out
-    assert "✔ Applied 'deepseek/v3' to codex." in out
+    assert "✔ Applied provider 'deepseek' (model: v3) to codex." in out
 
     # 6. Now codex has active state; apply --all syncs codex & skips agy
     rc = xpx_cli.main(["apply", "--all"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "✔ Applied provider 'deepseek/v3' to codex." in out
+    assert "✔ Applied provider 'deepseek' (model: v3) to codex." in out
     assert "• Skipping 'agy' (no active configuration recorded)" in out
 
 
@@ -769,10 +772,13 @@ model_provider:
     rc = xpx_cli.main(["apply", "--all"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "✔ Applied provider 'nat_codex/m-codex-fast' to codex." in out
-    assert "✔ Applied provider 'nat_opencode/m-open' to opencode." in out
-    assert "✔ Applied provider 'claude-custom/claude-native-model' to claude." in out
-    assert "✔ Applied provider 'nat_pi/pi-fast' to pi." in out
+    assert "✔ Applied provider 'nat_codex' (model: m-codex-fast) to codex." in out
+    assert "✔ Applied provider 'nat_opencode' (model: m-open) to opencode." in out
+    assert (
+        "✔ Applied provider 'claude-custom' (model: claude-native-model) to claude."
+        in out
+    )
+    assert "✔ Applied provider 'nat_pi' (model: pi-fast) to pi." in out
 
 
 def test_migrate_force_option(
@@ -866,7 +872,7 @@ def test_apply_fast_and_web_search_codex_only(
     rc = xpx_cli.main(["apply", "claude", "deepseek", "--fast", "--web-search"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "Applied 'deepseek/deepseek-chat' to claude" in out
+    assert "Applied provider 'deepseek' (model: deepseek-chat) to claude" in out
     assert "fast mode enabled" not in out
 
     # Saved claude target override should not have fast or web_search
@@ -880,7 +886,10 @@ def test_apply_fast_and_web_search_codex_only(
     rc = xpx_cli.main(["apply", "codex", "deepseek", "--fast", "--web-search"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "Applied 'deepseek/deepseek-chat' to codex (fast mode enabled)" in out
+    assert (
+        "Applied provider 'deepseek' (model: deepseek-chat) to codex"
+        " (fast mode enabled)" in out
+    )
 
     pv = store.require("deepseek")
     codex_over = pv.targets.get("codex")
@@ -922,7 +931,7 @@ def test_apply_pi(
     rc = xpx_cli.main(["apply", "pi", "deepseek", "--model", "deepseek-reasoner"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "Applied 'deepseek/deepseek-reasoner' to pi" in out
+    assert "Applied provider 'deepseek' (model: deepseek-reasoner) to pi" in out
 
     # Check ~/.pi/agent/settings.json
     agent_dir = Path.home() / ".pi" / "agent"
@@ -965,3 +974,82 @@ def test_apply_pi(
     assert "defaultProvider" not in cleared_st
     assert "defaultModel" not in cleared_st
     assert "defaultThinkingLevel" not in cleared_st
+
+
+def test_apply_model_with_slash_in_id(
+    xpx_isolated_env: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    codex_home = Path.home() / ".codex"
+    codex_home.mkdir(parents=True, exist_ok=True)
+
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(
+            name="cistern-cosmo",
+            base_url="https://cistern.cosmo-wise.com/v1",
+            api_key="sk-test-cosmo",
+            default_model="muse-spark-1.3",
+        )
+    )
+
+    expected_msg = (
+        "✔ Applied provider 'cistern-cosmo'"
+        " (model: deepseek/deepseek-v4.1-flash-fast) to codex."
+    )
+
+    # 1. Apply slashed spec with --all
+    rc = xpx_cli.main(
+        [
+            "apply",
+            "--all",
+            "cistern-cosmo/deepseek/deepseek-v4.1-flash-fast",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert expected_msg in out
+
+    state = StateStore().load()
+    assert state.targets["codex"].active_name == "cistern-cosmo"
+    assert state.targets["codex"].active_model == "deepseek/deepseek-v4.1-flash-fast"
+
+    # 2. Apply space-separated args with --all
+    rc = xpx_cli.main(
+        [
+            "apply",
+            "--all",
+            "cistern-cosmo",
+            "deepseek/deepseek-v4.1-flash-fast",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert expected_msg in out
+
+    # 3. Apply space-separated 3 args: target, provider, model
+    rc = xpx_cli.main(
+        [
+            "apply",
+            "codex",
+            "cistern-cosmo",
+            "deepseek/deepseek-v4.1-flash-fast",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert expected_msg in out
+
+    # 4. Apply with --model flag
+    rc = xpx_cli.main(
+        [
+            "apply",
+            "codex",
+            "cistern-cosmo",
+            "--model",
+            "deepseek/deepseek-v4.1-flash-fast",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert expected_msg in out
