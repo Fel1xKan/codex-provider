@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalog_version": "2026-10-05",
+  "catalog_version": "2026-10-12",
   "models": {
     "claude-fable-5": {
       "display_name": "Claude Fable 5",
@@ -41,6 +41,29 @@
       ],
       "reasoning_default": "high",
       "release_date": "2026-09-01"
+    },
+    "claude-haiku-5-5": {
+      "display_name": "Anthropic: Claude Haiku 5.5",
+      "context_window": 1000000,
+      "max_output_tokens": 128000,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "anthropic",
+      "source": "https://openrouter.ai/models/anthropic/claude-haiku-5.5",
+      "reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "Thinking disabled"
+        },
+        {
+          "effort": "high",
+          "description": "Thinking enabled"
+        }
+      ],
+      "reasoning_default": "high",
+      "release_date": "2026-10-07"
     },
     "claude-opus-4-7": {
       "display_name": "Claude Opus 4.7",
@@ -431,6 +454,23 @@
       "reasoning_default": "medium",
       "release_date": "2026-09-02"
     },
+    "gemini-nano-banana-2.1": {
+      "display_name": "Google: Nano Banana 2.1",
+      "context_window": 65536,
+      "max_output_tokens": 58982,
+      "input_modalities": [
+        "image",
+        "text"
+      ],
+      "vendor": "google",
+      "source": "https://openrouter.ai/models/google/gemini-nano-banana-2.1",
+      "reasoning_levels": [
+        "minimal",
+        "high"
+      ],
+      "reasoning_default": "minimal",
+      "release_date": "2026-10-06"
+    },
     "glm-5.2": {
       "display_name": "GLM-5.2",
       "context_window": 1048576,
@@ -451,7 +491,7 @@
     "glm-5.3": {
       "display_name": "GLM-5.3",
       "context_window": 1310720,
-      "max_output_tokens": 943717,
+      "max_output_tokens": 943718,
       "input_modalities": [
         "text"
       ],
@@ -1032,6 +1072,23 @@
       "reasoning_default": "high",
       "release_date": "2026-07-16"
     },
+    "mistral-large-4-0": {
+      "display_name": "Mistral: Mistral Large 4",
+      "context_window": 1048576,
+      "max_output_tokens": 262144,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "vendor": "mistral",
+      "source": "https://openrouter.ai/models/mistralai/mistral-large-4-0",
+      "reasoning_levels": [
+        "none",
+        "high"
+      ],
+      "reasoning_default": "high",
+      "release_date": "2026-10-06"
+    },
     "mistral-medium-3-5": {
       "display_name": "Mistral: Mistral Medium 3.5",
       "context_window": 262144,
@@ -1110,28 +1167,6 @@
       ],
       "vendor": "qwen",
       "source": "https://help.aliyun.com/zh/model-studio/deep-thinking",
-      "reasoning_levels": [
-        {
-          "effort": "none",
-          "description": "Thinking disabled"
-        },
-        {
-          "effort": "high",
-          "description": "Thinking enabled"
-        }
-      ],
-      "reasoning_default": "high",
-      "release_date": "2026-04-27"
-    },
-    "qwen3.6-max-preview": {
-      "display_name": "Qwen: Qwen3.6 Max Preview",
-      "context_window": 262144,
-      "max_output_tokens": 65536,
-      "input_modalities": [
-        "text"
-      ],
-      "vendor": "qwen",
-      "source": "https://openrouter.ai/models/qwen/qwen3.6-max-preview",
       "reasoning_levels": [
         {
           "effort": "none",
@@ -1381,6 +1416,7 @@
     "anthropic/claude-fable-5": "claude-fable-5",
     "anthropic/claude-fable-5-1": "claude-fable-5-1",
     "anthropic/claude-fable-5.1": "claude-fable-5-1",
+    "anthropic/claude-haiku-5.5": "claude-haiku-5-5",
     "anthropic/claude-opus-4.7": "claude-opus-4-7",
     "anthropic/claude-opus-4.8": "claude-opus-4-8",
     "anthropic/claude-opus-5": "claude-opus-5",
@@ -1389,6 +1425,7 @@
     "anthropic/claude-sonnet-5.5": "claude-sonnet-5-5",
     "claude-fable-5-1@default": "claude-fable-5-1",
     "claude-fable-5.1": "claude-fable-5-1",
+    "claude-haiku-5.5": "claude-haiku-5-5",
     "claude-opus-4.7": "claude-opus-4-7",
     "claude-opus-4.8": "claude-opus-4-8",
     "claude-opus-5.5": "claude-opus-5-5",
@@ -1418,7 +1455,9 @@
     "google/gemini-3.6-flash": "gemini-3.6-flash",
     "google/gemini-3.7-flash": "gemini-3.7-flash",
     "google/gemini-3.8-flash": "gemini-3.8-flash",
+    "google/gemini-nano-banana-2.1": "gemini-nano-banana-2.1",
     "grok-4.3-latest": "grok-4.3",
+    "mistralai/mistral-large-4-0": "mistral-large-4-0",
     "mistralai/mistral-medium-3-5": "mistral-medium-3-5",
     "moonshotai/kimi-k2.6": "kimi-k2.6",
     "moonshotai/kimi-k2.7-code": "kimi-k2.7-code",
@@ -1445,7 +1484,6 @@
     "qwen/qwen3.6-27b": "qwen3.6-27b",
     "qwen/qwen3.6-35b-a3b": "qwen3.6-35b-a3b",
     "qwen/qwen3.6-flash": "qwen3.6-flash",
-    "qwen/qwen3.6-max-preview": "qwen3.6-max-preview",
     "qwen/qwen3.7-flash": "qwen3.7-flash",
     "qwen/qwen3.7-max": "qwen3.7-max",
     "qwen/qwen3.7-plus": "qwen3.7-plus",
@@ -1472,7 +1510,7 @@
     "z-ai/glm-5.3-flashx": "glm-5.3-flashx",
     "z-ai/glm-5.3-prime": "glm-5.3-prime"
   },
-  "updated_at": "2026-10-05",
+  "updated_at": "2026-10-12",
   "sources": {
     "openai": {
       "url": "https://developers.openai.com/api/docs/models",
