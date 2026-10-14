@@ -13,7 +13,12 @@ import json5
 from lib.common.common_store import atomic_write_bytes, ensure_private_dir
 from lib.common.constants import SECRET_FILE_MODE
 from lib.common.errors import SwitchError
-from lib.xpx.adapters.base import MergedProviderSpec, TargetAdapter, TargetStatus
+from lib.xpx.adapters.base import (
+    MergedProviderSpec,
+    TargetAdapter,
+    TargetStatus,
+    count_active_cli_instances,
+)
 from lib.xpx.models.catalog import get_consolidated_provider_models
 from lib.xpx.store.catalog_store import ModelMetadata
 
@@ -434,3 +439,75 @@ class OpenCodeAdapter(TargetAdapter):
             return proc.returncode == 0, out
         except Exception as exc:
             return False, str(exc)
+
+    def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
+        state_dir = Path.home() / ".local" / "state" / "opencode"
+        service_json = state_dir / "service.json"
+        daemon_pid_file = state_dir / "daemon.pid"
+        bin_path = self.get_binary_path()
+
+        has_opencode_2_daemon = bool(
+            (service_json.is_file() or daemon_pid_file.is_file()) and bin_path
+        )
+
+        has_systemd_svc = False
+        systemd_svc_name = ""
+        if shutil.which("systemctl"):
+            for svc in ("opencode.service", "opencode-web.service"):
+                try:
+                    res = subprocess.run(
+                        ["systemctl", "--user", "is-active", svc],
+                        capture_output=True,
+                        text=True,
+                        timeout=1.0,
+                    )
+                    if res.returncode == 0 and res.stdout.strip() == "active":
+                        has_systemd_svc = True
+                        systemd_svc_name = svc
+                        break
+                except Exception:
+                    pass
+
+        if not has_opencode_2_daemon and not has_systemd_svc:
+            return False, ""
+
+        if not force:
+            active_count = count_active_cli_instances(
+                self.binary_name,
+                daemon_patterns=["serve", "web", "service", "acp"],
+            )
+            if active_count > 0:
+                return (
+                    False,
+                    f"Detected {active_count} active opencode instance(s); "
+                    "kept existing sessions intact. "
+                    "New instances will use updated config.",
+                )
+
+        if has_opencode_2_daemon and bin_path:
+            try:
+                res = subprocess.run(
+                    [bin_path, "service", "restart"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3.0,
+                )
+                if res.returncode == 0:
+                    return True, "Refreshed opencode 2.0 service daemon."
+            except Exception:
+                pass
+
+        if has_systemd_svc:
+            try:
+                res = subprocess.run(
+                    ["systemctl", "--user", "restart", systemd_svc_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=3.0,
+                )
+                if res.returncode == 0:
+                    return True, f"Refreshed {systemd_svc_name}."
+            except Exception:
+                pass
+
+        return False, ""

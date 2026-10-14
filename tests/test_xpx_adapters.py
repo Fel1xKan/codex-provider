@@ -514,6 +514,49 @@ def test_pi_thinking_support_and_anthropic_protocol(tmp_path: Path) -> None:
     assert model_th.get("deepseek/deepseek-v4-flash") != "off"
 
 
+def test_pi_adapter_base_url_normalization(tmp_path: Path) -> None:
+    cfg_file = tmp_path / ".pi" / "config.yaml"
+    adapter = PiAdapter(config_path=cfg_file)
+    models_file = tmp_path / ".pi" / "agent" / "models.json"
+
+    # Anthropic protocol should strip trailing /v1 because Anthropic SDK
+    # appends /v1/messages
+    spec_anthropic = MergedProviderSpec(
+        name="cistern-anthropic",
+        base_url="http://127.0.0.1:4000/v1",
+        api_key="sk-test",
+        protocol="anthropic",
+        model="claude-3-7-sonnet",
+    )
+    adapter.apply(spec_anthropic)
+
+    data = yaml.safe_load(cfg_file.read_text(encoding="utf-8"))
+    assert data["model_provider"]["api_base"] == "http://127.0.0.1:4000"
+
+    models_data = json.loads(models_file.read_text(encoding="utf-8"))
+    prov = models_data["providers"]["cistern-anthropic"]
+    assert prov["baseUrl"] == "http://127.0.0.1:4000"
+    assert prov["api"] == "anthropic-messages"
+
+    # OpenAI protocol should retain /v1 because OpenAI SDK appends /chat/completions
+    spec_openai = MergedProviderSpec(
+        name="cistern-openai",
+        base_url="http://127.0.0.1:4000/v1",
+        api_key="sk-test",
+        protocol="openai",
+        model="gpt-4o",
+    )
+    adapter.apply(spec_openai)
+
+    data = yaml.safe_load(cfg_file.read_text(encoding="utf-8"))
+    assert data["model_provider"]["api_base"] == "http://127.0.0.1:4000/v1"
+
+    models_data = json.loads(models_file.read_text(encoding="utf-8"))
+    prov_oa = models_data["providers"]["cistern-openai"]
+    assert prov_oa["baseUrl"] == "http://127.0.0.1:4000/v1"
+    assert prov_oa["api"] == "openai-completions"
+
+
 def test_registry() -> None:
     all_adps = get_all_adapters()
     assert set(all_adps.keys()) == {
@@ -543,3 +586,158 @@ def test_adapter_capabilities() -> None:
         assert adp.supports_fast is False
         assert adp.supports_web_search is False
         assert adp.supports_wire_api is False
+
+
+def test_count_active_cli_instances(monkeypatch: pytest.MonkeyPatch) -> None:
+    from lib.xpx.adapters.base import count_active_cli_instances
+
+    class DummyProc:
+        def __init__(self, stdout: str):
+            self.stdout = stdout
+
+    mock_ps = (
+        "  PID ARGS\n"
+        " 1001 /usr/bin/codex\n"
+        " 1002 /home/user/.nvm/versions/node/v24/bin/codex\n"
+        " 1003 /home/user/.codex/bin/codex app-server daemon pid-update-loop\n"
+        " 1004 node /path/to/opencode\n"
+        " 1005 opencode serve --port 4096\n"
+    )
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: DummyProc(stdout=mock_ps))
+
+    # Codex should count 1001 and 1002, but exclude 1003 (daemon pattern)
+    c_codex = count_active_cli_instances("codex", ["app-server", "pid-update-loop"])
+    assert c_codex == 2
+
+    # OpenCode should count 1004, but exclude 1005 (serve pattern)
+    c_opencode = count_active_cli_instances("opencode", ["serve", "web"])
+    assert c_opencode == 1
+
+
+def test_codex_refresh_daemon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    codex_home = tmp_path / ".codex"
+    adapter = CodexAdapter(home=codex_home)
+    monkeypatch.setattr(adapter, "get_binary_path", lambda: "/usr/bin/codex")
+
+    # 1. Neither socket nor pid exists -> no-op
+    refreshed, note = adapter.refresh_daemon()
+    assert refreshed is False
+    assert note == ""
+
+    # Create dummy daemon socket
+    sock_dir = codex_home / "app-server-control"
+    sock_dir.mkdir(parents=True)
+    (sock_dir / "app-server-control.sock").touch()
+
+    # 2. Active CLI instances running -> protected, kept intact
+    monkeypatch.setattr(
+        "lib.xpx.adapters.codex.count_active_cli_instances",
+        lambda *a, **k: 3,
+    )
+    refreshed, note = adapter.refresh_daemon(force=False)
+    assert refreshed is False
+    assert "Detected 3 active codex instance(s)" in note
+    assert "kept existing sessions intact" in note
+
+    # 3. Force=True or 0 active instances -> restart executed
+    executed_cmds = []
+
+    class DummyResult:
+        returncode = 0
+
+    def mock_run(cmd, *a, **k):
+        executed_cmds.append(cmd)
+        return DummyResult()
+
+    monkeypatch.setattr("subprocess.run", mock_run)
+    refreshed, note = adapter.refresh_daemon(force=True)
+    assert refreshed is True
+    assert "Refreshed codex background daemon" in note
+    assert ["/usr/bin/codex", "app-server", "daemon", "restart"] in executed_cmds
+
+
+def test_opencode_refresh_daemon(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter = OpenCodeAdapter()
+    monkeypatch.setattr(adapter, "get_binary_path", lambda: "/usr/bin/opencode")
+    state_dir = tmp_path / "opencode_state"
+    state_dir.mkdir()
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    # 1. No daemon files and no systemd -> no-op
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    refreshed, note = adapter.refresh_daemon()
+    assert refreshed is False
+    assert note == ""
+
+    # Create opencode 2.0 service.json
+    real_state = tmp_path / ".local" / "state" / "opencode"
+    real_state.mkdir(parents=True)
+    (real_state / "service.json").write_text("{}", encoding="utf-8")
+
+    # 2. Active instances running -> protected
+    monkeypatch.setattr(
+        "lib.xpx.adapters.opencode.count_active_cli_instances",
+        lambda *a, **k: 2,
+    )
+    refreshed, note = adapter.refresh_daemon(force=False)
+    assert refreshed is False
+    assert "Detected 2 active opencode instance(s)" in note
+
+    # 3. Force=True -> restarts opencode 2.0 service daemon
+    executed_cmds = []
+
+    class DummyResult:
+        returncode = 0
+
+    def mock_run(cmd, *a, **k):
+        executed_cmds.append(cmd)
+        return DummyResult()
+
+    monkeypatch.setattr("subprocess.run", mock_run)
+    refreshed, note = adapter.refresh_daemon(force=True)
+    assert refreshed is True
+    assert "opencode 2.0 service daemon" in note
+    assert ["/usr/bin/opencode", "service", "restart"] in executed_cmds
+
+
+def test_claude_refresh_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
+    adapter = ClaudeAdapter()
+    monkeypatch.setattr(adapter, "get_binary_path", lambda: "/usr/bin/claude")
+
+    # 1. No background agents -> no-op
+    class DummyEmptyResult:
+        returncode = 0
+        stdout = "[]"
+
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: DummyEmptyResult())
+    refreshed, note = adapter.refresh_daemon()
+    assert refreshed is False
+    assert note == ""
+
+    # 2. Active agents running & force=False -> protected
+    class DummyActiveResult:
+        returncode = 0
+        stdout = json.dumps([{"id": "agent-1"}, {"id": "agent-2"}])
+
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: DummyActiveResult())
+    refreshed, note = adapter.refresh_daemon(force=False)
+    assert refreshed is False
+    assert "Detected 2 active claude background session(s)" in note
+
+    # 3. Force=True -> respawn executed
+    executed_cmds = []
+
+    def mock_run(cmd, *a, **k):
+        executed_cmds.append(cmd)
+        if "agents" in cmd:
+            return DummyActiveResult()
+        res = DummyActiveResult()
+        res.returncode = 0
+        return res
+
+    monkeypatch.setattr("subprocess.run", mock_run)
+    refreshed, note = adapter.refresh_daemon(force=True)
+    assert refreshed is True
+    assert "Respawned 2 claude background session(s)" in note

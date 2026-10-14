@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -14,6 +15,58 @@ def find_node_package_manager() -> str | None:
         if shutil.which(pm):
             return pm
     return None
+
+
+def count_active_cli_instances(
+    binary_name: str, daemon_patterns: list[str] | None = None
+) -> int:
+    """Count running interactive CLI instances of binary_name."""
+    if not binary_name:
+        return 0
+    patterns = daemon_patterns or []
+    my_pid = os.getpid()
+    parent_pid = os.getppid()
+    try:
+        res = subprocess.run(
+            ["ps", "-eo", "pid,args"],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+        )
+        count = 0
+        for line in res.stdout.splitlines()[1:]:
+            parts = line.strip().split(None, 1)
+            if not parts or len(parts) < 2:
+                continue
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            if pid in (my_pid, parent_pid):
+                continue
+            cmdline = parts[1]
+            if "xpx" in cmdline or "pytest" in cmdline:
+                continue
+            cmd_tokens = cmdline.split()
+            if not cmd_tokens:
+                continue
+            first_cmd = cmd_tokens[0]
+            matches_binary = (
+                first_cmd == binary_name
+                or first_cmd.endswith("/" + binary_name)
+                or any(
+                    t == binary_name or t.endswith("/" + binary_name)
+                    for t in cmd_tokens[:3]
+                )
+            )
+            if not matches_binary:
+                continue
+            if any(dp in cmdline for dp in patterns):
+                continue
+            count += 1
+        return count
+    except Exception:
+        return 0
 
 
 @dataclass
@@ -216,3 +269,12 @@ class TargetAdapter(ABC):
     def refresh_catalog(self, provider_name: str | None = None) -> bool:
         """Refresh model catalog in native files if this client is active."""
         return False
+
+    def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
+        """Refresh or reload background daemon if active and idle.
+
+        Returns (refreshed: bool, message: str).
+        When active interactive sessions exist and force=False,
+        returns (False, busy_message) to protect ongoing work.
+        """
+        return False, ""

@@ -199,3 +199,40 @@ class ClaudeAdapter(TargetAdapter):
             return proc.returncode == 0, out
         except Exception as exc:
             return False, str(exc)
+
+    def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
+        bin_path = self.get_binary_path()
+        if not bin_path:
+            return False, ""
+
+        try:
+            res = subprocess.run(
+                [bin_path, "agents", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=1.5,
+            )
+            if res.returncode == 0:
+                agents = json.loads(res.stdout or "[]")
+                if isinstance(agents, list) and len(agents) > 0:
+                    if not force:
+                        return (
+                            False,
+                            f"Detected {len(agents)} active claude "
+                            "background session(s); kept existing sessions intact.",
+                        )
+                    respawn_res = subprocess.run(
+                        [bin_path, "respawn", "--all"],
+                        capture_output=True,
+                        text=True,
+                        timeout=3.0,
+                    )
+                    if respawn_res.returncode == 0:
+                        return (
+                            True,
+                            f"Respawned {len(agents)} claude background session(s).",
+                        )
+        except Exception:
+            pass
+
+        return False, ""

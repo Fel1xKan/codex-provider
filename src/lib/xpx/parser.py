@@ -302,6 +302,19 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
         dest="web_search",
         help="Disable Codex web search (Codex only)",
     )
+    p_apply.add_argument(
+        "--restart-daemon",
+        action="store_true",
+        dest="restart_daemon",
+        default=None,
+        help="Force restart background daemon even if active sessions exist",
+    )
+    p_apply.add_argument(
+        "--no-restart-daemon",
+        action="store_false",
+        dest="restart_daemon",
+        help="Do not restart or reload background daemons",
+    )
     p_apply.set_defaults(func=run_apply)
 
     # 6. Account

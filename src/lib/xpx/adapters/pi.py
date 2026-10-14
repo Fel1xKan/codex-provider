@@ -310,19 +310,6 @@ class PiAdapter(TargetAdapter):
                 prov = {}
                 providers[target_pv] = prov
 
-            if not prov.get("baseUrl") and self.config_file.is_file():
-                try:
-                    cfg_data = (
-                        yaml.safe_load(self.config_file.read_text(encoding="utf-8"))
-                        or {}
-                    )
-                    cfg_pv = cfg_data.get("model_provider", {})
-                    if cfg_pv.get("name") == target_pv:
-                        prov["baseUrl"] = cfg_pv.get("api_base", "")
-                        prov["apiKey"] = cfg_pv.get("api_key", "")
-                except Exception:
-                    pass
-
             from lib.xpx.store.provider_store import ProviderStore
 
             pv_obj = None
@@ -338,6 +325,32 @@ class PiAdapter(TargetAdapter):
                 compat = prov.setdefault("compat", {})
                 if isinstance(compat, dict):
                     compat["supportsReasoningEffort"] = True
+
+            if pv_obj and pv_obj.base_url:
+                base_url = pv_obj.base_url.rstrip("/")
+                if prov_protocol == "anthropic" and base_url.endswith("/v1"):
+                    base_url = base_url[:-3]
+                prov["baseUrl"] = base_url
+            elif not prov.get("baseUrl") and self.config_file.is_file():
+                try:
+                    cfg_data = (
+                        yaml.safe_load(self.config_file.read_text(encoding="utf-8"))
+                        or {}
+                    )
+                    cfg_pv = cfg_data.get("model_provider", {})
+                    if cfg_pv.get("name") == target_pv:
+                        b_url = str(cfg_pv.get("api_base", "")).rstrip("/")
+                        if prov_protocol == "anthropic" and b_url.endswith("/v1"):
+                            b_url = b_url[:-3]
+                        prov["baseUrl"] = b_url
+                        prov["apiKey"] = cfg_pv.get("api_key", "")
+                except Exception:
+                    pass
+            elif prov.get("baseUrl"):
+                b_url = str(prov["baseUrl"]).rstrip("/")
+                if prov_protocol == "anthropic" and b_url.endswith("/v1"):
+                    b_url = b_url[:-3]
+                prov["baseUrl"] = b_url
 
             prov["models"] = self._generate_pi_models(
                 provider_name=target_pv,
@@ -461,7 +474,11 @@ class PiAdapter(TargetAdapter):
             prov = {}
             providers[spec.name] = prov
 
-        prov["baseUrl"] = spec.base_url
+        base_url = (spec.base_url or "").rstrip("/")
+        if spec.protocol == "anthropic" and base_url.endswith("/v1"):
+            base_url = base_url[:-3]
+
+        prov["baseUrl"] = base_url
         prov["api"] = (
             "anthropic-messages"
             if spec.protocol == "anthropic"
@@ -499,7 +516,7 @@ class PiAdapter(TargetAdapter):
                 data = {}
         data["model_provider"] = {
             "name": spec.name,
-            "api_base": spec.base_url,
+            "api_base": base_url,
             "api_key": spec.api_key,
             "model": clean_model or spec.model or "default",
         }

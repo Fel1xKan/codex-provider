@@ -9,6 +9,12 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.8] - 2026-10-14
+
+- Refresh background daemons for Codex, OpenCode 2.0, Claude Code, and Antigravity upon `xpx apply`.
+- Protect active interactive CLI sessions and instances during daemon refresh unless `--restart-daemon` is explicitly specified.
+- Normalize Anthropic protocol `baseURL` in Pi coding agent to prevent duplicate `/v1` endpoint paths.
+
 ## [2.2.7] - 2026-09-30
 
 - Support slash-delimited model identifiers and multi-positional arguments in `xpx apply`.

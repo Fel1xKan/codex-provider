@@ -13,7 +13,12 @@ import tomlkit
 from lib.common.common_store import atomic_write_bytes, ensure_private_dir
 from lib.common.constants import SECRET_FILE_MODE
 from lib.common.errors import SwitchError
-from lib.xpx.adapters.base import MergedProviderSpec, TargetAdapter, TargetStatus
+from lib.xpx.adapters.base import (
+    MergedProviderSpec,
+    TargetAdapter,
+    TargetStatus,
+    count_active_cli_instances,
+)
 from lib.xpx.models.catalog import get_consolidated_provider_models
 from lib.xpx.store.catalog_store import ModelMetadata
 
@@ -355,3 +360,41 @@ class CodexAdapter(TargetAdapter):
             return proc.returncode == 0, out
         except Exception as exc:
             return False, str(exc)
+
+    def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
+        sock = self.home_dir / "app-server-control" / "app-server-control.sock"
+        pid_file = self.home_dir / "app-server-daemon" / "daemon.pid"
+
+        if not sock.exists() and not pid_file.exists():
+            return False, ""
+
+        bin_path = self.get_binary_path()
+        if not bin_path:
+            return False, ""
+
+        if not force:
+            active_count = count_active_cli_instances(
+                self.binary_name,
+                daemon_patterns=["app-server", "pid-update-loop"],
+            )
+            if active_count > 0:
+                return (
+                    False,
+                    f"Detected {active_count} active codex instance(s); "
+                    "kept existing sessions intact. "
+                    "New instances will use updated config.",
+                )
+
+        try:
+            res = subprocess.run(
+                [bin_path, "app-server", "daemon", "restart"],
+                capture_output=True,
+                text=True,
+                timeout=3.0,
+            )
+            if res.returncode == 0:
+                return True, "Refreshed codex background daemon."
+        except Exception:
+            pass
+
+        return False, ""

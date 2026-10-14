@@ -131,6 +131,19 @@ def build_merged_spec(
     return spec, has_adhoc
 
 
+def _handle_daemon_refresh(adp: Any, target_name: str, args: Any) -> None:
+    restart_opt = getattr(args, "restart_daemon", None)
+    if restart_opt is False:
+        return
+    force = bool(restart_opt is True)
+    if not hasattr(adp, "refresh_daemon"):
+        return
+    refreshed, note = adp.refresh_daemon(force=force)
+    if note:
+        prefix = "✔" if refreshed else "ℹ"
+        print(f"  {prefix} {note}")
+
+
 def run_apply(args: Any) -> int:
     target_arg = getattr(args, "target", None)
     provider_spec = getattr(args, "provider_spec", None)
@@ -181,6 +194,7 @@ def run_apply(args: Any) -> int:
                 adp.clear()
                 state_store.set_target_state(t, "official", "default")
                 print(f"✔ Reset '{t}' to official/default state.")
+                _handle_daemon_refresh(adp, t, args)
         return 0
 
     # 2. Account mode
@@ -208,6 +222,7 @@ def run_apply(args: Any) -> int:
                 adp.apply_account(account)
                 state_store.set_target_state(t, "account", account_name)
                 print(f"✔ Applied account '{account_name}' to {t}.")
+                _handle_daemon_refresh(adp, t, args)
         return 0
 
     # 3. Global Sync mode: 'xpx apply --all' without a provider spec
@@ -267,6 +282,7 @@ def run_apply(args: Any) -> int:
                 else:
                     adp.apply_account(account)
                     print(f"✔ Applied account '{ts.active_name}' to {t}.")
+                    _handle_daemon_refresh(adp, t, args)
 
             elif ts.active_type == "provider":
                 if adp.supported_protocols == ["google-oauth"]:
@@ -300,6 +316,7 @@ def run_apply(args: Any) -> int:
                         f"✔ Applied provider '{pv.name}'{model_info} to {t}{fast_str}."
                     )
                     print(applied_msg)
+                    _handle_daemon_refresh(adp, t, args)
 
             elif ts.active_type == "official":
                 if is_dry_run:
@@ -307,6 +324,7 @@ def run_apply(args: Any) -> int:
                 else:
                     adp.clear()
                     print(f"✔ Applied official state to {t}.")
+                    _handle_daemon_refresh(adp, t, args)
 
         return 0
 
@@ -325,6 +343,7 @@ def run_apply(args: Any) -> int:
                 else:
                     adp.apply_account(account)
                     print(f"✔ Applied account '{ts.active_name}' to {single_t}.")
+                    _handle_daemon_refresh(adp, single_t, args)
                 return 0
 
     # 5. Provider Apply mode
@@ -395,5 +414,6 @@ def run_apply(args: Any) -> int:
         model_info = f" (model: {merged_spec.model})" if merged_spec.model else ""
         fast_str = " (fast mode enabled)" if merged_spec.fast else ""
         print(f"✔ Applied provider '{pv.name}'{model_info} to {t}{fast_str}.")
+        _handle_daemon_refresh(adp, t, args)
 
     return 0

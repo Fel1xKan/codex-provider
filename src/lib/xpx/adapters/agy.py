@@ -11,7 +11,12 @@ from lib.common.common_store import atomic_write_bytes, ensure_private_dir
 from lib.common.constants import SECRET_FILE_MODE
 from lib.common.errors import SwitchError
 from lib.common.jwt_helper import parse_jwt_claims
-from lib.xpx.adapters.base import MergedProviderSpec, TargetAdapter, TargetStatus
+from lib.xpx.adapters.base import (
+    MergedProviderSpec,
+    TargetAdapter,
+    TargetStatus,
+    count_active_cli_instances,
+)
 from lib.xpx.store.account_store import AccountSpec
 
 
@@ -137,3 +142,53 @@ class AgyAdapter(TargetAdapter):
             return proc.returncode == 0, out
         except Exception as exc:
             return False, str(exc)
+
+    def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
+        has_systemd_svc = False
+        if shutil.which("systemctl"):
+            try:
+                res = subprocess.run(
+                    [
+                        "systemctl",
+                        "--user",
+                        "is-active",
+                        "antigravity-cli-daemon.service",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=1.0,
+                )
+                if res.returncode == 0 and res.stdout.strip() == "active":
+                    has_systemd_svc = True
+            except Exception:
+                pass
+
+        if not has_systemd_svc:
+            return False, ""
+
+        if not force:
+            active_count = count_active_cli_instances(
+                self.binary_name,
+                daemon_patterns=["remote-control", "daemon"],
+            )
+            if active_count > 0:
+                return (
+                    False,
+                    f"Detected {active_count} active agy instance(s); "
+                    "kept existing sessions intact. "
+                    "New instances will use updated config.",
+                )
+
+        try:
+            res = subprocess.run(
+                ["systemctl", "--user", "restart", "antigravity-cli-daemon.service"],
+                capture_output=True,
+                text=True,
+                timeout=3.0,
+            )
+            if res.returncode == 0:
+                return True, "Refreshed antigravity-cli-daemon service."
+        except Exception:
+            pass
+
+        return False, ""

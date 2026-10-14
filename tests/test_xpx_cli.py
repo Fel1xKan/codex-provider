@@ -1053,3 +1053,54 @@ def test_apply_model_with_slash_in_id(
     assert rc == 0
     out = capsys.readouterr().out
     assert expected_msg in out
+
+
+def test_apply_daemon_refresh_flags(
+    xpx_isolated_env: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(
+            name="deepseek",
+            base_url="https://api.deepseek.com/v1",
+            api_key="sk-secret-key",
+            default_model="deepseek-chat",
+        )
+    )
+
+    from lib.xpx.adapters.codex import CodexAdapter
+
+    monkeypatch.setattr(
+        CodexAdapter,
+        "refresh_daemon",
+        lambda self, force=False: (
+            (True, "Refreshed codex background daemon.")
+            if force
+            else (
+                False,
+                "Detected 3 active codex instance(s); kept existing sessions intact.",
+            )
+        ),
+    )
+
+    # 1. Default apply -> safe mode output
+    rc = xpx_cli.main(["apply", "codex", "deepseek"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert (
+        "ℹ Detected 3 active codex instance(s); kept existing sessions intact." in out
+    )
+
+    # 2. --restart-daemon -> force output
+    rc = xpx_cli.main(["apply", "codex", "deepseek", "--restart-daemon"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "✔ Refreshed codex background daemon." in out
+
+    # 3. --no-restart-daemon -> no daemon message
+    rc = xpx_cli.main(["apply", "codex", "deepseek", "--no-restart-daemon"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "daemon" not in out and "instance(s)" not in out
