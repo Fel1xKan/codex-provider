@@ -429,7 +429,9 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
         "install", help="Install target agent CLI(s)"
     )
     p_agent_install.add_argument(
-        "target", nargs="?", help="Target agent name (e.g. claude, codex)"
+        "target",
+        nargs="?",
+        help="Target agent name(s), comma-separated (e.g. claude, codex,agy)",
     )
     p_agent_install.add_argument(
         "--all", action="store_true", help="Install all missing agent CLIs"
@@ -444,7 +446,9 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
 
     p_agent_update = agent_sub.add_parser("update", help="Update target agent CLI(s)")
     p_agent_update.add_argument(
-        "target", nargs="?", help="Target agent name (e.g. claude, codex)"
+        "target",
+        nargs="?",
+        help="Target agent name(s), comma-separated (e.g. claude, codex,agy)",
     )
     p_agent_update.add_argument(
         "--all", action="store_true", help="Update all installed agent CLIs"
@@ -463,7 +467,9 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
         description="Install target agent CLI(s)",
     )
     p_install.add_argument(
-        "target", nargs="?", help="Target agent name (e.g. claude, codex)"
+        "target",
+        nargs="?",
+        help="Target agent name(s), comma-separated (e.g. claude, codex,agy)",
     )
     p_install.add_argument(
         "--all", action="store_true", help="Install all missing agent CLIs"
@@ -482,7 +488,9 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
         description="Update target agent CLI(s)",
     )
     p_update.add_argument(
-        "target", nargs="?", help="Target agent name (e.g. claude, codex)"
+        "target",
+        nargs="?",
+        help="Target agent name(s), comma-separated (e.g. claude, codex,agy)",
     )
     p_update.add_argument(
         "--all", action="store_true", help="Update all installed agent CLIs"

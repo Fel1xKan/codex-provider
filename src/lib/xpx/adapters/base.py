@@ -196,7 +196,7 @@ class TargetAdapter(ABC):
             if dry_run:
                 return True, f"would execute: {' '.join(cmd)}"
             try:
-                res = subprocess.run(cmd, check=False)
+                res = subprocess.run(cmd, capture_output=True, text=True, check=False)
                 if res.returncode == 0:
                     if hasattr(self, "_cached_cli_version"):
                         delattr(self, "_cached_cli_version")
@@ -219,7 +219,7 @@ class TargetAdapter(ABC):
             if dry_run:
                 return True, f"would execute: {' '.join(cmd)}"
             try:
-                res = subprocess.run(cmd, check=False)
+                res = subprocess.run(cmd, capture_output=True, text=True, check=False)
                 if res.returncode == 0:
                     if hasattr(self, "_cached_cli_version"):
                         delattr(self, "_cached_cli_version")

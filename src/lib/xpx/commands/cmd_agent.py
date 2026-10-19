@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from lib.common.errors import SwitchError
+from lib.xpx.adapters.base import TargetAdapter
 from lib.xpx.adapters.registry import get_all_adapters
 
 ORDERED_AGENTS = ("codex", "claude", "opencode", "agy", "pi", "cursor")
@@ -60,40 +62,54 @@ def run_agent_install(args: Any) -> int:
         else:
             print("All supported agent CLIs are already installed.\n")
         print("Usage:")
-        print("  xpx agent install <name>   Install a specific agent CLI")
-        print("  xpx agent install --all    Install all missing agent CLIs")
+        print("  xpx agent install <name>[,<name>...]  Install specific agent CLI(s)")
+        print("  xpx agent install --all               Install all missing agent CLIs")
         return 0 if not missing else 1
 
     if target:
-        if target not in adapters:
-            available = ", ".join(adapters.keys())
-            raise SwitchError(f"unknown agent '{target}', available: {available}")
-        adp = adapters[target]
-        if adp.get_binary_path() and not force:
-            ver = adp.get_cli_version()
-            print(
-                f"✔ Agent '{target}' is already installed ({ver or 'unknown'}). "
-                "Use --force to reinstall."
-            )
-            return 0
+        target_names = [t.strip().lower() for t in target.split(",") if t.strip()]
+        available = ", ".join(adapters.keys())
+        for name in target_names:
+            if name not in adapters:
+                raise SwitchError(f"unknown agent '{name}', available: {available}")
 
-        print(f"⏳ Installing agent '{target}' ({adp.display_name})...")
-        ok, msg = adp.install(dry_run=dry_run)
-        if ok:
-            print(f"✔ {msg}")
-            return 0
-        print(f"✖ Failed to install '{target}': {msg}", file=sys.stderr)
-        return 1
+        if len(target_names) == 1:
+            target_name = target_names[0]
+            adp = adapters[target_name]
+            if adp.get_binary_path() and not force:
+                ver = adp.get_cli_version()
+                print(
+                    f"✔ Agent '{target_name}' is already installed "
+                    f"({ver or 'unknown'}). Use --force to reinstall."
+                )
+                return 0
 
-    # --all mode
-    targets_to_install = [
-        adapters[name]
-        for name in ORDERED_AGENTS
-        if name in adapters and (not adapters[name].get_binary_path() or force)
-    ]
-    if not targets_to_install:
-        print("✔ All supported agent CLIs are already installed.")
-        return 0
+            print(f"⏳ Installing agent '{target_name}' ({adp.display_name})...")
+            ok, msg = adp.install(dry_run=dry_run)
+            if ok:
+                print(f"✔ {msg}")
+                return 0
+            print(f"✖ Failed to install '{target_name}': {msg}", file=sys.stderr)
+            return 1
+
+        targets_to_install = [
+            adapters[name]
+            for name in target_names
+            if (not adapters[name].get_binary_path() or force)
+        ]
+        if not targets_to_install:
+            print("✔ All requested agent CLIs are already installed.")
+            return 0
+    else:
+        # --all mode
+        targets_to_install = [
+            adapters[name]
+            for name in ORDERED_AGENTS
+            if name in adapters and (not adapters[name].get_binary_path() or force)
+        ]
+        if not targets_to_install:
+            print("✔ All supported agent CLIs are already installed.")
+            return 0
 
     print(
         f"Found {len(targets_to_install)} agent CLI(s) to install: "
@@ -122,6 +138,15 @@ def run_agent_install(args: Any) -> int:
     return 0
 
 
+def _update_single_agent(
+    adp: TargetAdapter, dry_run: bool
+) -> tuple[str, str, bool, str, str | None, str | None]:
+    old_ver = adp.get_cli_version()
+    ok, msg = adp.update(dry_run=dry_run)
+    new_ver = adp.get_cli_version() if ok else None
+    return adp.name, adp.display_name, ok, msg, old_ver, new_ver
+
+
 def run_agent_update(args: Any) -> int:
     target = getattr(args, "target", None)
     update_all = getattr(args, "all", False)
@@ -139,73 +164,84 @@ def run_agent_update(args: Any) -> int:
         else:
             print("No agent CLIs are installed.\n")
         print("Usage:")
-        print("  xpx agent update <name>   Update a specific agent CLI")
-        print("  xpx agent update --all    Update all installed agent CLIs")
+        print("  xpx agent update <name>[,<name>...]  Update specific agent CLI(s)")
+        print("  xpx agent update --all               Update all installed agent CLIs")
         return 0 if not installed else 1
 
+    targets_to_update: list[TargetAdapter] = []
+
     if target:
-        if target not in adapters:
-            available = ", ".join(adapters.keys())
-            raise SwitchError(f"unknown agent '{target}', available: {available}")
-        adp = adapters[target]
-        if not adp.get_binary_path():
-            print(
-                f"✖ Agent '{target}' is not installed. "
-                f"Run 'xpx agent install {target}' first.",
-                file=sys.stderr,
-            )
+        target_names = [t.strip().lower() for t in target.split(",") if t.strip()]
+        available = ", ".join(adapters.keys())
+        for name in target_names:
+            if name not in adapters:
+                raise SwitchError(f"unknown agent '{name}', available: {available}")
+            adp = adapters[name]
+            if not adp.get_binary_path():
+                print(
+                    f"✖ Agent '{name}' is not installed. "
+                    f"Run 'xpx agent install {name}' first.",
+                    file=sys.stderr,
+                )
+                return 1
+            targets_to_update.append(adp)
+
+        if len(targets_to_update) == 1:
+            adp = targets_to_update[0]
+            old_ver = adp.get_cli_version()
+            ver_tag = f"[current: {old_ver or 'unknown'}]"
+            print(f"⏳ Updating agent '{adp.name}' {ver_tag}...")
+            ok, msg = adp.update(dry_run=dry_run)
+            if ok:
+                new_ver = adp.get_cli_version()
+                ver_note = (
+                    f" ({old_ver} -> {new_ver})"
+                    if (not dry_run and new_ver and new_ver != old_ver)
+                    else ""
+                )
+                print(f"✔ {msg}{ver_note}")
+                return 0
+            print(f"✖ Failed to update '{adp.name}': {msg}", file=sys.stderr)
             return 1
-
-        old_ver = adp.get_cli_version()
-        print(f"⏳ Updating agent '{target}' [current: {old_ver or 'unknown'}]...")
-        ok, msg = adp.update(dry_run=dry_run)
-        if ok:
-            new_ver = adp.get_cli_version()
-            ver_note = (
-                f" ({old_ver} -> {new_ver})"
-                if (not dry_run and new_ver and new_ver != old_ver)
-                else ""
+    else:
+        # --all mode
+        targets_to_update = [
+            adapters[name]
+            for name in ORDERED_AGENTS
+            if name in adapters and adapters[name].get_binary_path()
+        ]
+        if not targets_to_update:
+            print(
+                "No agent CLIs are installed. "
+                "Run 'xpx agent install --all' to install them."
             )
-            print(f"✔ {msg}{ver_note}")
             return 0
-        print(f"✖ Failed to update '{target}': {msg}", file=sys.stderr)
-        return 1
 
-    # --all mode
-    installed_targets = [
-        adapters[name]
-        for name in ORDERED_AGENTS
-        if name in adapters and adapters[name].get_binary_path()
-    ]
-    if not installed_targets:
-        print(
-            "No agent CLIs are installed. "
-            "Run 'xpx agent install --all' to install them."
-        )
-        return 0
-
+    target_names_str = ", ".join(a.name for a in targets_to_update)
     print(
-        f"Found {len(installed_targets)} installed agent CLI(s) to update: "
-        f"{', '.join(a.name for a in installed_targets)}"
+        f"Found {len(targets_to_update)} installed agent CLI(s) to update in parallel: "
+        f"{target_names_str}\n"
     )
 
     failures: list[str] = []
-    for adp in installed_targets:
-        old_ver = adp.get_cli_version()
-        ver_tag = f"[current: {old_ver or 'unknown'}]"
-        print(f"\n=== Updating {adp.display_name} ({adp.name}) {ver_tag} ===")
-        ok, msg = adp.update(dry_run=dry_run)
-        if ok:
-            new_ver = adp.get_cli_version()
-            ver_note = (
-                f" ({old_ver} -> {new_ver})"
-                if (not dry_run and new_ver and new_ver != old_ver)
-                else ""
-            )
-            print(f"✔ {msg}{ver_note}")
-        else:
-            print(f"✖ {msg}", file=sys.stderr)
-            failures.append(adp.name)
+    max_workers = min(len(targets_to_update), 5)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_update_single_agent, adp, dry_run): adp
+            for adp in targets_to_update
+        }
+        for fut in as_completed(futures):
+            name, display_name, ok, msg, old_ver, new_ver = fut.result()
+            if ok:
+                ver_note = (
+                    f" ({old_ver} -> {new_ver})"
+                    if (not dry_run and new_ver and new_ver != old_ver)
+                    else ""
+                )
+                print(f"✔ [{name:<10}] {msg}{ver_note}")
+            else:
+                print(f"✖ [{name:<10}] {msg}", file=sys.stderr)
+                failures.append(name)
 
     if failures:
         fail_list = ", ".join(failures)

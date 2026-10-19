@@ -212,3 +212,83 @@ def test_top_level_install_and_update_shortcuts(
         xpx_cli.main(["update", "--help"])
     assert exc2.value.code == 0
     assert "Update target agent CLI(s)" in capsys.readouterr().out
+
+
+def test_agent_update_multiple_parallel(capsys: pytest.CaptureFixture[str]) -> None:
+    codex_adp = CodexAdapter()
+    claude_adp = ClaudeAdapter()
+    cursor_adp = CursorAdapter()
+
+    fake_adapters = {
+        "codex": codex_adp,
+        "claude": claude_adp,
+        "cursor": cursor_adp,
+    }
+
+    with (
+        patch.object(codex_adp, "get_binary_path", return_value="/bin/codex"),
+        patch.object(claude_adp, "get_binary_path", return_value="/bin/claude"),
+        patch.object(cursor_adp, "get_binary_path", return_value=None),
+        patch(
+            "lib.xpx.commands.cmd_agent.get_all_adapters",
+            return_value=fake_adapters,
+        ),
+    ):
+        # 1. Unknown agent in comma list raises SwitchError
+        with pytest.raises(SwitchError):
+            cmd_agent.run_agent_update(
+                argparse.Namespace(target="codex,nonexistent", all=False, dry_run=True)
+            )
+
+        # 2. Uninstalled agent in comma list returns 1
+        rc_uninst = cmd_agent.run_agent_update(
+            argparse.Namespace(target="codex,cursor", all=False, dry_run=True)
+        )
+        assert rc_uninst == 1
+        assert "cursor' is not installed" in capsys.readouterr().err
+
+        # 3. Comma-separated multi-target dry-run update runs in parallel
+        rc_multi = cmd_agent.run_agent_update(
+            argparse.Namespace(target="codex,claude", all=False, dry_run=True)
+        )
+        assert rc_multi == 0
+        out_multi = capsys.readouterr().out
+        assert "to update in parallel: codex, claude" in out_multi
+        assert "[codex     ]" in out_multi
+        assert "[claude    ]" in out_multi
+        assert "Successfully processed all requested agents" in out_multi
+
+        # 4. --all update dry-run runs installed targets in parallel
+        rc_all = cmd_agent.run_agent_update(
+            argparse.Namespace(target=None, all=True, dry_run=True)
+        )
+        assert rc_all == 0
+        out_all = capsys.readouterr().out
+        assert "to update in parallel" in out_all
+        assert "[codex     ]" in out_all
+        assert "[claude    ]" in out_all
+
+
+def test_agent_install_multiple(capsys: pytest.CaptureFixture[str]) -> None:
+    codex_adp = CodexAdapter()
+    claude_adp = ClaudeAdapter()
+    fake_adapters = {"codex": codex_adp, "claude": claude_adp}
+
+    with (
+        patch.object(codex_adp, "get_binary_path", return_value=None),
+        patch.object(claude_adp, "get_binary_path", return_value=None),
+        patch(
+            "lib.xpx.commands.cmd_agent.get_all_adapters",
+            return_value=fake_adapters,
+        ),
+    ):
+        rc = cmd_agent.run_agent_install(
+            argparse.Namespace(
+                target="codex,claude", all=False, dry_run=True, force=False
+            )
+        )
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Found 2 agent CLI(s) to install" in out
+        assert "Installing Codex" in out
+        assert "Installing Claude Code" in out

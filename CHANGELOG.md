@@ -9,6 +9,12 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.9] - 2026-10-19
+
+- Support parallel agent CLI updates for `xpx agent update --all` and comma-separated targets (e.g. `xpx update codex,agy`).
+- Capture background process output in agent updates to eliminate terminal output interleaving.
+- Support comma-separated target agent CLI installation in `xpx agent install` (e.g. `xpx install codex,agy`).
+
 ## [2.2.8] - 2026-10-14
 
 - Refresh background daemons for Codex, OpenCode 2.0, Claude Code, and Antigravity upon `xpx apply`.
