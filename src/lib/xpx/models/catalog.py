@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -53,12 +54,233 @@ def load_shared_catalog_data() -> dict[str, Any]:
     return _LOCAL_CATALOG_CACHE
 
 
+DEFAULT_CONTEXT_WINDOW = 128000
+DEFAULT_MAX_OUTPUT_TOKENS = 8192
+
+# Gateway/regional namespaces are always a *prefix*: `cn:model`, `global:model`.
+# The colon is ambiguous across providers, so every decision below is either an
+# explicit allow-list or a catalog-backed check - never a blind split.
+#
+# Observed real-world shapes:
+#   cn:deepseek-v4-flash      prefix namespace          strip namespace
+#   global:z-ai/glm-5.3       prefix namespace + vendor keep vendor path
+#   deepseek-chat:free        OpenRouter catalog variant keep base, keep variant
+#   openai/gpt-5.2:nitro      OpenRouter routing variant keep base, drop variant
+#   llama3:8b / :q4_k_m       Ollama tag                strip tag
+#   llama3:8b@sha256:...      Ollama digest             strip digest
+#   claude-opus-5@default     @version suffix           strip version
+#   gpt-5.4[1m]               context annotation        strip annotation
+#   arn:aws:bedrock:...       AWS ARN                   leave intact
+KNOWN_NAMESPACES = frozenset(
+    {
+        "cn",
+        "global",
+        "us",
+        "eu",
+        "ap",
+        "jp",
+        "kr",
+        "sg",
+        "hk",
+        "tw",
+        "uk",
+        "intl",
+        "us-east",
+        "us-west",
+        "eu-west",
+        "eu-central",
+        "ap-east",
+        "ap-south",
+        "ap-southeast",
+        "ap-northeast",
+    }
+)
+
+# OpenRouter *catalog* variants exist as their own /models entries with their own
+# metadata (usually a smaller context window and different pricing). They must
+# never be silently collapsed into the paid base model.
+CATALOG_VARIANTS = frozenset({"free", "batch", "thinking", "extended"})
+
+# OpenRouter *routing* variants only affect routing; the docs state their
+# metadata comes from the base model, so dropping them is safe and lossless.
+ROUTING_VARIANTS = frozenset({"nitro", "floor", "exacto", "online", "auto", "random"})
+
+# Every `:token` we are willing to treat as a *variant* (and thus show in display
+# names). Anything else - Ollama tags, unknown colons - is left opaque, because
+# guessing would mangle IDs like `acme:internal-model`.
+_KNOWN_VARIANT_TOKENS = CATALOG_VARIANTS | ROUTING_VARIANTS
+
+# `[1m]` / `[200k]` bracket annotations encode context-window overrides that the
+# client strips before the request. They are not part of model identity.
+_CONTEXT_ANNOTATION_RE = re.compile(r"\[(\d+(?:\.\d+)?)\s*([kmg]?)\]$", re.IGNORECASE)
+_MULTIPLIERS = {"": 1, "k": 1_000, "m": 1_000_000, "g": 1_000_000_000}
+
+
+def _split_context_annotation(model_id: str) -> tuple[str, int | None]:
+    """Strip a trailing `[1m]` style context annotation.
+
+    `gpt-5.4[1m]` -> ("gpt-5.4", 1000000)
+    `vendor/model[200k]` -> ("vendor/model", 200000)
+    """
+    raw = model_id.strip()
+    match = _CONTEXT_ANNOTATION_RE.search(raw)
+    if not match:
+        return raw, None
+
+    base = raw[: match.start()].strip()
+    if not base:
+        return raw, None
+
+    try:
+        tokens = int(float(match.group(1)) * _MULTIPLIERS[match.group(2).lower()])
+    except (ValueError, KeyError):
+        return base, None
+    return base, tokens
+
+
+def _split_digest(model_id: str) -> tuple[str, str | None]:
+    """Strip a trailing `@digest` / `@version` suffix.
+
+    `llama3:8b@sha256:abc` -> ("llama3:8b", "sha256:abc")
+    `claude-opus-5@default` -> ("claude-opus-5", "default")
+    """
+    raw = model_id.strip()
+    if "@" not in raw:
+        return raw, None
+
+    base, digest = raw.rsplit("@", 1)
+    base = base.strip()
+    digest = digest.strip()
+    if not base or not digest:
+        return raw, None
+    return base, digest
+
+
+def _split_namespace(model_id: str) -> tuple[str | None, str]:
+    """Split an optional known namespace prefix from a model ID.
+
+    A known namespace is recognized purely by name. Unknown colons fall back to
+    the Ollama ordering rule (`host:port/model` vs `model:tag`) so a colon after
+    the last slash is never mistaken for a leading namespace.
+    """
+    raw = model_id.strip()
+    if ":" not in raw:
+        return None, raw
+
+    # `arn:aws:bedrock:...` has empty segments; never treat it as namespaced.
+    if "::" in raw:
+        return None, raw
+
+    prefix, remainder = raw.split(":", 1)
+    prefix = prefix.strip()
+    remainder = remainder.strip()
+    if not prefix or not remainder:
+        return None, raw
+
+    # Known gateway/region namespace wins, even with a vendor path after it:
+    # `global:z-ai/glm-5.3` is namespaced, not a `global` model with a tag.
+    if prefix.lower() in KNOWN_NAMESPACES:
+        return prefix, remainder
+
+    # An unknown prefix is never guessed: `acme:internal-model` stays opaque,
+    # and `host:8080/model` is not namespaced either.
+    return None, raw
+
+
+def _split_variant(model_id: str) -> tuple[str, str | None, bool]:
+    """Split a trailing `:variant` suffix (OpenRouter style, Ollama tags).
+
+    Returns `(base, variant_name, is_catalog_variant)`.
+
+    `deepseek-chat:free` -> ("deepseek-chat", "free", True)
+    `gpt-5.2:nitro`      -> ("gpt-5.2", "nitro", False)
+    `llama3:8b`          -> ("llama3", "8b", False)
+    """
+    raw = model_id.strip()
+    if ":" not in raw or "::" in raw:
+        return raw, None, False
+
+    last_colon = raw.rfind(":")
+    # A colon before the last slash belongs to a namespace or host, not a tag.
+    if last_colon < raw.rfind("/"):
+        return raw, None, False
+
+    base = raw[:last_colon].strip()
+    variant = raw[last_colon + 1 :].strip()
+    if not base or not variant:
+        return raw, None, False
+
+    return base, variant, variant.lower() in CATALOG_VARIANTS
+
+
+def candidate_model_ids(
+    model_id: str,
+    known_ids: set[str] | None = None,
+) -> list[str]:
+    """Expand a model ID into catalog lookup candidates, most specific first.
+
+    `known_ids` is the catalog key set. When supplied, every speculative
+    fallback must exist there, so a stripped candidate can never resolve to an
+    unrelated model. Suffix stripping is applied on `known_ids` alone otherwise.
+    """
+    raw = model_id.strip()
+    candidates: list[str] = []
+    if not raw:
+        return candidates
+
+    def _add(value: str, *, speculative: bool = False) -> None:
+        value = value.strip()
+        if not value or value in candidates:
+            return
+        if speculative and known_ids is not None and value not in known_ids:
+            return
+        candidates.append(value)
+
+    # 1. Exact ID always wins: a catalog may price each region/variant apart.
+    _add(raw)
+
+    # 2. Peel metadata-only suffixes that are never part of model identity, in
+    #    outer-to-inner order: `[1m]` annotation, then `@digest`/`@version`.
+    base, _tokens = _split_context_annotation(raw)
+    base, _digest = _split_digest(base)
+    base = base.strip()
+    if base != raw:
+        _add(base, speculative=True)
+
+    # 3. Optional known namespace prefix: `cn:model` -> `model`.
+    namespace, remainder = _split_namespace(base)
+    if namespace is not None:
+        base = remainder.strip()
+        _add(base, speculative=True)
+
+    # 4. Trailing `:variant`. Catalog variants keep their identity (only the
+    #    base is offered as a fallback); routing variants are lossless to drop
+    #    because the docs state their metadata is the base model's.
+    variant_base, variant, _is_catalog = _split_variant(base)
+    if variant is not None:
+        _add(variant_base, speculative=True)
+
+    return candidates
+
+
 def find_model_entry(model_id: str) -> dict[str, Any]:
     data = load_shared_catalog_data()
     models = data.get("models") or {}
     aliases = data.get("aliases") or {}
 
-    clean_id = model_id.strip()
+    for clean_id in candidate_model_ids(model_id, known_ids=set(models) | set(aliases)):
+        entry = _lookup_catalog_entry(clean_id, models, aliases)
+        if entry:
+            return entry
+
+    return {}
+
+
+def _lookup_catalog_entry(
+    clean_id: str,
+    models: dict[str, Any],
+    aliases: dict[str, Any],
+) -> dict[str, Any]:
     if clean_id in models:
         return dict(models[clean_id])
 
@@ -85,6 +307,73 @@ def find_model_entry(model_id: str) -> dict[str, Any]:
     return {}
 
 
+def is_placeholder_metadata(meta: ModelMetadata) -> bool:
+    """Detect metadata that only carries fallback defaults.
+
+    Entries created before catalog enrichment (or for unknown models) look like
+    this. They must not shadow authoritative catalog data on re-sync.
+    """
+    return (
+        int(meta.context_window or 0) in (0, DEFAULT_CONTEXT_WINDOW)
+        and int(meta.max_output_tokens or 0) in (0, DEFAULT_MAX_OUTPUT_TOKENS)
+        and not meta.supported_reasoning_levels
+        and not meta.default_reasoning_level
+        and list(meta.input_modalities or []) in ([], ["text"])
+        and (not meta.display_name or meta.display_name == meta.id)
+    )
+
+
+def _model_id_qualifiers(model_id: str) -> list[str]:
+    """Return the identity-bearing qualifiers of a model ID.
+
+    Covers namespace prefixes (`cn:`), catalog variants and tags (`:free`,
+    `:8b`), `@version` suffixes and `[1m]` annotations - everything that makes
+    two otherwise-identical models distinguishable in a picker.
+    """
+    raw = model_id.strip()
+    qualifiers: list[str] = []
+
+    namespace, remainder = _split_namespace(raw)
+    if namespace is not None:
+        qualifiers.append(namespace)
+        raw = remainder
+
+    base, tokens = _split_context_annotation(raw)
+    if tokens is not None:
+        qualifiers.append(f"{tokens}ctx")
+        raw = base
+
+    base, digest = _split_digest(raw)
+    if digest is not None:
+        qualifiers.append(digest)
+        raw = base
+
+    base, variant, _is_catalog = _split_variant(raw)
+    if variant is not None and variant.lower() in _KNOWN_VARIANT_TOKENS:
+        qualifiers.append(variant)
+
+    return qualifiers
+
+
+def _qualify_display_name(model_id: str, base_name: str) -> str:
+    """Keep namespace/variant/annotation qualifiers visible in display names.
+
+    Without this, `cn:glm-5.3` and `global:glm-5.3` would both render as
+    "GLM 5.3", and `deepseek-chat:free` would look identical to the paid tier.
+    """
+    if base_name == model_id or not base_name:
+        return base_name
+
+    qualifiers = _model_id_qualifiers(model_id)
+    if not qualifiers:
+        return base_name
+
+    suffix = " ".join(f"[{q}]" for q in qualifiers)
+    if base_name.endswith(suffix):
+        return base_name
+    return f"{base_name} {suffix}"
+
+
 def enrich_model_metadata(
     model_id: str,
     existing: ModelMetadata | None = None,
@@ -102,12 +391,20 @@ def enrich_model_metadata(
             levels.append(str(item["effort"]))
 
     default_effort = entry.get("reasoning_default")
-    context_win = int(entry.get("context_window") or 128000)
-    max_tokens = int(entry.get("max_output_tokens") or 8192)
+    context_win = int(entry.get("context_window") or DEFAULT_CONTEXT_WINDOW)
+    max_tokens = int(entry.get("max_output_tokens") or DEFAULT_MAX_OUTPUT_TOKENS)
+
+    # A `[1m]` / `[200k]` annotation is a context-window override: the client
+    # advertises the larger window and strips the suffix before the request.
+    _, annotated_tokens = _split_context_annotation(model_id)
+    if annotated_tokens:
+        context_win = max(context_win, annotated_tokens)
+
     display_name = str(entry.get("display_name") or model_id)
     modalities = list(entry.get("input_modalities") or ["text"])
+    display_name = _qualify_display_name(model_id, display_name)
 
-    if existing and not force_reset:
+    if existing and not force_reset and not is_placeholder_metadata(existing):
         return ModelMetadata(
             id=model_id,
             display_name=existing.display_name or display_name,

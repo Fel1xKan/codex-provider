@@ -9,6 +9,13 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.2.10] - 2026-10-28
+
+- Recognize regional and gateway model namespaces (e.g. `cn:`, `global:`, `us-east:`) during `xpx models sync`, so those models pick up reasoning effort, context window, and modality metadata instead of falling back to defaults.
+- Refresh stale placeholder catalog entries on `xpx models sync` while preserving any metadata you configured explicitly.
+- Keep namespaces, variants, and tags visible in model display names so `cn:glm-5.3` and `global:glm-5.3` stay distinguishable in agent model pickers.
+- Support OpenRouter variants (`:free`, `:nitro`), Ollama tags (`llama3:8b`, `@sha256:`), `@version` suffixes, and context annotations (`gpt-5.4[1m]`) without misreading them as namespaces.
+
 ## [2.2.9] - 2026-10-19
 
 - Support parallel agent CLI updates for `xpx agent update --all` and comma-separated targets (e.g. `xpx update codex,agy`).

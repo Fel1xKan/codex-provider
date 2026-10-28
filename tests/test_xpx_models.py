@@ -358,3 +358,132 @@ def test_add_model_to_catalog(xpx_env: Path) -> None:
 
     with pytest.raises(SwitchError, match="positive integer"):
         add_model_to_catalog("test-provider", "m1", context=-5)
+
+
+def test_enrich_model_metadata_namespaced_ids() -> None:
+    # Region/gateway namespaced IDs must resolve to the underlying catalog entry
+    meta = enrich_model_metadata("cn:deepseek-v4-flash")
+    plain = enrich_model_metadata("deepseek-v4-flash")
+    assert meta.id == "cn:deepseek-v4-flash"
+    assert meta.context_window == plain.context_window
+    assert meta.max_output_tokens == plain.max_output_tokens
+    assert meta.supported_reasoning_levels == plain.supported_reasoning_levels
+    assert meta.default_reasoning_level == plain.default_reasoning_level
+    # Namespace stays visible so cn:/global: variants are distinguishable
+    assert meta.display_name.endswith("[cn]")
+    assert "deepseek" in meta.display_name.lower()
+
+    global_meta = enrich_model_metadata("global:deepseek-v4-flash")
+    assert global_meta.display_name.endswith("[global]")
+    assert global_meta.display_name != meta.display_name
+
+    # Vendor-prefixed path under a namespace
+    vendor = enrich_model_metadata("global:z-ai/glm-5.3")
+    assert vendor.context_window > 128000
+    assert vendor.supported_reasoning_levels
+
+    # Unknown namespaced models still get sane defaults and keep their identity
+    unknown = enrich_model_metadata("cn:no-such-model")
+    assert unknown.display_name == "cn:no-such-model"
+    assert unknown.context_window == 128000
+
+
+def test_enrich_overrides_placeholder_metadata() -> None:
+    from lib.xpx.store.catalog_store import ModelMetadata
+
+    placeholder = ModelMetadata(
+        id="cn:deepseek-v4-flash", display_name="cn:deepseek-v4-flash"
+    )
+    refreshed = enrich_model_metadata(
+        "cn:deepseek-v4-flash", existing=placeholder, force_reset=False
+    )
+    assert refreshed.context_window > 128000
+    assert refreshed.supported_reasoning_levels
+
+    # Real, user-authored metadata must be preserved
+    curated = ModelMetadata(
+        id="cn:deepseek-v4-flash",
+        display_name="My Curated Name",
+        context_window=64000,
+        max_output_tokens=4096,
+        supported_reasoning_levels=["low"],
+        default_reasoning_level="low",
+    )
+    kept = enrich_model_metadata(
+        "cn:deepseek-v4-flash", existing=curated, force_reset=False
+    )
+    assert kept.display_name == "My Curated Name"
+    assert kept.context_window == 64000
+    assert kept.supported_reasoning_levels == ["low"]
+
+
+def test_candidate_model_ids_shapes() -> None:
+    """Every real-world model ID shape must expand correctly.
+
+    Colon semantics differ per provider, so this table is the contract:
+    namespaces are prefixes, OpenRouter variants / Ollama tags / digests
+    / context annotations are suffixes that must never be mistaken for one.
+    """
+    from lib.xpx.models.catalog import candidate_model_ids, load_shared_catalog_data
+
+    data = load_shared_catalog_data()
+    known = set(data["models"]) | set(data["aliases"])
+
+    # (id, expected candidates) - speculative bases that are absent from the
+    # catalog are filtered out, which is what makes this safe.
+    cases = {
+        "cn:deepseek-v4-flash": ["cn:deepseek-v4-flash", "deepseek-v4-flash"],
+        "global:z-ai/glm-5.3": ["global:z-ai/glm-5.3", "z-ai/glm-5.3"],
+        "us-east:gpt-5.5": ["us-east:gpt-5.5", "gpt-5.5"],
+        # catalog variant: keeps identity, base offered as fallback
+        "deepseek-chat:free": ["deepseek-chat:free", "deepseek-chat"],
+        "gpt-4o:extended": ["gpt-4o:extended"],
+        # routing variant: base metadata applies
+        "openai/gpt-5.2:nitro": ["openai/gpt-5.2:nitro"],
+        # Ollama tags must never be stripped to the left of the colon
+        "llama3:8b": ["llama3:8b"],
+        "llama3:latest": ["llama3:latest"],
+        "orca-mini:3b-q8_0": ["orca-mini:3b-q8_0"],
+        "qwen2.5:7b-instruct": ["qwen2.5:7b-instruct"],
+        # digest / version suffixes
+        "llama3:8b@sha256:abc123": ["llama3:8b@sha256:abc123"],
+        "claude-opus-5@default": ["claude-opus-5@default", "claude-opus-5"],
+        "claude-opus-5@20250929": ["claude-opus-5@20250929", "claude-opus-5"],
+        # context annotations strip to the base model
+        "deepseek-v4-flash[1m]": ["deepseek-v4-flash[1m]", "deepseek-v4-flash"],
+        # opaque / never guess
+        "arn:aws:bedrock:us-east-1::foundation-model/x": [
+            "arn:aws:bedrock:us-east-1::foundation-model/x"
+        ],
+        "acme:internal-model": ["acme:internal-model"],
+        "gpt-image-2-4k-\u8d85\u5206": ["gpt-image-2-4k-\u8d85\u5206"],
+        "plain-model": ["plain-model"],
+    }
+
+    for model_id, expected in cases.items():
+        got = candidate_model_ids(model_id, known_ids=known)
+        assert got == expected, f"{model_id}: {got} != {expected}"
+
+
+def test_context_annotation_raises_context_window() -> None:
+    # `[1m]` is a context-window override the client strips before requesting
+    annotated = enrich_model_metadata("deepseek-v4-flash[1m]")
+    plain = enrich_model_metadata("deepseek-v4-flash")
+    assert annotated.context_window >= 1_000_000
+    assert annotated.max_output_tokens == plain.max_output_tokens
+    assert annotated.supported_reasoning_levels == plain.supported_reasoning_levels
+
+    # An annotation may also scale an unknown model up from the 128k default
+    scaled = enrich_model_metadata("vendor/unknown-model[200k]")
+    assert scaled.context_window == 200_000
+
+
+def test_catalog_variant_display_name_is_distinct() -> None:
+    free = enrich_model_metadata("deepseek-chat:free")
+    paid = enrich_model_metadata("deepseek-chat")
+    assert free.id == "deepseek-chat:free"
+    assert free.display_name.endswith("[free]")
+    assert free.display_name != paid.display_name
+    # :free is a catalog variant, so it inherits the base metadata but keeps
+    # its own identity instead of collapsing into the paid entry.
+    assert free.context_window == paid.context_window
