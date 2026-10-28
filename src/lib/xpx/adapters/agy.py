@@ -16,6 +16,7 @@ from lib.xpx.adapters.base import (
     TargetAdapter,
     TargetStatus,
     count_active_cli_instances,
+    run_probe_command,
 )
 from lib.xpx.store.account_store import AccountSpec
 
@@ -135,13 +136,16 @@ class AgyAdapter(TargetAdapter):
     def ping(
         self, prompt: str, timeout: int, spec: MergedProviderSpec | None = None
     ) -> tuple[bool, str]:
-        cmd = ["agy", "--version"]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            out = proc.stdout.strip() or proc.stderr.strip()
-            return proc.returncode == 0, out
-        except Exception as exc:
-            return False, str(exc)
+        # `agy --print` runs a single prompt non-interactively (`--prompt` is an
+        # alias for it). Probing with `--version` alone would report OK even when
+        # the configured provider cannot serve a request.
+        if spec is not None:
+            return False, (
+                "provider-scoped deep test is not supported for agy; "
+                f"run 'xpx apply agy {spec.name}' first, then "
+                "'xpx test --deep --target agy'"
+            )
+        return run_probe_command(["agy", "--print", prompt], timeout)
 
     def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
         has_systemd_svc = False

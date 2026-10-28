@@ -131,6 +131,48 @@ def build_merged_spec(
     return spec, has_adhoc
 
 
+def _check_target_compatibility(
+    adp: Any,
+    target: str,
+    args: Any,
+    *,
+    provider_protocol: str | None = None,
+) -> None:
+    """Reject options the target cannot honor instead of silently dropping them.
+
+    `config set` already validates these, but `apply` used to discard an
+    unsupported `--fast`/`--wire-api`/`--web-search` without a word, so the
+    command reported success while nothing was applied. Both surfaces now share
+    this check so they can never disagree again.
+    """
+    fast = getattr(args, "fast", None)
+    if fast is not None and not getattr(adp, "supports_fast", False):
+        raise SwitchError(
+            f"target client '{target}' does not support --fast (Codex only)"
+        )
+
+    if getattr(args, "wire_api", None) is not None and not getattr(
+        adp, "supports_wire_api", False
+    ):
+        raise SwitchError(
+            f"target client '{target}' does not support --wire-api (Codex only)"
+        )
+
+    if getattr(args, "web_search", None) is not None and not getattr(
+        adp, "supports_web_search", False
+    ):
+        raise SwitchError(
+            f"target client '{target}' does not support --web-search (Codex only)"
+        )
+
+    if provider_protocol and provider_protocol not in adp.supported_protocols:
+        supported = ", ".join(adp.supported_protocols)
+        raise SwitchError(
+            f"target client '{target}' does not support the "
+            f"'{provider_protocol}' protocol (supports: {supported})"
+        )
+
+
 def _handle_daemon_refresh(adp: Any, target_name: str, args: Any) -> None:
     restart_opt = getattr(args, "restart_daemon", None)
     if restart_opt is False:
@@ -184,7 +226,7 @@ def run_apply(args: Any) -> int:
         get_adapter(t)
 
     # 1. Reset / Clear mode
-    if getattr(args, "clear", False) or getattr(args, "reset", False):
+    if getattr(args, "clear", False):
         state_store = StateStore()
         for t in target_names:
             adp = get_adapter(t)
@@ -370,6 +412,18 @@ def run_apply(args: Any) -> int:
         pv, model = parse_provider_and_model(
             provider_spec, explicit_model, t, state_store, pv_store
         )
+
+        # Reject unsupported options/protocols up front. In --all mode an
+        # incompatible target is skipped with a reason instead of failing the
+        # whole sweep, but it is never silently applied.
+        try:
+            _check_target_compatibility(adp, t, args, provider_protocol=pv.protocol)
+        except SwitchError as exc:
+            if all_targets:
+                print(f"• Skipping '{t}' ({exc})")
+                continue
+            raise
+
         merged_spec, has_adhoc = build_merged_spec(pv, t, model, args)
 
         if is_dry_run:

@@ -220,15 +220,15 @@ MESSAGES: dict[str, dict[str, str]] = {
         "doc.doctor": "🩺 运行系统体检 (Doctor 检查损坏配置)",
         "doc.doctor_fix": "🔧 运行系统体检并自动修复 (--fix)",
         "doc.test": "⚡ 批量测试 Provider /models 响应延迟",
-        "doc.ping": "💬 端到端 Prompt 连通性测试 (Ping)",
+        "doc.deep_test": "💬 端到端 Prompt 连通性测试 (test --deep)",
         "doc.fix_confirm": "确认执行 Doctor 自动修复？",
         "doc.test_prompt": (
             "请勾选要测速的 Provider (空格勾选，a 全选，回车确认，Esc 返回)"
         ),
         "doc.test_confirm": "确认对勾选的 {count} 个 Provider 进行延迟测速？",
-        "doc.ping_client_prompt": "选择测试客户端 (Esc 返回)",
-        "doc.ping_prompt": "发送的测试 Prompt (Esc 取消)",
-        "doc.ping_confirm": "确认在 '{target}' 上运行 Prompt Ping？",
+        "doc.deep_target_prompt": "选择测试客户端 (Esc 返回)",
+        "doc.deep_prompt": "发送的测试 Prompt (Esc 取消)",
+        "doc.deep_confirm": "确认在 '{target}' 上运行端到端 Prompt 测试？",
         # Models Wizard
         "models.title": "=== 模型与偏好管理 (Models) ===",
         "models.select_pv": ("请选择要查看或同步模型的 Provider (Esc 返回主菜单)"),
@@ -426,15 +426,15 @@ MESSAGES: dict[str, dict[str, str]] = {
         "doc.doctor": "🩺 Run Health Check (Doctor inspects broken configs)",
         "doc.doctor_fix": "🔧 Run Health Check with Auto-Repair (--fix)",
         "doc.test": "⚡ Test Latency across Providers (/models)",
-        "doc.ping": "💬 End-to-End Prompt Connectivity Test (Ping)",
+        "doc.deep_test": "💬 End-to-End Prompt Connectivity Test (test --deep)",
         "doc.fix_confirm": "Confirm running Doctor auto-repair?",
         "doc.test_prompt": (
             "Check providers to test (Space: toggle, a: all, Enter: ok, Esc: back)"
         ),
         "doc.test_confirm": ("Confirm latency test for {count} selected providers?"),
-        "doc.ping_client_prompt": "Select client for ping test (Esc: back)",
-        "doc.ping_prompt": "Test Prompt to send (Esc: cancel)",
-        "doc.ping_confirm": "Confirm running Prompt Ping on '{target}'?",
+        "doc.deep_target_prompt": "Select client for deep test (Esc: back)",
+        "doc.deep_prompt": "Test Prompt to send (Esc: cancel)",
+        "doc.deep_confirm": "Confirm running the deep test on '{target}'?",
         # Models Wizard
         "models.title": "=== Models & Preferences ===",
         "models.select_pv": "Select Provider to inspect or sync (Esc: back)",

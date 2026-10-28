@@ -4,7 +4,6 @@ import json
 import os
 import shutil
 import sqlite3
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -12,7 +11,12 @@ from typing import Any
 
 from lib.common.errors import SwitchError
 from lib.common.oscrypt import encrypt_secret_plaintext
-from lib.xpx.adapters.base import MergedProviderSpec, TargetAdapter, TargetStatus
+from lib.xpx.adapters.base import (
+    MergedProviderSpec,
+    TargetAdapter,
+    TargetStatus,
+    run_probe_command,
+)
 
 SURFACES = (
     "composer",
@@ -378,13 +382,15 @@ class CursorAdapter(TargetAdapter):
     def ping(
         self, prompt: str, timeout: int, spec: MergedProviderSpec | None = None
     ) -> tuple[bool, str]:
-        cmd = ["cursor", "--version"]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            out = proc.stdout.strip() or proc.stderr.strip()
-            return proc.returncode == 0, out
-        except Exception as exc:
-            return False, str(exc)
+        # Cursor is an IDE, not a headless CLI: there is no `cursor exec` that
+        # would answer a prompt, so an install/version check is the strongest
+        # probe available. Configured providers are verified via `xpx test`.
+        if spec is not None:
+            return False, (
+                "provider-scoped ping is not supported for cursor (IDE only); "
+                "use 'xpx test " + spec.name + "' to verify the provider"
+            )
+        return run_probe_command(["cursor", "--version"], timeout)
 
     def update(self, dry_run: bool = False) -> tuple[bool, str]:
         msg = (

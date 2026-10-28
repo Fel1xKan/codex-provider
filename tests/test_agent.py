@@ -199,21 +199,6 @@ def test_agent_install_and_update_execution() -> None:
         assert "exited with code 1" in msg
 
 
-def test_top_level_install_and_update_shortcuts(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    # Test 'xpx install --help' and 'xpx update --help'
-    with pytest.raises(SystemExit) as exc1:
-        xpx_cli.main(["install", "--help"])
-    assert exc1.value.code == 0
-    assert "Install target agent CLI(s)" in capsys.readouterr().out
-
-    with pytest.raises(SystemExit) as exc2:
-        xpx_cli.main(["update", "--help"])
-    assert exc2.value.code == 0
-    assert "Update target agent CLI(s)" in capsys.readouterr().out
-
-
 def test_agent_update_multiple_parallel(capsys: pytest.CaptureFixture[str]) -> None:
     codex_adp = CodexAdapter()
     claude_adp = ClaudeAdapter()

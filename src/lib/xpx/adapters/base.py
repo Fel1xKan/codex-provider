@@ -17,6 +17,62 @@ def find_node_package_manager() -> str | None:
     return None
 
 
+# Lines that agent CLIs emit at startup and that never describe probe outcome.
+_NOISE_PREFIXES = (
+    "warning:",
+    "warn:",
+    "deprecationwarning:",
+    "note:",
+)
+
+
+def _strip_noise(text: str) -> str:
+    """Drop startup warnings so the real answer/error is what gets reported."""
+    kept = [
+        line
+        for line in text.splitlines()
+        if line.strip() and not line.strip().lower().startswith(_NOISE_PREFIXES)
+    ]
+    return "\n".join(kept).strip()
+
+
+def run_probe_command(
+    cmd: list[str],
+    timeout: int,
+    env: dict[str, str] | None = None,
+) -> tuple[bool, str]:
+    """Run an end-to-end agent probe and normalize the result.
+
+    Shared by every adapter's `ping` so the edge cases stay consistent:
+    timeouts and spawn failures become readable messages instead of leaking
+    raw exceptions, output is decoded defensively, and stderr is only used
+    when the CLI printed nothing on stdout (agent CLIs emit startup warnings
+    there, which must not be mistaken for the model's answer).
+    """
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"timed out after {timeout}s"
+    except FileNotFoundError:
+        return False, f"{cmd[0]} not found on PATH"
+    except Exception as exc:
+        return False, str(exc)
+
+    stdout = _strip_noise(proc.stdout or "")
+    stderr = _strip_noise(proc.stderr or "")
+    if proc.returncode == 0:
+        return True, stdout or stderr
+    return False, stderr or stdout or f"exited with code {proc.returncode}"
+
+
 def count_active_cli_instances(
     binary_name: str, daemon_patterns: list[str] | None = None
 ) -> int:
@@ -262,9 +318,25 @@ class TargetAdapter(ABC):
     ) -> tuple[bool, str]:
         """Invoke the client executable for an end-to-end question/answer probe.
 
+        When `spec` is provided the probe must exercise *that* provider rather
+        than whatever the client currently has configured, and it must not
+        modify the user's real configuration. Adapters that cannot redirect a
+        single request return a clear "unsupported" result instead of silently
+        probing the wrong provider.
+
         Returns (success, stdout/summary or error message).
         """
         pass
+
+    def _probe_env_for_spec(
+        self, spec: MergedProviderSpec | None
+    ) -> dict[str, str] | None:
+        """Return extra env vars that point the client at `spec` for one run.
+
+        Returning None means this adapter has no isolation mechanism, so a
+        provider-scoped probe cannot be honored safely.
+        """
+        return None
 
     def refresh_catalog(self, provider_name: str | None = None) -> bool:
         """Refresh model catalog in native files if this client is active."""

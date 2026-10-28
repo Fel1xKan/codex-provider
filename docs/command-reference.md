@@ -1,31 +1,33 @@
-# Command Reference (xpx 2.0.0)
+# Command Reference
 
-This document covers `xpx` version 2.0.0, the unified AI agent provider control plane. Run `xpx <command> --help` for the exact parser surface of any command.
+This document covers the `xpx` unified AI agent provider control plane. Run `xpx <command> --help` for the exact parser surface of any command.
 
 ## Command Tree Overview
 
 ```text
 xpx
-├── add <name> [base_url]
-├── list
-├── show <name>
-├── delete <name>
-├── rename <old> <new>
-│
-├── auth
-│   ├── show [name]
-│   └── set <name>
-│
-├── config
-│   ├── show [name] [target]
-│   └── set <name> [target]
+├── list                               --json
+├── show [provider]                    --target --reveal-key
+├── set <provider> [target]            --base-url --protocol --default-model
+│                                      --key --key-stdin --header --name
+│                                      --fast/--no-fast --wire-api
+│                                      --web-search/--no-web-search --option
+├── add <name> [base_url]              --key --key-stdin --default-model --protocol
+├── delete <name>                      --full --dry-run
 │
 ├── models
-│   ├── sync <provider>
-│   ├── list [provider]
-│   └── set <model> <provider>
+│   ├── sync <provider>                --force
+│   ├── list [provider]                --remote
+│   └── set <provider> <model>         --display-name --default --context
+│                                      --max-output --effort --modalities
+│                                      --overwrite
 │
-├── apply [target] [provider_spec]
+├── apply [target] [provider_spec] [model_arg]
+│                                      --all --account --model --clear
+│                                      --dry-run --no-save --header
+│                                      --fast/--no-fast --wire-api
+│                                      --web-search/--no-web-search
+│                                      --restart-daemon
 │
 ├── account
 │   ├── login <target> [name]
@@ -34,13 +36,19 @@ xpx
 │   └── usage [target] [name]
 │
 ├── status
-├── doctor
-├── test [provider]
-├── ping [target] [provider_spec]
-├── migrate [--dry-run]
-├── import [file]
+├── doctor                             --fix
+├── test [provider]                    --deep --target --model --prompt --timeout --all
+│
+├── agent
+│   ├── list
+│   ├── install [target]               --all --dry-run --force
+│   └── update [target]                --all --dry-run
+│
+├── migrate                            --dry-run --force
+├── import [file]                      --force
 ├── export [file]
-└── upgrade
+├── upgrade                            --check --notes --dry-run
+└── interactive                        (aliases: i, menu)
 ```
 
 ---
@@ -77,11 +85,23 @@ List all registered providers and their active status across client targets.
 xpx list
 ```
 
-### `xpx show <name>`
-Inspect provider properties and any saved target-specific overrides.
+### `xpx show [provider]`
+Inspect a provider's effective configuration, or summarize every provider.
+
+Shows protocol, base URL, default model, a masked API key (first 4 and last 4
+characters), global headers, configured target overrides, and which clients
+currently have this provider active. Replaces the former `auth show` and
+`config show`.
+
+- **Options**:
+  - `--target <name>`: Show only that client's overrides.
+  - `--reveal-key`: Print the API key instead of masking it.
 
 ```bash
-xpx show deepseek
+xpx show                       # summarize all providers
+xpx show deepseek              # one provider, masked key
+xpx show deepseek --target codex
+xpx show deepseek --reveal-key
 ```
 
 ### `xpx delete <name>`
@@ -95,62 +115,62 @@ Delete a provider from the central store.
 xpx delete deepseek --full
 ```
 
-### `xpx rename <old> <new>`
-Rename a provider asset.
-
-```bash
-xpx rename deepseek ds-corp
-```
-
 ---
 
-## 2. Credentials and Configuration (`auth` / `config`)
+## 2. Updating a Provider (`set`)
 
-### `xpx auth show [name]`
-Display masked API key summaries (first 4 and last 4 characters, length, and format validity).
+### `xpx set <provider> [target]`
+The single write surface for a provider: it creates the provider if it does not
+exist, and otherwise updates whichever fields you name. This replaces the former
+`rename`, `auth set`, and `config set`, which all edited the same provider object
+through different commands.
+
+Two shapes, distinguished by the optional positional target:
 
 ```bash
-xpx auth show deepseek
+xpx set <provider> [options]           # edit the provider itself
+xpx set <provider> <target> [options]  # edit that client's overrides
 ```
 
-### `xpx auth set <name>`
-Update the API key for a provider. If the provider is currently active in any client targets, `xpx` automatically updates and re-renders configuration for those targets.
+The target is positional rather than a `--target` flag because it reads as
+"this provider, as seen by that client", and because it keeps provider fields
+and per-client overrides from being mixed in one invocation.
 
-- **Options**:
-  - `--key <text>`: New API key.
-  - `--key-stdin`: Read key from stdin.
+Renaming a provider with `--name` also moves its cached model catalog and its
+active-client pointers, so model metadata is not orphaned.
 
-```bash
-xpx auth set deepseek --key "sk-new-key"
-```
+- **Provider fields** (no target):
+  - `--base-url <url>`: Endpoint base URL.
+  - `--protocol <openai|anthropic>`: Wire protocol.
+  - `--default-model <model>`: Default model for this provider.
+  - `--key <text>` / `--key-stdin`: Replace the API key (prompts when neither is given).
+  - `--header <k=v>`: Global header (pass `k=` to remove).
+  - `--name <new-name>`: Rename the provider.
+- **Target overrides** (with a target):
+  - `--fast` / `--no-fast`: Codex fast mode (`service_tier = "priority"`).
+  - `--wire-api <chat|responses>`: Codex wire API.
+  - `--web-search <true|false>` / `--no-web-search`: Codex web search.
+  - `--header <k=v>`: Header for this client only (pass `k=` to remove).
+  - `--option <k=v>`: Generic client option (pass `k=` to remove).
 
-### `xpx config set <name> [target]`
-Update configuration settings. Automatically handles universal base settings vs. target-specific overrides:
-
-- **Without `target`** (universal base settings):
-  - `--base-url <url>`: Update endpoint base URL.
-  - `--default-model <model>`: Update default model.
-  - *Re-applies to all active targets automatically.*
-- **With `target`** (target-specific override settings):
-  - `--header <k=v>`: Add or update a client-specific header (pass `k=` to remove).
-  - `--fast` / `--no-fast`: Codex-specific fast mode.
-  - `--wire-api <chat|responses>`: Codex-specific wire API.
-  - `--web-search <true|false>`: Codex-specific web search toggle.
-  - `--option <k=v>`: Generic client override option.
-
-```bash
-# Universal base update
-xpx config set deepseek --base-url https://api.deepseek.com/v1
-
-# Target-specific override for Codex
-xpx config set deepseek codex --fast --header x-custom-id=123
-```
-
-### `xpx config show [name] [target]`
-Inspect effective configuration, merging universal base values with target-specific overrides.
+Target overrides are stored per provider *and* per client, so switching provider
+in the same client keeps each provider's settings (a third-party gateway may
+need `--fast` while the first-party endpoint does not). Only clients that
+declare support for an option accept it; anything else is an error rather than a
+silent no-op. Active clients using the provider are re-applied automatically.
 
 ```bash
-xpx config show deepseek codex
+# Create
+xpx set deepseek --base-url https://api.deepseek.com/v1 --key sk-xxx
+
+# Update provider fields
+xpx set deepseek --default-model deepseek-chat
+xpx set deepseek --key sk-new-key
+xpx set deepseek --name ds-corp
+
+# Update one client's overrides
+xpx set deepseek codex --fast --wire-api responses
+xpx set deepseek codex --header x-custom-id=123
 ```
 
 ---
@@ -177,17 +197,24 @@ List cached models for a provider or all providers.
 xpx models list deepseek
 ```
 
-### `xpx models set <model> <provider>`
-Configure model metadata or set the provider's default model.
+### `xpx models set <provider> <model>`
+Create or update a model entry in a provider's catalog. This is the single
+create-or-update command: `models add` was removed because it upserted too, but
+with a different flag set and an auto-swapping positional order that made
+`add <a> <b>` ambiguous.
 
 - **Options**:
+  - `--display-name <name>`: Human-readable name shown in client pickers.
   - `--default`: Mark this model as the provider's default model.
   - `--context <int>`: Set context window size in tokens.
   - `--max-output <int>`: Set max output tokens limit.
-  - `--effort <level>`: Set default reasoning effort level (e.g. `high`, `medium`, `low`).
+  - `--effort <level[,level...]>`: Supported reasoning effort ladder.
+  - `--modalities <m[,m]>`: Input modalities (e.g. `text,image`).
+  - `--overwrite`: Replace existing metadata instead of merging into it.
 
 ```bash
-xpx models set deepseek-reasoner deepseek --default --effort high
+xpx models set deepseek deepseek-reasoner --default --effort high
+xpx models set openrouter claude-3-7-sonnet --context 200000 --modalities text,image
 ```
 
 ---
@@ -211,7 +238,7 @@ xpx apply [target] [provider_spec] [options]
   - `--all`: Apply across all installed client targets.
   - `--account <name>`: Apply a saved OAuth or session account (e.g. `xpx apply agy --account work`).
   - `--model <id>`: Explicit model identifier flag.
-  - `--clear` / `--reset`: Reset client configuration back to official defaults.
+  - `--clear`: Reset client configuration back to official defaults.
   - `--dry-run`: Preview file modifications and configuration diff without touching the disk.
   - `--no-save`: Do not persist target-specific overrides from the command line into the provider's archive.
   - **Client Overrides (applied and automatically remembered)**:
@@ -219,6 +246,12 @@ xpx apply [target] [provider_spec] [options]
     - `--fast` / `--no-fast`: Codex fast mode.
     - `--wire-api <chat|responses>`: Codex wire API.
     - `--web-search <true|false>`: Codex standalone web search.
+
+Client overrides and protocols are validated before anything is written. Passing
+`--fast` to a client that cannot honor it is an error, not a silent no-op, and a
+provider whose protocol a client does not support is rejected with the list of
+protocols that client accepts. With `--all`, incompatible targets are skipped
+with a printed reason so one mismatch cannot abort the whole sweep.
 
 ```bash
 # Apply deepseek to Codex with fast mode enabled (remembers fast mode for next time)
@@ -237,7 +270,7 @@ xpx apply agy --account work
 xpx apply codex deepseek --dry-run
 
 # Reset client to official defaults
-xpx apply codex --reset
+xpx apply codex --clear
 ```
 
 ---
@@ -295,30 +328,56 @@ xpx doctor
 xpx doctor --fix
 ```
 
-### `xpx test [provider]`
-Perform HTTP API probe tests against provider `/models` endpoints:
-- Reports HTTP status code, latency (ms), and available model count.
-- `--all`: Probe all configured providers.
+### `xpx test [provider] [--deep]`
+Single entry point for connectivity testing, with two depths:
+
+**Shallow (default)** — one HTTP GET against each provider's `/models` endpoint.
+Reports status code, latency, and model count. This proves credentials and
+network work, but says nothing about whether a client can actually use them.
+
+**Deep (`--deep`)** — spawns each target client and sends a real prompt,
+verifying the whole client → provider path. Slow (seconds per target) and it
+consumes tokens.
+
+Use shallow first: if it fails, the problem is network/credentials. If it passes
+but `--deep` fails, the problem is on the client side (config not applied,
+incompatible CLI version, session conflict).
+
+- **Arguments**:
+  - `provider`: Provider to probe. Only meaningful in shallow mode; combined
+    with `--deep` it scopes the deep probe to that provider.
+- **Options**:
+  - `--deep`: Also run a real prompt through client CLIs.
+  - `--target <clients>`: Clients for `--deep`, comma-separated. Defaults to all
+    installed clients.
+  - `--model <id>`: Model for `--deep` (default: the provider's default model).
+  - `--prompt <text>`: Prompt for `--deep` (default: `"say hi"`).
+  - `--timeout <int>`: Per-target timeout in seconds for `--deep` (default: 60s).
+  - `--all`: All providers (shallow) / all clients (deep).
+
+Provider-scoped deep probes are supported where the client can redirect a single
+run without touching your configuration (`pi`, `opencode`). Clients whose
+configuration is only read from disk (`codex`, `claude`, `agy`) reject a scoped
+probe with an actionable message instead of silently testing the wrong provider;
+`cursor` is an IDE and only supports an install check. An unknown provider name
+is rejected before any CLI runs, so a typo can never report a false success.
+
+Deep probes never pollute your history: `codex` runs with `--ephemeral`,
+`claude` with `--no-session-persistence`, `pi` with `--no-session`, and
+`opencode` is pointed at a throwaway database.
 
 ```bash
+# Shallow: provider reachability
+xpx test
 xpx test deepseek
 xpx test --all
-```
 
-### `xpx ping [target] [provider_spec]`
-End-to-end integration test running a minimal prompt through the actual client binary.
+# Deep: end-to-end through every installed client
+xpx test --deep
 
-- **Options**:
-  - `--prompt <text>`: Custom prompt to send (default: `"say hi"`).
-  - `--timeout <int>`: Timeout in seconds (default: 60s).
-  - `--all`: Concurrently execute verification across all installed targets using a thread pool.
-
-```bash
-# Test single client
-xpx ping codex deepseek
-
-# Concurrently test all installed clients
-xpx ping --all
+# Deep, scoped to one provider / client / model
+xpx test workbuddy2api --deep --target pi
+xpx test workbuddy2api --deep --target pi --model cn:glm-5.3
 ```
 
 ---

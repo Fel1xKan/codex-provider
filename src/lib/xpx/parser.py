@@ -15,12 +15,9 @@ from lib.xpx.commands.cmd_agent import (
     run_agent_update,
 )
 from lib.xpx.commands.cmd_apply import run_apply
-from lib.xpx.commands.cmd_auth import run_auth_set, run_auth_show
-from lib.xpx.commands.cmd_config import run_config_set, run_config_show
 from lib.xpx.commands.cmd_doctor import run_doctor
 from lib.xpx.commands.cmd_import_export import run_export, run_import, run_migrate
 from lib.xpx.commands.cmd_models import (
-    run_models_add,
     run_models_list,
     run_models_set,
     run_models_sync,
@@ -29,11 +26,10 @@ from lib.xpx.commands.cmd_provider import (
     run_add,
     run_delete,
     run_list,
-    run_rename,
-    run_show,
 )
+from lib.xpx.commands.cmd_set import run_set, run_show
 from lib.xpx.commands.cmd_status import run_status
-from lib.xpx.commands.cmd_test_ping import run_ping, run_test
+from lib.xpx.commands.cmd_test_ping import run_test
 from lib.xpx.commands.cmd_upgrade import run_upgrade
 
 
@@ -72,8 +68,22 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     p_list.add_argument("--json", action="store_true", help="Output as JSON")
     p_list.set_defaults(func=run_list)
 
-    p_show = subparsers.add_parser("show", help="Show provider details")
-    p_show.add_argument("name", help="Provider name")
+    p_show = subparsers.add_parser(
+        "show",
+        help="Show provider configuration (all providers when no name given)",
+        description=(
+            "Read a provider's effective configuration, including masked "
+            "credentials, target overrides, and where it is currently active. "
+            "Replaces the former 'auth show' and 'config show'."
+        ),
+    )
+    p_show.add_argument("name", nargs="?", help="Provider name")
+    p_show.add_argument("--target", help="Show only this target's overrides")
+    p_show.add_argument(
+        "--reveal-key",
+        action="store_true",
+        help="Print the API key instead of a masked summary",
+    )
     p_show.set_defaults(func=run_show)
 
     p_delete = subparsers.add_parser("delete", help="Delete a provider")
@@ -86,72 +96,75 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     )
     p_delete.set_defaults(func=run_delete)
 
-    p_rename = subparsers.add_parser("rename", help="Rename a provider")
-    p_rename.add_argument("old", help="Current provider name")
-    p_rename.add_argument("new", help="New provider name")
-    p_rename.set_defaults(func=run_rename)
-
-    # 2. Auth
-    p_auth = subparsers.add_parser("auth", help="Manage provider credentials")
-    auth_sub = p_auth.add_subparsers(dest="auth_action", metavar="<action>")
-
-    p_auth_show = auth_sub.add_parser("show", help="Show API key summary")
-    p_auth_show.add_argument("name", nargs="?", help="Provider name")
-    p_auth_show.set_defaults(func=run_auth_show)
-
-    p_auth_set = auth_sub.add_parser("set", help="Update provider API key")
-    p_auth_set.add_argument("name", help="Provider name")
-    p_auth_set.add_argument("--key", help="New API key string")
-    p_auth_set.add_argument(
-        "--key-stdin", action="store_true", help="Read new key from stdin"
+    p_set = subparsers.add_parser(
+        "set",
+        help="Create a provider or update any of its fields",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Single write surface for a provider.\n\n"
+            "  xpx set <provider> [options]          edit the provider itself\n"
+            "  xpx set <provider> <target> [options] edit that client's overrides\n\n"
+            "Universal fields (base URL, protocol, default model, API key, "
+            "headers, name) apply to the provider; target overrides (fast mode, "
+            "wire API, web search, per-client headers, options) apply only when "
+            "that client uses the provider. Replaces the former 'rename', "
+            "'auth set', and 'config set'. Sending an option a target cannot "
+            "honor is an error rather than a silent no-op."
+        ),
     )
-    p_auth_set.set_defaults(func=run_auth_set)
-
-    # 3. Config
-    p_config = subparsers.add_parser(
-        "config", help="Manage universal and target options"
+    p_set.add_argument("name", help="Provider name (created when it does not exist)")
+    p_set.add_argument(
+        "target",
+        nargs="?",
+        help=(
+            "Target client whose overrides to update (omit to edit the provider itself)"
+        ),
     )
-    cfg_sub = p_config.add_subparsers(dest="config_action", metavar="<action>")
-
-    p_cfg_show = cfg_sub.add_parser("show", help="Show configuration")
-    p_cfg_show.add_argument("name", nargs="?", help="Provider name")
-    p_cfg_show.add_argument("target", nargs="?", help="Target client name")
-    p_cfg_show.set_defaults(func=run_config_show)
-
-    p_cfg_set = cfg_sub.add_parser("set", help="Set configuration options")
-    p_cfg_set.add_argument("name", help="Provider name")
-    p_cfg_set.add_argument("target", nargs="?", help="Target client name (optional)")
-    p_cfg_set.add_argument("--base-url", help="Universal base URL")
-    p_cfg_set.add_argument("--default-model", help="Universal default model")
-    p_cfg_set.add_argument(
-        "--header", action="append", help="Target-specific header (key=value)"
+    p_set.add_argument("--base-url", help="API base URL")
+    p_set.add_argument(
+        "--protocol", choices=["openai", "anthropic"], help="Protocol type"
     )
-    p_cfg_set.add_argument(
+    p_set.add_argument("--default-model", help="Default primary model")
+    p_set.add_argument("--key", help="API key string")
+    p_set.add_argument(
+        "--key-stdin", action="store_true", help="Read the API key from stdin"
+    )
+    p_set.add_argument(
+        "--header",
+        action="append",
+        help="Header (key=value); pass key= to remove",
+    )
+    p_set.add_argument(
         "--fast", action="store_true", default=None, help="Enable fast mode (Codex)"
     )
-    p_cfg_set.add_argument(
+    p_set.add_argument(
         "--no-fast", action="store_false", dest="fast", help="Disable fast mode"
     )
-    p_cfg_set.add_argument(
+    p_set.add_argument(
         "--wire-api", choices=["chat", "responses"], help="Codex wire API"
     )
-    p_cfg_set.add_argument(
+    p_set.add_argument(
         "--web-search",
         nargs="?",
         const="true",
         default=None,
         help="Codex web search (true/false) (Codex only)",
     )
-    p_cfg_set.add_argument(
+    p_set.add_argument(
         "--no-web-search",
         action="store_false",
         dest="web_search",
         help="Disable Codex web search (Codex only)",
     )
-    p_cfg_set.add_argument(
-        "--option", action="append", help="Generic option override (key=value)"
+    p_set.add_argument(
+        "--option",
+        action="append",
+        help="Generic target option (key=value)",
     )
-    p_cfg_set.set_defaults(func=run_config_set)
+    p_set.add_argument(
+        "--name", dest="rename_to", help="Rename the provider to this name"
+    )
+    p_set.set_defaults(func=run_set)
 
     # 4. Models
     p_models = subparsers.add_parser(
@@ -168,49 +181,6 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     )
     p_mod_sync.set_defaults(func=run_models_sync)
 
-    p_mod_add = mod_sub.add_parser(
-        "add", help="Add or update a model in provider catalog"
-    )
-    p_mod_add.add_argument(
-        "first",
-        help="Provider name or Model ID (or provider/model)",
-    )
-    p_mod_add.add_argument(
-        "second",
-        nargs="?",
-        default=None,
-        help="Model ID or Provider name (optional if provider/model specified)",
-    )
-    p_mod_add.add_argument(
-        "-p", "--provider", dest="flag_provider", help="Explicit provider name"
-    )
-    p_mod_add.add_argument("--display-name", help="Display name for the model")
-    p_mod_add.add_argument(
-        "--default", action="store_true", help="Mark as provider default model"
-    )
-    p_mod_add.add_argument(
-        "--context", type=int, help="Context window limit (e.g. 128000)"
-    )
-    p_mod_add.add_argument(
-        "--max-output", type=int, help="Max output tokens limit (e.g. 8192)"
-    )
-    p_mod_add.add_argument(
-        "--effort",
-        help=(
-            "Supported reasoning effort / thinking levels "
-            "(e.g. 'high' or 'low,medium,high')"
-        ),
-    )
-    p_mod_add.add_argument(
-        "--modalities", help="Comma-separated input modalities (e.g. text,image)"
-    )
-    p_mod_add.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Overwrite existing model configuration instead of merging",
-    )
-    p_mod_add.set_defaults(func=run_models_add)
-
     p_mod_list = mod_sub.add_parser("list", help="List cached or remote models")
     p_mod_list.add_argument("provider", nargs="?", help="Provider name")
     p_mod_list.add_argument(
@@ -218,20 +188,42 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     )
     p_mod_list.set_defaults(func=run_models_list)
 
-    p_mod_set = mod_sub.add_parser("set", help="Update model preference")
-    p_mod_set.add_argument("model", help="Model ID")
+    p_mod_set = mod_sub.add_parser(
+        "set",
+        help="Add or update a model in a provider catalog",
+        description=(
+            "Create or update a model entry for a provider. Creating and "
+            "updating were separate commands (`models add` / `models set`) with "
+            "different flags even though both upsert; they are now one command "
+            "with an explicit <provider> <model> order."
+        ),
+    )
     p_mod_set.add_argument("provider", help="Provider name")
+    p_mod_set.add_argument("model", help="Model ID")
+    p_mod_set.add_argument("--display-name", help="Display name for the model")
     p_mod_set.add_argument(
         "--default", action="store_true", help="Mark as provider default model"
     )
-    p_mod_set.add_argument("--context", type=int, help="Context window limit")
-    p_mod_set.add_argument("--max-output", type=int, help="Max output tokens limit")
+    p_mod_set.add_argument(
+        "--context", type=int, help="Context window limit (e.g. 128000)"
+    )
+    p_mod_set.add_argument(
+        "--max-output", type=int, help="Max output tokens limit (e.g. 8192)"
+    )
     p_mod_set.add_argument(
         "--effort",
         help=(
             "Supported reasoning effort / thinking levels "
             "(e.g. 'high' or 'low,medium,high')"
         ),
+    )
+    p_mod_set.add_argument(
+        "--modalities", help="Comma-separated input modalities (e.g. text,image)"
+    )
+    p_mod_set.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing model configuration instead of merging",
     )
     p_mod_set.set_defaults(func=run_models_set)
 
@@ -260,7 +252,6 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     p_apply.add_argument(
         "--clear", action="store_true", help="Reset client to official default state"
     )
-    p_apply.add_argument("--reset", action="store_true", help="Alias for --clear")
     p_apply.add_argument(
         "--dry-run", action="store_true", help="Preview configuration changes"
     )
@@ -351,24 +342,44 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     )
     p_doc.set_defaults(func=run_doctor)
 
-    p_test = subparsers.add_parser("test", help="HTTP /models latency test")
-    p_test.add_argument("provider", nargs="?", help="Provider name")
-    p_test.add_argument("--all", action="store_true", help="Test all providers")
+    p_test = subparsers.add_parser(
+        "test",
+        help="Test provider reachability (add --deep for end-to-end client checks)",
+        description=(
+            "Probe provider connectivity. By default this performs one HTTP GET "
+            "against each provider's /models endpoint, which only proves the "
+            "credentials and network work. Pass --deep to additionally spawn "
+            "each target client and send a real prompt, proving the whole "
+            "client -> provider path works."
+        ),
+    )
+    p_test.add_argument("provider", nargs="?", help="Provider name (shallow mode)")
+    p_test.add_argument(
+        "--deep",
+        action="store_true",
+        help="Also run a real prompt through target clients (slow, end-to-end)",
+    )
+    p_test.add_argument(
+        "--target",
+        help="Target client(s) for --deep, comma-separated (default: all installed)",
+    )
+    p_test.add_argument(
+        "--model",
+        help="Model to use for --deep (default: the provider's default model)",
+    )
+    p_test.add_argument(
+        "--prompt", default="say hi", help="Prompt for --deep (default: 'say hi')"
+    )
+    p_test.add_argument(
+        "--timeout",
+        type=int,
+        default=60,
+        help="Per-target timeout in seconds for --deep (default: 60)",
+    )
+    p_test.add_argument(
+        "--all", action="store_true", help="Test all providers / all clients"
+    )
     p_test.set_defaults(func=run_test)
-
-    p_ping = subparsers.add_parser(
-        "ping", help="End-to-end prompt test across target clients"
-    )
-    p_ping.add_argument("target", nargs="?", help="Target client name")
-    p_ping.add_argument("provider_spec", nargs="?", help="Optional provider spec")
-    p_ping.add_argument(
-        "--prompt", default="say hi", help="Prompt text (default: 'say hi')"
-    )
-    p_ping.add_argument("--timeout", type=int, default=60, help="Timeout in seconds")
-    p_ping.add_argument(
-        "--all", action="store_true", help="Concurrent parallel test across all clients"
-    )
-    p_ping.set_defaults(func=run_ping)
 
     p_migrate = subparsers.add_parser(
         "migrate", help="Migrate legacy configurations from previous CLIs"
@@ -461,45 +472,6 @@ def build_parser(prog: str = "xpx") -> argparse.ArgumentParser:
     p_agent.set_defaults(func=run_agent_list)
 
     # Top-level convenience shortcuts
-    p_install = subparsers.add_parser(
-        "install",
-        help="Install target agent CLI(s) (alias for 'xpx agent install')",
-        description="Install target agent CLI(s)",
-    )
-    p_install.add_argument(
-        "target",
-        nargs="?",
-        help="Target agent name(s), comma-separated (e.g. claude, codex,agy)",
-    )
-    p_install.add_argument(
-        "--all", action="store_true", help="Install all missing agent CLIs"
-    )
-    p_install.add_argument(
-        "--dry-run", action="store_true", help="Preview install command"
-    )
-    p_install.add_argument(
-        "--force", action="store_true", help="Reinstall even if already installed"
-    )
-    p_install.set_defaults(func=run_agent_install)
-
-    p_update = subparsers.add_parser(
-        "update",
-        help="Update target agent CLI(s) (alias for 'xpx agent update')",
-        description="Update target agent CLI(s)",
-    )
-    p_update.add_argument(
-        "target",
-        nargs="?",
-        help="Target agent name(s), comma-separated (e.g. claude, codex,agy)",
-    )
-    p_update.add_argument(
-        "--all", action="store_true", help="Update all installed agent CLIs"
-    )
-    p_update.add_argument(
-        "--dry-run", action="store_true", help="Preview update command"
-    )
-    p_update.set_defaults(func=run_agent_update)
-
     p_interactive = subparsers.add_parser(
         "interactive",
         aliases=["i", "menu"],

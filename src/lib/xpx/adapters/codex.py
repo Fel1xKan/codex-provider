@@ -18,6 +18,7 @@ from lib.xpx.adapters.base import (
     TargetAdapter,
     TargetStatus,
     count_active_cli_instances,
+    run_probe_command,
 )
 from lib.xpx.models.catalog import get_consolidated_provider_models
 from lib.xpx.store.catalog_store import ModelMetadata
@@ -353,13 +354,18 @@ class CodexAdapter(TargetAdapter):
     def ping(
         self, prompt: str, timeout: int, spec: MergedProviderSpec | None = None
     ) -> tuple[bool, str]:
-        cmd = ["codex", "exec", prompt]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            out = proc.stdout.strip() or proc.stderr.strip()
-            return proc.returncode == 0, out
-        except Exception as exc:
-            return False, str(exc)
+        # `--ephemeral` keeps a probe from writing a session file under
+        # ~/.codex/sessions, and `--skip-git-repo-check` lets the probe run in a
+        # directory that is not a trusted git repo (where `codex exec` would
+        # otherwise refuse with "Not inside a trusted directory").
+        if spec is not None:
+            return False, (
+                "provider-scoped deep test is not supported for codex; "
+                f"run 'xpx apply codex {spec.name}' first, then "
+                "'xpx test --deep --target codex'"
+            )
+        cmd = ["codex", "exec", "--ephemeral", "--skip-git-repo-check", prompt]
+        return run_probe_command(cmd, timeout)
 
     def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
         sock = self.home_dir / "app-server-control" / "app-server-control.sock"

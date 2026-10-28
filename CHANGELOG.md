@@ -9,6 +9,18 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-28
+
+- Change any provider field with one `xpx set <provider>` command, including `--key`, `--base-url`, `--default-model`, `--header`, and `--name`; `xpx auth`, `xpx config`, and `xpx rename` have been removed.
+- Edit a single client's overrides with `xpx set <provider> <client> --fast`, keeping fast mode, wire API, and headers scoped per provider and per client.
+- Inspect providers with `xpx show`, which summarizes all of them, details one, or reveals the key with `--reveal-key`; `xpx auth show` and `xpx config show` have been removed.
+- Create or update models with `xpx models set <provider> <model>`; `xpx models add` has been removed.
+- Run `xpx test --deep` for end-to-end prompt checks; it replaces `xpx ping`, which has been removed.
+- Manage agent CLIs only through `xpx agent install` and `xpx agent update`; the top-level `install` and `update` shortcuts and `apply --reset` have been removed.
+- Get an error instead of a false success when passing options a client cannot honor or a provider protocol it does not support.
+- Rename a provider without losing its cached model catalog or active-client bindings.
+- Pick up reasoning effort, context windows, and modalities for regionally namespaced models such as `cn:glm-5.3` and `global:gpt-5.4` during `xpx models sync`.
+
 ## [2.2.10] - 2026-10-28
 
 - Recognize regional and gateway model namespaces (e.g. `cn:`, `global:`, `us-east:`) during `xpx models sync`, so those models pick up reasoning effort, context window, and modality metadata instead of falling back to defaults.

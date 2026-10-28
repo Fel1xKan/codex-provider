@@ -179,13 +179,44 @@ class ProviderStore:
         return False
 
     def rename(self, old_name: str, new_name: str) -> None:
+        """Rename a provider and move every artifact keyed by its name.
+
+        The provider file is not the only thing stored per provider: the model
+        catalog is kept in a sibling file and the active-target state records
+        the name too. Renaming only the provider file silently orphaned the
+        catalog, so a renamed provider lost all cached model metadata.
+        """
         validate_provider_name(old_name)
         validate_provider_name(new_name)
+        if old_name == new_name:
+            return
+
         with xpx_lock():
             spec = self.require(old_name)
-            if self.exists(new_name) and old_name != new_name:
+            if self.exists(new_name):
                 raise SwitchError(f"provider '{new_name}' already exists")
+
             spec.name = new_name
             self.save(spec)
-            if old_name != new_name:
-                self.delete(old_name)
+
+            # Move the cached model catalog alongside the provider.
+            old_catalog = self._home / "catalogs" / f"{old_name}.json"
+            new_catalog = self._home / "catalogs" / f"{new_name}.json"
+            if old_catalog.is_file():
+                try:
+                    data = json.loads(old_catalog.read_text(encoding="utf-8"))
+                    data["provider"] = new_name
+                    atomic_write_bytes(
+                        new_catalog,
+                        (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode(
+                            "utf-8"
+                        ),
+                        mode=SECRET_FILE_MODE,
+                    )
+                    old_catalog.unlink()
+                except (OSError, json.JSONDecodeError, KeyError) as exc:
+                    raise SwitchError(
+                        f"failed to move catalog for '{old_name}': {exc}"
+                    ) from exc
+
+            self.delete(old_name)

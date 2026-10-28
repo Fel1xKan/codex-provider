@@ -52,13 +52,13 @@ Modern AI coding agents (Codex, OpenCode, Claude Code, Cursor, Antigravity, Pi) 
 
 ## Features
 
-- **Single Point of Mutation**: Provider additions (`xpx add`), credential updates (`xpx auth set`), and configuration edits (`xpx config set`) only modify `~/.xpx/`. External agent configs are touched exclusively during `xpx apply`.
+- **Single Point of Mutation**: Provider changes (`xpx add`, and `xpx set` for any field including credentials and renaming) only modify `~/.xpx/`. External agent configs are touched exclusively during `xpx apply`.
 - **Automatic Override Memory**: Apply client-specific flags once (e.g. `xpx apply codex deepseek --fast`), and `xpx` remembers them automatically for future applies.
 - **Unified Multi-Client Dashboard**: Run `xpx status` to see the active provider, model, and quota across all installed agents in a single view.
-- **Concurrent Integration Testing**: Run `xpx ping --all` to concurrently verify end-to-end prompt latency across all installed coding agents.
+- **Concurrent Integration Testing**: Run `xpx test --deep` to concurrently verify end-to-end prompt latency across all installed coding agents.
 - **Centralized Model Catalog**: Auto-sync model limits, token windows, and reasoning tiers from upstream vendor documentation (`xpx models sync`).
 - **Full Account Lifecycle**: Manage OAuth logins and session snapshots (`xpx account login`, `xpx account snapshot`, `xpx account usage`).
-- **Comprehensive Diagnostics**: Run `xpx doctor [--fix]` to validate configuration syntax, test API reachability, and repair dangling references.
+- **Comprehensive Diagnostics**: Run `xpx doctor [--fix]` to validate local configuration, file permissions, and dangling references, and repair fixable issues offline.
 - **Zero Python Dependency**: Distributed as a single self-contained standalone binary with built-in self-upgrade (`xpx upgrade`).
 
 ---
@@ -99,8 +99,13 @@ echo "sk-secret" | xpx add openrouter https://openrouter.ai/api/v1 --key-stdin
 # List all configured providers
 xpx list
 
-# Update an API key (automatically re-applies to all active agents)
-xpx auth set deepseek --key "sk-new-key"
+# Update any provider field (automatically re-applies to all active agents)
+xpx set deepseek --key "sk-new-key"
+xpx set deepseek --default-model deepseek-chat
+xpx set deepseek --name ds-corp
+
+# Per-client overrides pass the client as a positional
+xpx set deepseek codex --fast
 ```
 
 ### 2. Apply to Target Agents
@@ -122,7 +127,7 @@ xpx apply opencode :deepseek-chat
 xpx apply codex deepseek --dry-run
 
 # Reset a client to official defaults
-xpx apply codex --reset
+xpx apply codex --clear
 ```
 
 ### 3. Synchronize Models & Reasoning Tiers
@@ -158,14 +163,18 @@ xpx account snapshot cursor personal
 # View dashboard across all clients
 xpx status
 
-# Run system health check and repair dangling state
+# Local health check and repair of dangling state (offline)
 xpx doctor --fix
 
-# Probe HTTP API endpoints
+# Probe provider /models endpoints (HTTP, fast)
+xpx test
 xpx test --all
 
-# Concurrent end-to-end prompt test across all installed clients
-xpx ping --all
+# End-to-end prompt test across all installed clients (spawns each CLI)
+xpx test --deep
+
+# Scope a deep test to one provider and one client
+xpx test workbuddy2api --deep --target pi --model cn:glm-5.3
 ```
 
 ### 6. Migration and Backups

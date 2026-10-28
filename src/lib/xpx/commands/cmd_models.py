@@ -2,75 +2,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from lib.common.errors import SwitchError
-from lib.xpx.models.catalog import add_model_to_catalog, update_model_preference
+from lib.xpx.models.catalog import add_model_to_catalog
 from lib.xpx.models.sync import fetch_remote_models, sync_provider_models
 from lib.xpx.store.catalog_store import CatalogStore
 from lib.xpx.store.provider_store import ProviderStore
 
 
-def resolve_provider_and_model(
-    first: str | None,
-    second: str | None = None,
-    flag_provider: str | None = None,
-) -> tuple[str, str]:
-    """Resolve provider name and model ID from CLI arguments.
+def run_models_set(args: Any) -> int:
+    """Add or update a model in a provider's catalog.
 
-    Supports:
-    1. flag_provider + first -> (flag_provider, first)
-    2. 'provider/model' as first -> (provider, model)
-    3. first is existing provider, second is model -> (first, second)
-    4. second is existing provider, first is model -> (second, first)
-    5. default order: (first, second)
+    `add` and `set` were separate commands with different flags even though
+    `add_model_to_catalog` always upserted. One command with an explicit
+    `<provider> <model>` order removes both the duplication and the guesswork
+    about which positional is which.
     """
-    pv_store = ProviderStore()
-    all_pvs = {p.name for p in pv_store.list_all()}
-
-    # Case 1: --provider flag passed explicitly
-    if flag_provider:
-        pv = flag_provider.strip()
-        model = (first or "").strip()
-        if not model:
-            raise SwitchError("model ID is required")
-        return pv, model
-
-    if not first:
-        raise SwitchError("provider and model ID are required")
-
-    first_clean = first.strip()
-    second_clean = second.strip() if second else None
-
-    # Case 2: provider/model in first argument
-    if "/" in first_clean and not second_clean:
-        pv, model = first_clean.split("/", 1)
-        if not pv.strip() or not model.strip():
-            raise SwitchError("invalid format; expected provider/model")
-        return pv.strip(), model.strip()
-
-    if not second_clean:
-        raise SwitchError(
-            "both provider and model ID are required (or specify as provider/model)"
-        )
-
-    # Case 3: first is provider, second is model
-    if first_clean in all_pvs and second_clean not in all_pvs:
-        return first_clean, second_clean
-
-    # Case 4: second is provider, first is model
-    if second_clean in all_pvs and first_clean not in all_pvs:
-        return second_clean, first_clean
-
-    # Default order: first is provider, second is model
-    return first_clean, second_clean
-
-
-def run_models_add(args: Any) -> int:
-    first = getattr(args, "first", None)
-    second = getattr(args, "second", None)
-    flag_provider = getattr(args, "flag_provider", None)
-
-    provider, model = resolve_provider_and_model(first, second, flag_provider)
-
+    provider = args.provider
+    model = args.model
     display_name = getattr(args, "display_name", None)
     is_default = getattr(args, "default", False)
     context = getattr(args, "context", None)
@@ -111,7 +58,9 @@ def run_models_add(args: Any) -> int:
 
     action_word = "Added" if is_created else "Updated"
     detail_str = f" ({', '.join(details)})" if details else ""
-    print(f"✔ {action_word} model '{meta.id}' for provider '{provider}'{detail_str}.")
+    print(
+        f"\u2714 {action_word} model '{meta.id}' for provider '{provider}'{detail_str}."
+    )
     return 0
 
 
@@ -185,44 +134,4 @@ def run_models_list(args: Any) -> int:
                 )
     if not has_any:
         print("No cached models. Run 'xpx models sync <provider>' to import models.")
-    return 0
-
-
-def run_models_set(args: Any) -> int:
-    model = args.model
-    provider = args.provider
-    # Smart swap if user wrote provider model instead of model provider
-    try:
-        pv_store = ProviderStore()
-        all_pvs = {p.name for p in pv_store.list_all()}
-        if model in all_pvs and provider not in all_pvs:
-            model, provider = provider, model
-    except Exception:
-        pass
-
-    is_default = getattr(args, "default", False)
-    context = getattr(args, "context", None)
-    max_output = getattr(args, "max_output", None)
-    effort = getattr(args, "effort", None)
-
-    meta = update_model_preference(
-        provider,
-        model,
-        is_default=is_default,
-        context=context,
-        max_output=max_output,
-        effort=effort,
-    )
-    details: list[str] = []
-    if is_default:
-        details.append("marked as default")
-    if context:
-        details.append(f"context={context}")
-    if max_output:
-        details.append(f"max_output={max_output}")
-    if effort and meta.supported_reasoning_levels:
-        details.append(f"effort=[{', '.join(meta.supported_reasoning_levels)}]")
-
-    detail_str = f" ({', '.join(details)})" if details else ""
-    print(f"✔ Updated model '{model}' for provider '{provider}'{detail_str}.")
     return 0

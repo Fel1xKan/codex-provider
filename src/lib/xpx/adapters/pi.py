@@ -4,14 +4,18 @@ import contextlib
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from lib.common.common_store import atomic_write_bytes, ensure_private_dir
-from lib.xpx.adapters.base import MergedProviderSpec, TargetAdapter, TargetStatus
+from lib.xpx.adapters.base import (
+    MergedProviderSpec,
+    TargetAdapter,
+    TargetStatus,
+    run_probe_command,
+)
 from lib.xpx.store.catalog_store import ModelMetadata
 
 
@@ -612,10 +616,25 @@ class PiAdapter(TargetAdapter):
     def ping(
         self, prompt: str, timeout: int, spec: MergedProviderSpec | None = None
     ) -> tuple[bool, str]:
-        cmd = ["pi", "--prompt", prompt]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            out = proc.stdout.strip() or proc.stderr.strip()
-            return proc.returncode == 0, out
-        except Exception as exc:
-            return False, str(exc)
+        # Pi has no `--prompt` flag: non-interactive runs use `--print` with the
+        # message as a positional argument. `--no-session` keeps probes out of
+        # session history and `--no-tools` keeps a probe from executing tools.
+        cmd = ["pi", "--print", "--no-tools", "--no-session"]
+        env = dict(os.environ)
+
+        if spec is not None:
+            model = (spec.model or "").strip()
+            if not model:
+                return False, (
+                    f"provider '{spec.name}' has no model selected; "
+                    "pass --model or set a default model"
+                )
+            # `--model` with an explicit provider prefix needs no config edits,
+            # and `--api-key` supplies credentials for this run only. Together
+            # they probe the named provider without touching ~/.pi.
+            cmd += ["--model", f"{spec.name}/{model}"]
+            if spec.api_key:
+                cmd += ["--api-key", spec.api_key]
+
+        cmd.append(prompt)
+        return run_probe_command(cmd, timeout, env=env)

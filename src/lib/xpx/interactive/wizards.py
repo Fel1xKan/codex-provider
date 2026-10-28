@@ -17,12 +17,12 @@ from lib.xpx.commands.cmd_agent import (
     run_agent_update,
 )
 from lib.xpx.commands.cmd_apply import run_apply
-from lib.xpx.commands.cmd_auth import run_auth_set
 from lib.xpx.commands.cmd_doctor import run_doctor
 from lib.xpx.commands.cmd_models import run_models_list, run_models_sync
-from lib.xpx.commands.cmd_provider import run_add, run_delete, run_show
+from lib.xpx.commands.cmd_provider import run_add, run_delete
+from lib.xpx.commands.cmd_set import run_set, run_show
 from lib.xpx.commands.cmd_status import run_status
-from lib.xpx.commands.cmd_test_ping import run_ping, run_test
+from lib.xpx.commands.cmd_test_ping import run_test
 from lib.xpx.i18n import get_language, set_language, t
 from lib.xpx.interactive.selector import (
     BOLD,
@@ -840,7 +840,6 @@ def run_interactive_apply(
                     account=None,
                     model=None,
                     clear=True,
-                    reset=False,
                     dry_run=False,
                     no_save=False,
                     fast=None,
@@ -858,7 +857,6 @@ def run_interactive_apply(
                     account=chosen_account,
                     model=None,
                     clear=False,
-                    reset=False,
                     dry_run=False,
                     no_save=False,
                     fast=None,
@@ -903,7 +901,6 @@ def run_interactive_apply(
                     account=None,
                     model=chosen_model,
                     clear=False,
-                    reset=False,
                     dry_run=opt_dry_run,
                     no_save=opt_no_save,
                     fast=opt_fast if has_codex else None,
@@ -1200,8 +1197,22 @@ def _wizard_manage_providers(providers: list[Any]) -> None:
             )
             if new_key and _confirm_action(f"Update API Key for '{target_pv}'?"):
                 clear_screen()
-                run_auth_set(
-                    argparse.Namespace(name=target_pv, key=new_key, key_stdin=False)
+                run_set(
+                    argparse.Namespace(
+                        name=target_pv,
+                        key=new_key,
+                        key_stdin=False,
+                        target=None,
+                        base_url=None,
+                        protocol=None,
+                        default_model=None,
+                        header=None,
+                        fast=None,
+                        wire_api=None,
+                        web_search=None,
+                        option=None,
+                        rename_to=None,
+                    )
                 )
                 _wait_enter()
         elif sub_action == "model_set":
@@ -1245,7 +1256,7 @@ def run_interactive_doctor_ping() -> int:
             Choice(t("doc.doctor"), "doctor"),
             Choice(t("doc.doctor_fix"), "doctor_fix"),
             Choice(t("doc.test"), "test"),
-            Choice(t("doc.ping"), "ping"),
+            Choice(t("doc.deep_test"), "deep_test"),
             Choice(t("ui.back_menu"), "back"),
         ]
         action = select(t("pv.action_prompt"), choices)
@@ -1283,26 +1294,28 @@ def run_interactive_doctor_ping() -> int:
                 for p in selected_pvs:
                     run_test(argparse.Namespace(provider=p, all=False))
                 _wait_enter()
-        elif action == "ping":
+        elif action == "deep_test":
             installed = detect_installed_adapters()
             if not installed:
                 sys.stdout.write(f"{YELLOW}{t('apply.no_targets')}{RESET}\n")
                 _wait_enter()
                 continue
-            target = select(t("doc.ping_client_prompt"), list(installed.keys()))
+            target = select(t("doc.deep_target_prompt"), list(installed.keys()))
             if target:
                 prompt_str = prompt_text(
-                    t("doc.ping_prompt"),
+                    t("doc.deep_prompt"),
                     default="say hi",
                 )
-                if prompt_str and _confirm_action(t("doc.ping_confirm", target=target)):
+                if prompt_str and _confirm_action(t("doc.deep_confirm", target=target)):
                     clear_screen()
-                    run_ping(
+                    run_test(
                         argparse.Namespace(
+                            provider=None,
                             target=target,
-                            provider_spec=None,
+                            deep=True,
                             prompt=prompt_str,
                             timeout=30,
+                            model=None,
                             all=False,
                         )
                     )

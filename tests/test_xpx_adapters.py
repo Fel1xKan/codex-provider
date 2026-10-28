@@ -741,3 +741,382 @@ def test_claude_refresh_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
     refreshed, note = adapter.refresh_daemon(force=True)
     assert refreshed is True
     assert "Respawned 2 claude background session(s)" in note
+
+
+# --- ping probes -------------------------------------------------------------
+#
+# Each agent CLI has a different non-interactive contract, and getting it wrong
+# only shows up at runtime (`pi --prompt` silently meant every probe failed).
+# These tests pin the exact argv each adapter emits.
+
+_PING_CASES = [
+    # (adapter, expected argv without the prompt, prompt position)
+    ("pi", ["pi", "--print", "--no-tools", "--no-session"], "trailing"),
+    ("codex", ["codex", "exec", "--ephemeral", "--skip-git-repo-check"], "trailing"),
+    ("opencode", ["opencode", "run"], "trailing"),
+    ("claude", ["claude", "-p", "--no-session-persistence"], "trailing"),
+    ("agy", ["agy", "--print"], "trailing"),
+    ("cursor", ["cursor", "--version"], None),
+]
+
+
+def _make_adapter(name: str):
+    from lib.xpx.adapters.registry import get_adapter
+
+    return get_adapter(name)
+
+
+@pytest.mark.parametrize(("name", "prefix", "prompt_pos"), _PING_CASES)
+def test_deep_argv_contract(
+    name: str,
+    prefix: list[str],
+    prompt_pos: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pin the exact argv each adapter emits for an unscoped probe."""
+    import subprocess
+
+    captured: dict[str, object] = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = "hi"
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        captured["cmd"] = list(cmd)
+        captured["env"] = kwargs.get("env")
+        return FakeProc()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ok, out = _make_adapter(name).ping("say hi", timeout=10)
+
+    assert ok is True
+    assert out == "hi"
+    cmd = captured["cmd"]
+    assert cmd[: len(prefix)] == prefix, f"{name}: unexpected argv {cmd}"
+    if prompt_pos == "trailing":
+        assert cmd[-1] == "say hi", f"{name}: prompt must be positional"
+    else:
+        assert cmd == prefix, f"{name}: must not pass a prompt"
+
+
+def test_no_adapter_uses_unknown_prompt_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--prompt` is not a flag on every CLI; guard the regression directly."""
+    import subprocess
+
+    seen: list[list[str]] = []
+
+    class FakeProc:
+        returncode = 0
+        stdout = "hi"
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        seen.append(list(cmd))
+        return FakeProc()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    for name, _prefix, _pos in _PING_CASES:
+        _make_adapter(name).ping("say hi", timeout=10)
+
+    offenders = [cmd for cmd in seen if "--prompt" in cmd]
+    assert offenders == [], f"unexpected --prompt usage: {offenders}"
+
+
+def test_opencode_deep_isolates_session_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A probe must not append to the user's real opencode session history.
+
+    `opencode run` always persists a session and has no opt-out flag, so the
+    adapter redirects its database to a temp file.
+    """
+    import subprocess
+
+    captured: dict[str, object] = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = "hi"
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        captured["env"] = dict(kwargs.get("env") or {})
+        return FakeProc()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ok, _ = _make_adapter("opencode").ping("say hi", timeout=10)
+    assert ok is True
+    env = captured["env"]
+    assert "OPENCODE_DB" in env, "probe must redirect the opencode database"
+    assert "xpx-ping-" in env["OPENCODE_DB"]
+
+
+def test_deep_failure_and_timeout_are_readable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    class FailProc:
+        returncode = 2
+        stdout = ""
+        stderr = "Unknown option: --prompt"
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: FailProc())
+    ok, out = _make_adapter("pi").ping("say hi", timeout=10)
+    assert ok is False
+    assert "Unknown option" in out
+
+    def raise_timeout(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise subprocess.TimeoutExpired(cmd="pi", timeout=5)
+
+    monkeypatch.setattr(subprocess, "run", raise_timeout)
+    ok, out = _make_adapter("pi").ping("say hi", timeout=5)
+    assert ok is False
+    assert "timed out after 5s" in out
+
+
+def test_deep_missing_binary_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    def raise_missing(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise FileNotFoundError("pi")
+
+    monkeypatch.setattr(subprocess, "run", raise_missing)
+    ok, out = _make_adapter("pi").ping("say hi", timeout=5)
+    assert ok is False
+    assert "not found on PATH" in out
+
+
+def test_stderr_noise_does_not_shadow_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Startup warnings land on stderr; they must not be reported as the answer."""
+    import subprocess
+
+    class NoisyProc:
+        returncode = 0
+        stdout = "the real answer"
+        stderr = "Warning: extension noise\n"
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: NoisyProc())
+    ok, out = _make_adapter("pi").ping("say hi", timeout=10)
+    assert ok is True
+    assert out == "the real answer"
+
+
+# --- provider-scoped ping ----------------------------------------------------
+#
+# `xpx test <provider> --deep` used to accept any string and silently probe
+# whatever the client had configured, producing a green result for a provider
+# that was never contacted. A scoped probe must either target that provider or
+# fail loudly.
+
+
+def _spec(name: str = "workbuddy2api", model: str = "cn:auto"):
+    from lib.xpx.adapters.base import MergedProviderSpec
+
+    return MergedProviderSpec(
+        name=name,
+        base_url="https://example.test/v1",
+        api_key="sk-test",
+        protocol="openai",
+        model=model,
+    )
+
+
+def test_pi_scoped_deep_targets_named_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    captured: dict[str, object] = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = "hi"
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        captured["cmd"] = list(cmd)
+        return FakeProc()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ok, _ = _make_adapter("pi").ping("say hi", 10, _spec())
+    assert ok is True
+    cmd = captured["cmd"]
+    assert "--model" in cmd
+    assert cmd[cmd.index("--model") + 1] == "workbuddy2api/cn:auto"
+    assert "--api-key" in cmd, "scoped probe must supply the provider credential"
+    assert cmd[-1] == "say hi"
+
+
+def test_opencode_scoped_deep_passes_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    captured: dict[str, object] = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = "hi"
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        captured["cmd"] = list(cmd)
+        return FakeProc()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ok, _ = _make_adapter("opencode").ping("say hi", 10, _spec())
+    assert ok is True
+    cmd = captured["cmd"]
+    assert "-m" in cmd
+    assert cmd[cmd.index("-m") + 1] == "workbuddy2api/cn:auto"
+
+
+def test_scoped_deep_without_model_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider with no model selected must not silently probe a default."""
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: None)
+    spec = _spec(model="")
+    for name in ("pi", "opencode"):
+        ok, out = _make_adapter(name).ping("say hi", 10, spec)
+        assert ok is False, name
+        assert "no model selected" in out, name
+
+
+@pytest.mark.parametrize("name", ["codex", "claude", "agy", "cursor"])
+def test_unsupported_scoped_deep_fails_loudly(
+    name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Adapters that cannot redirect a single run must refuse, not fake success."""
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(list(cmd))
+        raise AssertionError("must not spawn the CLI for an unsupported probe")
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ok, out = _make_adapter(name).ping("say hi", 10, _spec())
+    assert ok is False, f"{name} must not report success for a scoped probe"
+    assert "not supported" in out
+    assert calls == []
+
+
+def test_deep_unknown_provider_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A typo in the provider name must fail before any CLI runs."""
+    from lib.common.errors import SwitchError
+    from lib.xpx.commands.cmd_test_ping import run_test
+
+    monkeypatch.setenv("XPX_HOME", str(tmp_path / ".xpx"))
+
+    args = type(
+        "Args",
+        (),
+        {
+            "provider": "definitely-not-a-provider",
+            "target": "pi",
+            "deep": True,
+            "all": False,
+            "prompt": "hi",
+            "timeout": 5,
+            "model": None,
+        },
+    )()
+
+    with pytest.raises(SwitchError, match="unknown provider"):
+        run_test(args)
+
+
+def test_deep_all_keeps_explicit_targets() -> None:
+    """`--all` plus an explicit list must combine, not silently drop the list."""
+    from lib.xpx.commands.cmd_test_ping import _resolve_deep_targets
+
+    targets = _resolve_deep_targets("pi", deep_all=True)
+    assert "pi" in targets
+    assert len(targets) > 1, "expected --all to add other installed clients"
+
+
+def test_deep_requires_target() -> None:
+    from lib.common.errors import SwitchError
+    from lib.xpx.commands.cmd_test_ping import _resolve_deep_targets
+
+    with pytest.raises(SwitchError, match="target client required"):
+        _resolve_deep_targets(None, deep_all=False)
+
+
+def test_noise_lines_are_stripped_from_probe_output() -> None:
+    """Startup extension warnings must never be shown as the probe result."""
+    from lib.xpx.adapters.base import _strip_noise
+
+    stderr = (
+        'Warning: Extension package "builtin:mcp": registers command `/mcp`, so\n'
+        'Warning: Extension package "pi-subagents": peerDependencies\n'
+        "Note: something informational\n"
+        '401: {"code":"invalid_api_key"}\n'
+    )
+    assert _strip_noise(stderr) == '401: {"code":"invalid_api_key"}'
+
+
+# --- xpx test --deep routing ------------------------------------------------
+#
+# `ping` was folded into `test --deep`. These tests pin that the default stays
+# shallow (fast, HTTP only) and that --deep is the only path that spawns CLIs.
+
+
+def test_test_shallow_does_not_spawn_clients(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Default `xpx test` must stay a cheap HTTP probe."""
+    import subprocess
+
+    from lib.xpx.commands.cmd_test_ping import run_test
+
+    # Empty XPX_HOME so no real provider is contacted.
+    monkeypatch.setenv("XPX_HOME", str(tmp_path / ".xpx"))
+
+    def boom(*a, **k):  # type: ignore[no-untyped-def]
+        raise AssertionError("shallow test must not spawn any agent CLI")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+
+    no_providers = type("Args", (), {"provider": None, "deep": False, "all": True})()
+    assert run_test(no_providers) == 0
+    assert "No providers configured." in capsys.readouterr().out
+
+
+def test_test_deep_dispatches_to_clients(monkeypatch) -> None:
+    """`--deep` must reach the adapter layer."""
+    from lib.xpx.commands import cmd_test_ping
+
+    called: dict[str, object] = {}
+
+    def fake_deep(args):  # type: ignore[no-untyped-def]
+        called["deep"] = True
+        return 0
+
+    def fake_shallow(args):  # type: ignore[no-untyped-def]
+        called["deep"] = False
+        return 0
+
+    monkeypatch.setattr(cmd_test_ping, "_run_deep_test", fake_deep)
+    monkeypatch.setattr(cmd_test_ping, "_run_shallow_test", fake_shallow)
+
+    cmd_test_ping.run_test(type("Args", (), {"deep": True})())
+    assert called["deep"] is True
+
+    cmd_test_ping.run_test(type("Args", (), {"deep": False})())
+    assert called["deep"] is False

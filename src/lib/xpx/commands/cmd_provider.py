@@ -107,48 +107,6 @@ def run_list(args: Any) -> int:
     return 0
 
 
-def run_show(args: Any) -> int:
-    store = ProviderStore()
-    spec = store.require(args.name)
-    state = StateStore().load()
-
-    active_targets = [
-        target
-        for target, ts in state.targets.items()
-        if ts.active_type == "provider" and ts.active_name == spec.name
-    ]
-
-    print(f"Provider:      {spec.name}")
-    print(f"Protocol:      {spec.protocol}")
-    print(f"Base URL:      {spec.base_url}")
-    print(f"API Key:       {mask_key(spec.api_key)}")
-    print(f"Default Model: {spec.default_model or '(none)'}")
-    print(f"Active in:     {', '.join(sorted(active_targets)) or '(none)'}")
-
-    if spec.headers:
-        print("Global Headers:")
-        for k, v in sorted(spec.headers.items()):
-            print(f"  {k}: {v}")
-
-    if spec.targets:
-        print("Target Overrides:")
-        for target, override in sorted(spec.targets.items()):
-            details: list[str] = []
-            if override.fast is not None:
-                details.append(f"fast={override.fast}")
-            if override.wire_api:
-                details.append(f"wire_api={override.wire_api}")
-            if override.web_search is not None:
-                details.append(f"web_search={override.web_search}")
-            if override.headers:
-                details.append(f"headers={list(override.headers.keys())}")
-            if override.options:
-                details.append(f"options={list(override.options.keys())}")
-            summary = ", ".join(details) if details else "(none)"
-            print(f"  {target}: {summary}")
-    return 0
-
-
 def run_delete(args: Any) -> int:
     name = args.name
     store = ProviderStore()
@@ -186,25 +144,4 @@ def run_delete(args: Any) -> int:
 
     store.delete(name)
     print(f"✔ Deleted provider '{name}'")
-    return 0
-
-
-def run_rename(args: Any) -> int:
-    old_name = args.old
-    new_name = args.new
-    store = ProviderStore()
-    store.rename(old_name, new_name)
-
-    # Update StateStore if active
-    state_store = StateStore()
-    state = state_store.load()
-    updated = False
-    for ts in state.targets.values():
-        if ts.active_type == "provider" and ts.active_name == old_name:
-            ts.active_name = new_name
-            updated = True
-    if updated:
-        state_store.save(state)
-
-    print(f"✔ Renamed provider '{old_name}' to '{new_name}'")
     return 0

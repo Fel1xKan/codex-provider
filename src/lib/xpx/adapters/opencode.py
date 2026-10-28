@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from lib.xpx.adapters.base import (
     TargetAdapter,
     TargetStatus,
     count_active_cli_instances,
+    run_probe_command,
 )
 from lib.xpx.models.catalog import get_consolidated_provider_models
 from lib.xpx.store.catalog_store import ModelMetadata
@@ -432,13 +434,25 @@ class OpenCodeAdapter(TargetAdapter):
     def ping(
         self, prompt: str, timeout: int, spec: MergedProviderSpec | None = None
     ) -> tuple[bool, str]:
-        cmd = ["opencode", "run", prompt]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            out = proc.stdout.strip() or proc.stderr.strip()
-            return proc.returncode == 0, out
-        except Exception as exc:
-            return False, str(exc)
+        # `opencode run` always records a session and 1.19 has no flag to opt
+        # out, so point its database at a throwaway file for the probe. This
+        # keeps the probe out of the user's real session history and /resume
+        # picker while still exercising the full model request path.
+        if spec is not None and not spec.model:
+            return False, (
+                f"provider '{spec.name}' has no model selected; "
+                "pass --model or set a default model"
+            )
+
+        with tempfile.TemporaryDirectory(prefix="xpx-ping-") as tmp:
+            env = dict(os.environ)
+            env["OPENCODE_DB"] = str(Path(tmp) / "probe.db")
+            cmd = ["opencode", "run"]
+            if spec is not None:
+                # `-m provider/model` selects the model for this run.
+                cmd += ["-m", f"{spec.name}/{spec.model}"]
+            cmd.append(prompt)
+            return run_probe_command(cmd, timeout, env=env)
 
     def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
         state_dir = Path.home() / ".local" / "state" / "opencode"

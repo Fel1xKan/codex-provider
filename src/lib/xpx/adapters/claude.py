@@ -9,7 +9,12 @@ from typing import Any
 
 from lib.common.common_store import atomic_write_bytes, ensure_private_dir
 from lib.common.errors import SwitchError
-from lib.xpx.adapters.base import MergedProviderSpec, TargetAdapter, TargetStatus
+from lib.xpx.adapters.base import (
+    MergedProviderSpec,
+    TargetAdapter,
+    TargetStatus,
+    run_probe_command,
+)
 
 
 def get_claude_settings_path() -> Path:
@@ -192,13 +197,16 @@ class ClaudeAdapter(TargetAdapter):
     def ping(
         self, prompt: str, timeout: int, spec: MergedProviderSpec | None = None
     ) -> tuple[bool, str]:
-        cmd = ["claude", "--version"]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            out = proc.stdout.strip() or proc.stderr.strip()
-            return proc.returncode == 0, out
-        except Exception as exc:
-            return False, str(exc)
+        # `claude -p` is the non-interactive form. `--no-session-persistence`
+        # keeps a probe out of ~/.claude/projects, which `--resume` reads.
+        if spec is not None:
+            return False, (
+                "provider-scoped deep test is not supported for claude; "
+                f"run 'xpx apply claude {spec.name}' first, then "
+                "'xpx test --deep --target claude'"
+            )
+        cmd = ["claude", "-p", "--no-session-persistence", prompt]
+        return run_probe_command(cmd, timeout)
 
     def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
         bin_path = self.get_binary_path()

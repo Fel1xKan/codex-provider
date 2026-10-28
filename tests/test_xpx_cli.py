@@ -121,8 +121,8 @@ def test_provider_crud_cli(
     assert "https://api.deepseek.com/v1" in show_out
     assert "sk-1...cdef" in show_out
 
-    # 5. rename
-    rc = xpx_cli.main(["rename", "deepseek", "deepseek-ai"])
+    # 5. rename via `set --name`
+    rc = xpx_cli.main(["set", "deepseek", "--name", "deepseek-ai"])
     assert rc == 0
     assert ProviderStore().exists("deepseek-ai")
     assert not ProviderStore().exists("deepseek")
@@ -138,7 +138,7 @@ def test_provider_crud_cli(
     assert not ProviderStore().exists("deepseek-ai")
 
 
-def test_auth_commands(
+def test_show_and_key_rotation(
     xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     store = ProviderStore()
@@ -150,17 +150,22 @@ def test_auth_commands(
         )
     )
 
-    # auth show
-    assert xpx_cli.main(["auth", "show", "openai"]) == 0
-    assert "sk-o...7890" in capsys.readouterr().out
+    # show masks the key by default and reveals it on request
+    assert xpx_cli.main(["show", "openai"]) == 0
+    masked = capsys.readouterr().out
+    assert "sk-o...7890" in masked
+    assert "sk-old1234567890" not in masked
 
-    # auth set
-    assert xpx_cli.main(["auth", "set", "openai", "--key", "sk-new9876543210"]) == 0
-    assert "Updated API Key for 'openai'" in capsys.readouterr().out
+    assert xpx_cli.main(["show", "openai", "--reveal-key"]) == 0
+    assert "sk-old1234567890" in capsys.readouterr().out
+
+    # key rotation goes through `set --key`
+    assert xpx_cli.main(["set", "openai", "--key", "sk-new9876543210"]) == 0
+    assert "api_key" in capsys.readouterr().out
     assert store.require("openai").api_key == "sk-new9876543210"
 
 
-def test_config_commands(
+def test_set_universal_and_target_fields(
     xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     store = ProviderStore()
@@ -172,18 +177,14 @@ def test_config_commands(
         )
     )
 
-    # Universal config set
-    assert (
-        xpx_cli.main(["config", "set", "deepseek", "--default-model", "deepseek-chat"])
-        == 0
-    )
+    # Universal fields
+    assert xpx_cli.main(["set", "deepseek", "--default-model", "deepseek-chat"]) == 0
     assert store.require("deepseek").default_model == "deepseek-chat"
 
-    # Target-specific config set
+    # Target-scoped fields use --target instead of a second positional.
     assert (
         xpx_cli.main(
             [
-                "config",
                 "set",
                 "deepseek",
                 "codex",
@@ -201,11 +202,12 @@ def test_config_commands(
     assert overrides.wire_api == "chat"
     assert overrides.headers == {"x-env": "test"}
 
-    # Config show
-    assert xpx_cli.main(["config", "show", "deepseek", "codex"]) == 0
+    # show --target renders those overrides
+    assert xpx_cli.main(["show", "deepseek", "--target", "codex"]) == 0
     out = capsys.readouterr().out
-    assert "Fast Mode:     True" in out
-    assert "Wire API:      chat" in out
+    assert "fast:       True" in out
+    assert "wire_api:   chat" in out
+    assert "header x-env: test" in out
 
 
 def test_apply_and_memory_persistence(
@@ -267,7 +269,7 @@ def test_apply_and_memory_persistence(
     assert "Reset 'codex' to official/default state" in capsys.readouterr().out
 
 
-def test_auth_set_linkage_reapply(
+def test_set_key_relinks_active_targets(
     xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     store = ProviderStore()
@@ -284,10 +286,10 @@ def test_auth_set_linkage_reapply(
     assert xpx_cli.main(["apply", "codex", "deepseek"]) == 0
     capsys.readouterr()
 
-    # 2. Update API key via auth set
-    assert xpx_cli.main(["auth", "set", "deepseek", "--key", "sk-brand-new-key"]) == 0
+    # 2. Rotate the API key via `set --key`
+    assert xpx_cli.main(["set", "deepseek", "--key", "sk-brand-new-key"]) == 0
     out = capsys.readouterr().out
-    assert "Re-applied to active targets: codex" in out
+    assert "Re-applied" in out and "codex" in out
 
     # Verify codex auth file has new key
     auth_file = Path(CodexAdapter().auth_path)
@@ -321,26 +323,34 @@ def test_models_cli(
     assert "deepseek-reasoner" in capsys.readouterr().out
 
     assert (
-        xpx_cli.main(["models", "set", "deepseek-reasoner", "openrouter", "--default"])
+        xpx_cli.main(["models", "set", "openrouter", "deepseek-reasoner", "--default"])
         == 0
     )
     assert store.require("openrouter").default_model == "deepseek-reasoner"
 
-    # Test models add - standard <provider> <model>
+    # `models set` is the single create-or-update command now; the old
+    # `models add` (with its reversed-argument guessing) is gone.
     assert (
-        xpx_cli.main(["models", "add", "openrouter", "claude-3-7-sonnet", "--default"])
+        xpx_cli.main(["models", "set", "openrouter", "claude-3-7-sonnet", "--default"])
         == 0
     )
     assert "Added model 'claude-3-7-sonnet'" in capsys.readouterr().out
     assert store.require("openrouter").default_model == "claude-3-7-sonnet"
 
-    # Test models add - reverse <model> <provider>
-    assert xpx_cli.main(["models", "add", "custom-gpt-5", "openrouter"]) == 0
+    assert xpx_cli.main(["models", "set", "openrouter", "custom-gpt-5"]) == 0
     assert "Added model 'custom-gpt-5'" in capsys.readouterr().out
 
-    # Test models add - provider/model syntax
-    assert xpx_cli.main(["models", "add", "openrouter/qwen-2.5-coder"]) == 0
-    assert "Added model 'qwen-2.5-coder'" in capsys.readouterr().out
+    assert xpx_cli.main(["models", "set", "openrouter", "qwen-2.5-coder"]) == 0
+    capsys.readouterr()
+
+    # Updating an existing entry reports "Updated", not "Added".
+    assert (
+        xpx_cli.main(
+            ["models", "set", "openrouter", "custom-gpt-5", "--context", "64000"]
+        )
+        == 0
+    )
+    assert "Updated model 'custom-gpt-5'" in capsys.readouterr().out
 
     # Verify models list shows added models
     assert xpx_cli.main(["models", "list", "openrouter"]) == 0
@@ -868,19 +878,21 @@ def test_apply_fast_and_web_search_codex_only(
         )
     )
 
-    # 1. Apply to claude with --fast and --web-search
+    # 1. Codex-only flags must be rejected for other clients, not silently
+    # dropped: `apply` used to report success while applying nothing.
     rc = xpx_cli.main(["apply", "claude", "deepseek", "--fast", "--web-search"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "Applied provider 'deepseek' (model: deepseek-chat) to claude" in out
-    assert "fast mode enabled" not in out
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "does not support --fast" in err
 
-    # Saved claude target override should not have fast or web_search
+    for flag in ("--wire-api=chat", "--web-search", "--fast"):
+        rc = xpx_cli.main(["apply", "claude", "deepseek", flag])
+        assert rc == 1, flag
+        assert "does not support" in capsys.readouterr().err
+
+    # Nothing should have been persisted for the rejected target.
     pv = store.require("deepseek")
-    claude_over = pv.targets.get("claude")
-    if claude_over:
-        assert claude_over.fast is None
-        assert claude_over.web_search is None
+    assert pv.targets.get("claude") is None
 
     # 2. Apply to codex with --fast and --web-search
     rc = xpx_cli.main(["apply", "codex", "deepseek", "--fast", "--web-search"])
@@ -898,17 +910,15 @@ def test_apply_fast_and_web_search_codex_only(
     assert codex_over.web_search is True
 
     # 3. Config set should reject codex-only flags for non-codex
-    rc_fast = xpx_cli.main(["config", "set", "deepseek", "claude", "--fast"])
+    rc_fast = xpx_cli.main(["set", "deepseek", "claude", "--fast"])
     assert rc_fast == 1
     assert "does not support --fast (Codex only)" in capsys.readouterr().err
 
-    rc_web = xpx_cli.main(["config", "set", "deepseek", "claude", "--web-search"])
+    rc_web = xpx_cli.main(["set", "deepseek", "claude", "--web-search"])
     assert rc_web == 1
     assert "does not support --web-search (Codex only)" in capsys.readouterr().err
 
-    rc_wire = xpx_cli.main(
-        ["config", "set", "deepseek", "claude", "--wire-api", "chat"]
-    )
+    rc_wire = xpx_cli.main(["set", "deepseek", "claude", "--wire-api", "chat"])
     assert rc_wire == 1
     assert "does not support --wire-api (Codex only)" in capsys.readouterr().err
 
@@ -1104,3 +1114,206 @@ def test_apply_daemon_refresh_flags(
     assert rc == 0
     out = capsys.readouterr().out
     assert "daemon" not in out and "instance(s)" not in out
+
+
+def test_apply_rejects_incompatible_protocol(
+    xpx_isolated_env: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An anthropic provider must not be applied to an openai-only client."""
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(
+            name="claudepv",
+            base_url="https://api.anthropic.test/v1",
+            api_key="sk-test",
+            protocol="anthropic",
+            default_model="claude-opus-5",
+        )
+    )
+
+    # Single target: hard failure with an actionable message.
+    rc = xpx_cli.main(["apply", "cursor", "claudepv"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "does not support the 'anthropic' protocol" in err
+    assert "openai" in err
+
+    # --all: incompatible clients are skipped with a reason instead of failing
+    # the sweep, and never silently reported as success.
+    from lib.xpx.adapters.registry import get_all_adapters
+
+    monkeypatch.setattr(
+        "lib.xpx.commands.cmd_apply.detect_installed_adapters",
+        lambda: {
+            "codex": get_all_adapters()["codex"],
+            "claude": get_all_adapters()["claude"],
+        },
+    )
+    rc = xpx_cli.main(["apply", "--all", "claudepv", "--dry-run"])
+    out = capsys.readouterr().out
+    assert "Skipping 'codex'" in out
+    assert "does not support the 'anthropic' protocol" in out
+    assert "would apply provider 'claudepv'" in out
+
+
+# --- 2.3.0 command surface ------------------------------------------------
+#
+# These pin the deliberate breaking changes so they cannot regress silently.
+
+
+@pytest.mark.parametrize(
+    ("argv", "replacement"),
+    [
+        (["ping", "pi"], "test --deep"),
+        (["install", "codex"], "agent install"),
+        (["update", "codex"], "agent update"),
+        (["models", "add", "pv", "m"], "models set"),
+    ],
+)
+def test_removed_commands_fail(
+    argv: list[str],
+    replacement: str,
+    xpx_isolated_env: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Removed spellings must fail loudly, and the message names the successor."""
+    with pytest.raises(SystemExit) as exc:
+        xpx_cli.main(argv)
+    assert exc.value.code != 0
+    err = capsys.readouterr().err
+    assert "invalid choice" in err
+    assert replacement.split()[0] in err or replacement in err
+
+
+def test_apply_rejects_reset_flag(
+    xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        xpx_cli.main(["apply", "codex", "--reset"])
+    assert exc.value.code != 0
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_models_set_does_not_swap_positionals(
+    xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`models set` takes <provider> <model>; it must not silently reverse them."""
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(
+            name="openrouter",
+            base_url="https://openrouter.ai/api/v1",
+            api_key="sk-test",
+        )
+    )
+
+    # Reversed order must fail: 'claude-3' is not a configured provider.
+    rc = xpx_cli.main(["models", "set", "claude-3-7-sonnet", "openrouter"])
+    assert rc == 1
+    assert "unknown provider" in capsys.readouterr().err
+
+    # Correct order works.
+    assert xpx_cli.main(["models", "set", "openrouter", "claude-3-7-sonnet"]) == 0
+    assert "claude-3-7-sonnet" in capsys.readouterr().out
+
+
+# --- `set` positional target ---------------------------------------------
+#
+# The target is positional (`set <provider> <target>`) so that editing a
+# provider and editing one client's overrides read as different shapes instead
+# of relying on a --target mode switch.
+
+
+def test_set_target_is_positional(
+    xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(
+            name="pv1",
+            base_url="https://api.test/v1",
+            api_key="sk-test",
+        )
+    )
+
+    assert xpx_cli.main(["set", "pv1", "codex", "--fast"]) == 0
+    overrides = store.require("pv1").targets["codex"]
+    assert overrides.fast is True
+
+    # The provider itself is untouched by a target-scoped edit.
+    assert store.require("pv1").base_url == "https://api.test/v1"
+
+
+def test_set_rejects_unknown_target_name(
+    xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A second positional that is not a client must not be silently accepted."""
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(name="pv1", base_url="https://api.test/v1", api_key="sk-test")
+    )
+
+    rc = xpx_cli.main(["set", "pv1", "gpt-4o", "--fast"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "unknown target client" in err
+    assert "omit the second argument" in err
+
+
+def test_set_mixes_provider_and_target_flags(
+    xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(name="pv1", base_url="https://api.test/v1", api_key="sk-test")
+    )
+
+    rc = xpx_cli.main(["set", "pv1", "codex", "--base-url", "https://other/v1"])
+    assert rc == 1
+    assert "cannot be combined with a target name" in capsys.readouterr().err
+
+
+def test_set_option_requires_target(
+    xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(name="pv1", base_url="https://api.test/v1", api_key="sk-test")
+    )
+
+    rc = xpx_cli.main(["set", "pv1", "--option", "k=v"])
+    assert rc == 1
+    assert "applies to a single client" in capsys.readouterr().err
+
+
+def test_set_requires_a_field(
+    xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(name="pv1", base_url="https://api.test/v1", api_key="sk-test")
+    )
+
+    rc = xpx_cli.main(["set", "pv1"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "nothing to update" in err
+
+
+def test_show_renders_all_target_overrides(
+    xpx_isolated_env: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = ProviderStore()
+    store.save(
+        ProviderSpec(name="pv1", base_url="https://api.test/v1", api_key="sk-test")
+    )
+    xpx_cli.main(["set", "pv1", "codex", "--fast", "--wire-api", "responses"])
+    capsys.readouterr()
+
+    assert xpx_cli.main(["show", "pv1"]) == 0
+    out = capsys.readouterr().out
+    assert "[codex]" in out
+    assert "fast:       True" in out
+    assert "wire_api:   responses" in out

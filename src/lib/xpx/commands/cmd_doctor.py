@@ -116,7 +116,22 @@ def run_doctor(args: Any) -> int:
             )
             return 1
         print("✔ All issues resolved.")
+        _print_connectivity_hint()
         return 0
 
     print("✔ No issues detected. Everything is healthy.")
+    _print_connectivity_hint()
     return 0
+
+
+def _print_connectivity_hint() -> None:
+    """Point at the commands that do check connectivity.
+
+    `doctor` is deliberately offline: it validates local state and can repair
+    it. Probing the network here would turn one offline provider into a wall of
+    red that buries the local problems this command exists to fix.
+    """
+    print("")
+    print("Local state looks good. To check connectivity:")
+    print("  xpx test                   provider reachability (HTTP, fast)")
+    print("  xpx test --deep            end-to-end prompt through client CLIs")
