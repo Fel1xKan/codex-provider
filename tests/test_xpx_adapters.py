@@ -1041,13 +1041,52 @@ def test_deep_unknown_provider_is_rejected(
         run_test(args)
 
 
-def test_deep_all_keeps_explicit_targets() -> None:
-    """`--all` plus an explicit list must combine, not silently drop the list."""
-    from lib.xpx.commands.cmd_test_ping import _resolve_deep_targets
+def test_deep_all_keeps_explicit_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--all` plus an explicit list must combine, not silently drop the list.
 
-    targets = _resolve_deep_targets("pi", deep_all=True)
-    assert "pi" in targets
-    assert len(targets) > 1, "expected --all to add other installed clients"
+    Detection is stubbed: a CI runner has no agent CLIs installed, so asserting
+    against the real detection result made this pass locally and fail there.
+    """
+    from lib.xpx.commands import cmd_test_ping
+
+    monkeypatch.setattr(
+        cmd_test_ping,
+        "detect_installed_adapters",
+        lambda: {"codex": object(), "claude": object()},
+    )
+
+    targets = cmd_test_ping._resolve_deep_targets("pi", deep_all=True)
+    assert targets == ["claude", "codex", "pi"], targets
+
+
+def test_deep_all_uses_detected_targets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no explicit target, `--all` expands to whatever is installed."""
+    from lib.xpx.commands import cmd_test_ping
+
+    monkeypatch.setattr(
+        cmd_test_ping,
+        "detect_installed_adapters",
+        lambda: {"codex": object(), "pi": object()},
+    )
+    assert cmd_test_ping._resolve_deep_targets(None, deep_all=True) == [
+        "codex",
+        "pi",
+    ]
+
+
+def test_deep_all_without_any_installed_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--all` on a machine with no agent CLIs must fail clearly."""
+    from lib.common.errors import SwitchError
+    from lib.xpx.commands import cmd_test_ping
+
+    monkeypatch.setattr(cmd_test_ping, "detect_installed_adapters", dict)
+
+    with pytest.raises(SwitchError, match="no supported target clients detected"):
+        cmd_test_ping._resolve_deep_targets(None, deep_all=True)
 
 
 def test_deep_requires_target() -> None:
