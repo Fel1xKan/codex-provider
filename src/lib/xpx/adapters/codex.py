@@ -526,7 +526,8 @@ class CodexAdapter(TargetAdapter):
                     return True, ""
                 time.sleep(0.1)
 
-        return False, f"daemon (pid {pid}) ignored SIGTERM and SIGKILL"
+        tried = "SIGTERM and SIGKILL" if sigkill is not None else "SIGTERM"
+        return False, f"daemon (pid {pid}) ignored {tried}"
 
     def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
         """Stop a daemon whose cached credentials predate the applied config."""

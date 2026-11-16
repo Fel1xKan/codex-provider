@@ -827,18 +827,25 @@ def test_codex_stop_daemon_signals(
     assert "not a Codex app-server" in reason
     assert state["signals"] == []
 
-    # SIGTERM ignored -> escalate to SIGKILL.
+    # SIGTERM ignored -> escalate to SIGKILL when the platform defines one.
     state.update(alive=True, signals=[])
     monkeypatch.setattr(codex_mod, "_proc_cmdline", lambda pid: "codex app-server")
+    sigkill = getattr(signal, "SIGKILL", None)
 
     def kill_after_sigkill(pid: int, sig: int) -> None:
         state["signals"].append(sig)
-        if sig == signal.SIGKILL:
+        if sigkill is not None and sig == sigkill:
             state["alive"] = False
 
     monkeypatch.setattr(codex_mod.os, "kill", kill_after_sigkill)
-    assert adapter._stop_daemon(9001) == (True, "")
-    assert state["signals"] == [signal.SIGTERM, signal.SIGKILL]
+    if sigkill is not None:
+        assert adapter._stop_daemon(9001) == (True, "")
+        assert state["signals"] == [signal.SIGTERM, sigkill]
+    else:
+        stopped, reason = adapter._stop_daemon(9001)
+        assert stopped is False
+        assert "ignored SIGTERM" in reason
+        assert state["signals"] == [signal.SIGTERM]
 
     # Unkillable -> explicit failure instead of a silent no-op.
     state.update(alive=True, signals=[])
@@ -849,7 +856,7 @@ def test_codex_stop_daemon_signals(
     monkeypatch.setattr(codex_mod.os, "kill", record_kill)
     stopped, reason = adapter._stop_daemon(9001)
     assert stopped is False
-    assert "ignored SIGTERM and SIGKILL" in reason
+    assert "ignored SIGTERM" in reason
 
 
 def test_opencode_refresh_daemon(
