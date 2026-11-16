@@ -4,7 +4,8 @@ import contextlib
 import json
 import os
 import shutil
-import subprocess
+import signal
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,19 @@ from lib.xpx.adapters.base import (
 )
 from lib.xpx.models.catalog import get_consolidated_provider_models
 from lib.xpx.store.catalog_store import ModelMetadata
+
+# Codex persists a provider key per thread and refuses to resume when that key
+# no longer matches the active top-level ``model_provider``. Writing one fixed
+# runtime key lets xpx change endpoints without invalidating saved sessions.
+RUNTIME_PROVIDER_KEY = "xpx"
+
+# Codex writes this format into daemon.pid; ps pads single-digit days with an
+# extra space, so callers normalize whitespace before parsing.
+_DAEMON_START_FORMAT = "%a %b %d %H:%M:%S %Y"
+
+# auth.json is written moments before/after a daemon start during apply; ignore
+# sub-second ordering noise instead of flapping the daemon on every command.
+_DAEMON_START_TOLERANCE = 1.0
 
 _FALLBACK_REASONING_LEVELS: tuple[str, ...] = (
     "low",
@@ -52,6 +66,39 @@ _PREFERRED_DEFAULT_LEVELS: tuple[str, ...] = (
     "ultra",
     "none",
 )
+
+
+def _pid_alive(pid: int) -> bool:
+    """Return False for missing and zombie pids so a stale pid file is never fatal."""
+    if pid <= 0:
+        return False
+    if Path("/proc").is_dir():
+        stat_path = Path(f"/proc/{pid}/stat")
+        if not stat_path.exists():
+            return False
+        with contextlib.suppress(OSError, IndexError):
+            state = stat_path.read_text(encoding="utf-8", errors="replace")
+            state = state.rsplit(")", 1)[1].split()[0]
+            if state == "Z":
+                return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _proc_cmdline(pid: int) -> str | None:
+    """Read a Linux process command line; None when the platform has no /proc."""
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except FileNotFoundError:
+        return None if not Path("/proc").is_dir() else ""
+    except OSError:
+        return None
+    return raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()
 
 
 def _pick_default_reasoning_level(
@@ -116,6 +163,21 @@ def get_codex_home() -> Path:
     return Path.home() / ".codex"
 
 
+def resolve_active_provider_name(doc: Any) -> str:
+    """Return the real provider name behind Codex's configured provider key."""
+    key = str(doc.get("model_provider", "") or "")
+    if key != RUNTIME_PROVIDER_KEY:
+        return key
+    providers = doc.get("model_providers")
+    if isinstance(providers, dict):
+        block = providers.get(key)
+        if isinstance(block, dict):
+            name = block.get("name")
+            if name:
+                return str(name)
+    return key
+
+
 class CodexAdapter(TargetAdapter):
     name = "codex"
     display_name = "Codex CLI"
@@ -162,17 +224,18 @@ class CodexAdapter(TargetAdapter):
             )
         try:
             doc = tomlkit.parse(self.config_path.read_text(encoding="utf-8"))
-            active_provider = str(doc.get("model_provider", "") or "")
+            active_key = str(doc.get("model_provider", "") or "")
+            active_provider = resolve_active_provider_name(doc)
             active_model = doc.get("model")
             if active_model is not None:
                 active_model = str(active_model)
             fast_mode = doc.get("service_tier") == "priority"
             extra = "fast" if fast_mode else ""
-            if not active_provider or active_provider == "openai":
+            if not active_key or active_key == "openai":
                 return TargetStatus(
                     installed=True,
-                    active_type="official" if active_provider == "openai" else "none",
-                    active_name="openai" if active_provider == "openai" else "-",
+                    active_type="official" if active_key == "openai" else "none",
+                    active_name="openai" if active_key == "openai" else "-",
                     active_model=active_model,
                     config_path=str(self.config_path),
                     extra_summary=extra,
@@ -219,8 +282,9 @@ class CodexAdapter(TargetAdapter):
             return False
         try:
             doc = tomlkit.parse(self.config_path.read_text(encoding="utf-8"))
-            active_pv = str(doc.get("model_provider", "") or "")
-            if not active_pv or active_pv == "openai":
+            active_key = str(doc.get("model_provider", "") or "")
+            active_pv = resolve_active_provider_name(doc)
+            if not active_key or active_key == "openai":
                 return False
             if provider_name and provider_name != active_pv:
                 return False
@@ -279,10 +343,11 @@ class CodexAdapter(TargetAdapter):
                 headers_table.add(k, v)
             pv_table["http_headers"] = headers_table
 
-        providers_table[spec.name] = pv_table
+        providers_table[RUNTIME_PROVIDER_KEY] = pv_table
 
-        # Top-level settings
-        doc["model_provider"] = spec.name
+        # Top-level settings. The key is fixed so saved Codex sessions keep
+        # matching regardless of which provider xpx applies next.
+        doc["model_provider"] = RUNTIME_PROVIDER_KEY
         if spec.model:
             doc["model"] = spec.model
 
@@ -367,40 +432,144 @@ class CodexAdapter(TargetAdapter):
         cmd = ["codex", "exec", "--ephemeral", "--skip-git-repo-check", prompt]
         return run_probe_command(cmd, timeout)
 
-    def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
-        sock = self.home_dir / "app-server-control" / "app-server-control.sock"
-        pid_file = self.home_dir / "app-server-daemon" / "daemon.pid"
+    @property
+    def daemon_sock_path(self) -> Path:
+        return self.home_dir / "app-server-control" / "app-server-control.sock"
 
-        if not sock.exists() and not pid_file.exists():
+    @property
+    def daemon_pid_path(self) -> Path:
+        return self.home_dir / "app-server-daemon" / "daemon.pid"
+
+    def _read_daemon_pid(self) -> tuple[int, float | None] | None:
+        """Return (pid, start_epoch) for the managed app-server daemon."""
+        try:
+            data = json.loads(self.daemon_pid_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        try:
+            pid = int(data.get("pid") or 0)
+        except (TypeError, ValueError):
+            return None
+        if pid <= 0:
+            return None
+        started: float | None = None
+        raw = data.get("processStartTime")
+        if isinstance(raw, str) and raw.strip():
+            with contextlib.suppress(ValueError, OverflowError):
+                started = time.mktime(
+                    time.strptime(" ".join(raw.split()), _DAEMON_START_FORMAT)
+                )
+        if started is None:
+            # Older Codex builds omit processStartTime; the pid file is rewritten
+            # on every start, so its mtime is a usable lower bound.
+            with contextlib.suppress(OSError):
+                started = self.daemon_pid_path.stat().st_mtime
+        return pid, started
+
+    def _credentials_changed_since(self, since: float | None) -> bool:
+        """True when credentials/config were written after the daemon started.
+
+        Codex caches the API key in the app-server process at start-up while it
+        reloads ``config.toml`` per thread. A daemon older than the last apply
+        therefore sends the new base_url with the previous provider's key, and
+        the endpoint answers ``401 INVALID_API_KEY``.
+        """
+        if since is None:
+            return True
+        newest = 0.0
+        for path in (self.auth_path, self.config_path):
+            with contextlib.suppress(OSError):
+                newest = max(newest, path.stat().st_mtime)
+        return newest > since + _DAEMON_START_TOLERANCE
+
+    def _drop_stale_pid_file(self, pid: int) -> None:
+        info = self._read_daemon_pid()
+        if info is not None and info[0] != pid:
+            return  # a fresh daemon already rewrote it
+        with contextlib.suppress(OSError):
+            self.daemon_pid_path.unlink()
+
+    def _stop_daemon(self, pid: int) -> tuple[bool, str]:
+        """Terminate the managed app-server directly.
+
+        ``codex app-server daemon restart`` is not usable here: it asks the old
+        daemon to drain and blocks while any client is still attached (measured
+        >60s), so a short timeout would leave the exchange half-done. Signalling
+        the pid lets the next Codex launch bootstrap a daemon that reads the
+        freshly applied auth.json.
+        """
+        if not _pid_alive(pid):
+            return True, ""
+        cmdline = _proc_cmdline(pid)
+        if cmdline is not None and "app-server" not in cmdline:
+            return False, f"pid {pid} is not a Codex app-server"
+
+        ladder: list[tuple[int, float]] = [(signal.SIGTERM, 3.0)]
+        sigkill = getattr(signal, "SIGKILL", None)
+        if sigkill is not None:
+            ladder.append((sigkill, 2.0))
+
+        for sig, budget in ladder:
+            try:
+                os.kill(pid, sig)
+            except ProcessLookupError:
+                return True, ""
+            except PermissionError as exc:
+                return False, f"permission denied signalling pid {pid}: {exc}"
+            except OSError as exc:
+                return False, f"{exc}"
+            deadline = time.monotonic() + budget
+            while time.monotonic() < deadline:
+                if not _pid_alive(pid):
+                    return True, ""
+                time.sleep(0.1)
+
+        return False, f"daemon (pid {pid}) ignored SIGTERM and SIGKILL"
+
+    def refresh_daemon(self, force: bool = False) -> tuple[bool, str]:
+        """Stop a daemon whose cached credentials predate the applied config."""
+        info = self._read_daemon_pid()
+        if info is None:
+            if self.daemon_sock_path.exists():
+                return False, (
+                    "a Codex app-server is running but its pid file is missing, "
+                    "so it keeps the previous credentials: restart Codex to load "
+                    "the applied key."
+                )
             return False, ""
 
-        bin_path = self.get_binary_path()
-        if not bin_path:
+        pid, started = info
+        if not _pid_alive(pid):
+            # Daemon already exited; the next launch reads auth.json anyway.
+            self._drop_stale_pid_file(pid)
             return False, ""
 
         if not force:
+            if not self._credentials_changed_since(started):
+                return False, ""
             active_count = count_active_cli_instances(
                 self.binary_name,
                 daemon_patterns=["app-server", "pid-update-loop"],
             )
             if active_count > 0:
-                return (
-                    False,
-                    f"Detected {active_count} active codex instance(s); "
-                    "kept existing sessions intact. "
-                    "New instances will use updated config.",
+                return False, (
+                    f"Codex daemon (pid {pid}) still holds credentials from before "
+                    f"this apply, so {active_count} running Codex session(s) keep "
+                    "failing with 401 until they are restarted; re-run with "
+                    "--restart-daemon to stop the daemon now."
                 )
 
-        try:
-            res = subprocess.run(
-                [bin_path, "app-server", "daemon", "restart"],
-                capture_output=True,
-                text=True,
-                timeout=3.0,
+        stopped, reason = self._stop_daemon(pid)
+        if not stopped:
+            return False, (
+                f"could not stop the Codex daemon (pid {pid}), so it keeps the old "
+                f"credentials and will keep failing with 401: {reason}"
             )
-            if res.returncode == 0:
-                return True, "Refreshed codex background daemon."
-        except Exception:
-            pass
 
-        return False, ""
+        self._drop_stale_pid_file(pid)
+        return True, (
+            f"Stopped the stale Codex daemon (pid {pid}); the next Codex launch "
+            "starts a fresh daemon that reads the applied credentials."
+        )

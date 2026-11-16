@@ -1,0 +1,26 @@
+# Gitleaks configuration for codex-provider.
+#
+# The CLI tests assert that keys are masked on `show` and that legacy auth files
+# are migrated, so they embed obviously fake credential-shaped literals such as
+# `sk-old1234567890` or `ghp_test123456`. Those literals are mirrored into
+# generated trees (`__pycache__/`) and into gitignored `temp/` planning notes.
+#
+# Only those exact shapes and generated trees are allowlisted; every other path
+# keeps the full default rule set, so a real key committed today is still caught.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "fake credentials in test fixtures and their compiled copies"
+paths = [
+  '''tests/__pycache__/.*''',
+  '''temp/.*''',
+]
+regexes = [
+  '''sk-old[0-9]+''',
+  '''sk-new[0-9]+''',
+  '''sk-legacy-[0-9]+''',
+  '''sk-1234567890abcdef[0-9a-f]*''',
+  '''ghp_test[0-9]+''',
+]

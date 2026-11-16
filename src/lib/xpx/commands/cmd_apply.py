@@ -261,7 +261,7 @@ def run_apply(args: Any) -> int:
             if getattr(args, "dry_run", False):
                 print(f"would apply account '{account_name}' to '{t}'")
             else:
-                adp.apply_account(account)
+                adp.apply_account(account)  # type: ignore[attr-defined]
                 state_store.set_target_state(t, "account", account_name)
                 print(f"✔ Applied account '{account_name}' to {t}.")
                 _handle_daemon_refresh(adp, t, args)
@@ -322,7 +322,7 @@ def run_apply(args: Any) -> int:
                 if is_dry_run:
                     print(f"would apply account '{ts.active_name}' to '{t}'")
                 else:
-                    adp.apply_account(account)
+                    adp.apply_account(account)  # type: ignore[attr-defined]
                     print(f"✔ Applied account '{ts.active_name}' to {t}.")
                     _handle_daemon_refresh(adp, t, args)
 
@@ -383,7 +383,7 @@ def run_apply(args: Any) -> int:
                 if getattr(args, "dry_run", False):
                     print(f"would apply account '{ts.active_name}' to '{single_t}'")
                 else:
-                    adp.apply_account(account)
+                    adp.apply_account(account)  # type: ignore[attr-defined]
                     print(f"✔ Applied account '{ts.active_name}' to {single_t}.")
                     _handle_daemon_refresh(adp, single_t, args)
                 return 0

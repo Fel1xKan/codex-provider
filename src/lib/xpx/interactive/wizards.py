@@ -589,7 +589,8 @@ def run_interactive_apply(
                 allow_empty=False,
             )
             if not selected_targets:
-                return None
+                # Aborted selection: keep the historical exit code of 0.
+                return None  # type: ignore
             target_names = [str(x) for x in selected_targets]
             step = "MODE"
 

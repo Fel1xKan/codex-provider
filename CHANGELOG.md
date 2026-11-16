@@ -9,6 +9,9 @@ workflow moves it to the version being tagged.
 
 ## [Unreleased]
 
+- Keep Codex sessions resumable after switching providers by writing one fixed runtime provider key; existing sessions with historical keys are left untouched.
+- Stop a Codex background daemon that cached the previous provider's key, and warn when running sessions must be closed first, so `apply` no longer leaves new sessions failing with 401 invalid API key.
+
 ## [2.3.0] - 2026-10-28
 
 - Change any provider field with one `xpx set <provider>` command, including `--key`, `--base-url`, `--default-model`, `--header`, and `--name`; `xpx auth`, `xpx config`, and `xpx rename` have been removed.

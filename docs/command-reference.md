@@ -273,6 +273,22 @@ xpx apply codex deepseek --dry-run
 xpx apply codex --clear
 ```
 
+Codex always receives one fixed runtime provider key, `xpx`. Each apply
+rewrites only `[model_providers.xpx]` (base URL, wire API, headers, and the real
+provider name in `name`), so sessions created after this version record
+`model_provider = "xpx"` and stay resumable after any provider switch. xpx does
+not modify Codex's session database or rollout files.
+
+Sessions created before this behavior keep their historical provider key;
+Codex rejects resuming them under a different provider with
+`modelProviderMismatch`. For the same reason, sessions created in official mode
+(`xpx apply codex --clear`) cannot be resumed after applying a custom provider,
+and vice versa.
+
+Restart any running Codex TUI or app-server after applying. A process that
+started before the apply keeps its loaded config and will still create sessions
+with the old provider key until it is restarted.
+
 ---
 
 ## 5. Account Lifecycle (`account`)

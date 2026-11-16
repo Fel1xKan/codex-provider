@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import sqlite3
+import time
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import tomlkit
@@ -52,12 +57,13 @@ def test_codex_adapter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
     # Verify TOML content
     doc = tomlkit.parse((codex_home / "config.toml").read_text(encoding="utf-8"))
-    assert doc["model_provider"] == "deepseek"
+    assert doc["model_provider"] == "xpx"
     assert doc["model"] == "deepseek-reasoner"
     assert doc["service_tier"] == "priority"
     assert doc["web_search"] == "live"
     assert doc["model_catalog_json"] == str(codex_home / "models.json")
-    pv_entry = doc["model_providers"]["deepseek"]
+    pv_entry = doc["model_providers"]["xpx"]
+    assert pv_entry["name"] == "deepseek"
     assert pv_entry["base_url"] == "https://api.deepseek.com/v1"
     assert pv_entry["wire_api"] == "chat"
     assert pv_entry["http_headers"]["x-user"] == "dev1"
@@ -112,6 +118,84 @@ def test_codex_catalog_retention_and_refresh(tmp_path: Path) -> None:
     # Verify refresh_catalog
     assert adapter.refresh_catalog("cistern") is True
     assert adapter.refresh_catalog("other_provider") is False
+
+
+def test_codex_runtime_key_is_fixed_across_provider_switches(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir(parents=True)
+    (codex_home / "config.toml").write_text(
+        'model = "gpt-5.6-luna"\n'
+        'model_provider = "legacy"\n'
+        "\n"
+        "[model_providers.legacy]\n"
+        'name = "legacy"\n'
+        'base_url = "https://legacy.example/v1"\n'
+        'wire_api = "responses"\n'
+        "requires_openai_auth = true\n",
+        encoding="utf-8",
+    )
+    adapter = CodexAdapter(home=codex_home)
+
+    first = MergedProviderSpec(
+        name="fastai",
+        base_url="https://fastai.example/v1",
+        api_key="sk-fastai",
+        protocol="openai",
+        model="gpt-6.1-sol",
+    )
+    adapter.apply(first)
+
+    doc = tomlkit.parse((codex_home / "config.toml").read_text(encoding="utf-8"))
+    assert doc["model_provider"] == "xpx"
+    block = doc["model_providers"]["xpx"]
+    assert block["name"] == "fastai"
+    assert block["base_url"] == "https://fastai.example/v1"
+    # Historical provider tables are preserved, never rewritten or removed.
+    assert doc["model_providers"]["legacy"]["base_url"] == "https://legacy.example/v1"
+    assert adapter.get_status().active_name == "fastai"
+
+    second = MergedProviderSpec(
+        name="cistern",
+        base_url="https://cistern.example/v1",
+        api_key="sk-cistern",
+        protocol="openai",
+        model="deepseek-v4-flash",
+    )
+    adapter.apply(second)
+
+    doc = tomlkit.parse((codex_home / "config.toml").read_text(encoding="utf-8"))
+    assert doc["model_provider"] == "xpx"
+    block = doc["model_providers"]["xpx"]
+    assert block["name"] == "cistern"
+    assert block["base_url"] == "https://cistern.example/v1"
+    assert adapter.get_status().active_name == "cistern"
+    assert adapter.refresh_catalog("cistern") is True
+    assert adapter.refresh_catalog("fastai") is False
+
+    # Session storage is Codex-owned and must never be touched by apply.
+    assert not (codex_home / "state_5.sqlite").exists()
+    assert not (codex_home / "sessions").exists()
+
+
+def test_codex_legacy_provider_key_still_readable(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir(parents=True)
+    (codex_home / "config.toml").write_text(
+        'model = "gpt-5.6-luna"\n'
+        'model_provider = "legacy"\n'
+        "\n"
+        "[model_providers.legacy]\n"
+        'name = "legacy"\n'
+        'base_url = "http://127.0.0.1:1/v1"\n'
+        'wire_api = "responses"\n'
+        "requires_openai_auth = true\n",
+        encoding="utf-8",
+    )
+
+    adapter = CodexAdapter(home=codex_home)
+    assert adapter.get_status().active_name == "legacy"
+    assert adapter.refresh_catalog("legacy") is True
+    assert adapter.refresh_catalog("other") is False
 
 
 def test_opencode_adapter(tmp_path: Path) -> None:
@@ -614,46 +698,158 @@ def test_count_active_cli_instances(monkeypatch: pytest.MonkeyPatch) -> None:
     assert c_opencode == 1
 
 
+def _write_daemon_pid(path: Path, pid: int, started: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%a %b %d %H:%M:%S %Y", time.localtime(started))
+    payload = json.dumps({"pid": pid, "processStartTime": stamp})
+    path.write_text(payload, encoding="utf-8")
+
+
 def test_codex_refresh_daemon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import lib.xpx.adapters.codex as codex_mod
+
     codex_home = tmp_path / ".codex"
     adapter = CodexAdapter(home=codex_home)
-    monkeypatch.setattr(adapter, "get_binary_path", lambda: "/usr/bin/codex")
+    pid_file = codex_home / "app-server-daemon" / "daemon.pid"
 
-    # 1. Neither socket nor pid exists -> no-op
-    refreshed, note = adapter.refresh_daemon()
-    assert refreshed is False
-    assert note == ""
+    # 1. Neither socket nor pid file -> nothing to refresh.
+    assert adapter.refresh_daemon() == (False, "")
 
-    # Create dummy daemon socket
+    # 2. Daemon socket without a pid file cannot be addressed: stay visible.
     sock_dir = codex_home / "app-server-control"
     sock_dir.mkdir(parents=True)
     (sock_dir / "app-server-control.sock").touch()
+    refreshed, note = adapter.refresh_daemon()
+    assert refreshed is False
+    assert "pid file is missing" in note
 
-    # 2. Active CLI instances running -> protected, kept intact
-    monkeypatch.setattr(
-        "lib.xpx.adapters.codex.count_active_cli_instances",
-        lambda *a, **k: 3,
-    )
+    # 3. Stale pid file from an exited daemon is dropped, not reported.
+    _write_daemon_pid(pid_file, 424242, time.time() - 3600)
+    monkeypatch.setattr(codex_mod, "_pid_alive", lambda pid: False)
+    assert adapter.refresh_daemon() == (False, "")
+    assert not pid_file.exists()
+
+    # 4. Daemon newer than auth.json/config.toml -> credentials are current.
+    auth_path = codex_home / "auth.json"
+    config_path = codex_home / "config.toml"
+    auth_path.write_text('{"OPENAI_API_KEY": "sk-new"}\n', encoding="utf-8")
+    config_path.write_text('model_provider = "xpx"\n', encoding="utf-8")
+    now = time.time()
+    for path in (auth_path, config_path):
+        os.utime(path, (now - 60, now - 60))
+    _write_daemon_pid(pid_file, 4242, now)
+    monkeypatch.setattr(codex_mod, "_pid_alive", lambda pid: True)
+    assert adapter.refresh_daemon() == (False, "")
+    monkeypatch.setattr(codex_mod, "count_active_cli_instances", lambda *a, **k: 2)
+
+    # 5. Credentials written after the daemon started while sessions are open:
+    #    refuse, but explain the 401 instead of promising a silent reload.
+    os.utime(auth_path, (now + 5, now + 5))
     refreshed, note = adapter.refresh_daemon(force=False)
     assert refreshed is False
-    assert "Detected 3 active codex instance(s)" in note
-    assert "kept existing sessions intact" in note
+    assert "still holds credentials from before this apply" in note
+    assert "2 running Codex session(s)" in note
+    assert "401" in note
+    assert "--restart-daemon" in note
 
-    # 3. Force=True or 0 active instances -> restart executed
-    executed_cmds = []
+    # 6. force=True stops the daemon and clears its pid file.
+    stopped: list[int] = []
 
-    class DummyResult:
-        returncode = 0
+    def fake_stop(pid: int) -> tuple[bool, str]:
+        stopped.append(pid)
+        return True, ""
 
-    def mock_run(cmd, *a, **k):
-        executed_cmds.append(cmd)
-        return DummyResult()
-
-    monkeypatch.setattr("subprocess.run", mock_run)
+    monkeypatch.setattr(adapter, "_stop_daemon", fake_stop)
     refreshed, note = adapter.refresh_daemon(force=True)
     assert refreshed is True
-    assert "Refreshed codex background daemon" in note
-    assert ["/usr/bin/codex", "app-server", "daemon", "restart"] in executed_cmds
+    assert stopped == [4242]
+    assert "Stopped the stale Codex daemon (pid 4242)" in note
+    assert not pid_file.exists()
+
+    # 7. A daemon that refuses to die is reported, never silently swallowed.
+    _write_daemon_pid(pid_file, 4243, now)
+    monkeypatch.setattr(
+        adapter,
+        "_stop_daemon",
+        lambda pid: (False, "permission denied signalling pid 4243"),
+    )
+    refreshed, note = adapter.refresh_daemon(force=True)
+    assert refreshed is False
+    assert "could not stop the Codex daemon (pid 4243)" in note
+    assert "permission denied" in note
+    assert pid_file.exists()
+
+    # 8. Explicit --restart-daemon restarts even when credentials are current.
+    for path in (auth_path, config_path):
+        os.utime(path, (now - 60, now - 60))
+    stopped.clear()
+    monkeypatch.setattr(adapter, "_stop_daemon", fake_stop)
+    refreshed, note = adapter.refresh_daemon(force=True)
+    assert refreshed is True
+    assert stopped == [4243]
+
+
+def test_codex_stop_daemon_signals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lib.xpx.adapters.codex as codex_mod
+
+    adapter = CodexAdapter(home=tmp_path / ".codex")
+    state: dict[str, Any] = {"alive": True, "signals": []}
+    clock = SimpleNamespace(now=0.0)
+
+    def monotonic() -> float:
+        clock.now += 1.0
+        return clock.now
+
+    fake_time = SimpleNamespace(monotonic=monotonic, sleep=lambda s: None)
+    monkeypatch.setattr(codex_mod, "time", fake_time)
+    monkeypatch.setattr(codex_mod, "_pid_alive", lambda pid: state["alive"])
+    monkeypatch.setattr(
+        codex_mod, "_proc_cmdline", lambda pid: "codex app-server --managed-daemon"
+    )
+
+    def fake_kill(pid: int, sig: int) -> None:
+        state["signals"].append(sig)
+        state["alive"] = False
+
+    monkeypatch.setattr(codex_mod.os, "kill", fake_kill)
+    assert adapter._stop_daemon(9001) == (True, "")
+    assert state["signals"] == [signal.SIGTERM]
+
+    # A reused pid that is not the app-server must never be signalled.
+    state.update(alive=True, signals=[])
+    monkeypatch.setattr(
+        codex_mod, "_proc_cmdline", lambda pid: "/usr/bin/node /opt/app.js"
+    )
+    stopped, reason = adapter._stop_daemon(9001)
+    assert stopped is False
+    assert "not a Codex app-server" in reason
+    assert state["signals"] == []
+
+    # SIGTERM ignored -> escalate to SIGKILL.
+    state.update(alive=True, signals=[])
+    monkeypatch.setattr(codex_mod, "_proc_cmdline", lambda pid: "codex app-server")
+
+    def kill_after_sigkill(pid: int, sig: int) -> None:
+        state["signals"].append(sig)
+        if sig == signal.SIGKILL:
+            state["alive"] = False
+
+    monkeypatch.setattr(codex_mod.os, "kill", kill_after_sigkill)
+    assert adapter._stop_daemon(9001) == (True, "")
+    assert state["signals"] == [signal.SIGTERM, signal.SIGKILL]
+
+    # Unkillable -> explicit failure instead of a silent no-op.
+    state.update(alive=True, signals=[])
+
+    def record_kill(pid: int, sig: int) -> None:
+        state["signals"].append(sig)
+
+    monkeypatch.setattr(codex_mod.os, "kill", record_kill)
+    stopped, reason = adapter._stop_daemon(9001)
+    assert stopped is False
+    assert "ignored SIGTERM and SIGKILL" in reason
 
 
 def test_opencode_refresh_daemon(
@@ -776,7 +972,7 @@ def test_deep_argv_contract(
     """Pin the exact argv each adapter emits for an unscoped probe."""
     import subprocess
 
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class FakeProc:
         returncode = 0
@@ -836,7 +1032,7 @@ def test_opencode_deep_isolates_session_database(
     """
     import subprocess
 
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class FakeProc:
         returncode = 0
@@ -932,7 +1128,7 @@ def test_pi_scoped_deep_targets_named_provider(
 ) -> None:
     import subprocess
 
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class FakeProc:
         returncode = 0
@@ -959,7 +1155,7 @@ def test_opencode_scoped_deep_passes_model(
 ) -> None:
     import subprocess
 
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class FakeProc:
         returncode = 0
