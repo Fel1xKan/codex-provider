@@ -2,29 +2,19 @@
   "$schema": "https://chariot.opencdx.io/schemas/farrier-contract-1.0.json",
   "schemaVersion": "1.0",
   "repoId": "codex-provider",
-  "profile": "python-library",
-  "sourceRoots": ["src", "tests", "scripts"],
-  "exclude": ["temp/**", "dist/**", "build/**", "data/**", "assets/**"],
-  "detectors": {
-    "filesystem": {"enabled": true},
-    "internal-info": {"enabled": true, "maxFileBytes": 1000000, "historyLimitCommits": 2000},
-    "secrets": {"enabled": true},
-    "jscpd": {"enabled": true, "minTokens": 50, "minLines": 5},
-    "osv-scanner": {"enabled": false},
-    "debtmap": {"enabled": false},
-    "probe-coverage": {"enabled": false}
-  },
+  "sourceRoots": [
+    "src",
+    "tests",
+    "scripts"
+  ],
+  "exclude": [
+    "temp/**",
+    "dist/**",
+    "build/**",
+    "data/**",
+    "assets/**"
+  ],
   "policy": {
-    "mode": "observe",
-    "baseline": {"path": "codex-provider/baseline", "createIfMissing": true},
-    "ratchet": {"changedCodeOnly": true, "allowNewDebt": false},
-    "gates": {
-      "criticalSecurity": "block",
-      "detectorError": "report",
-      "coverageNotRun": "report"
-    }
-  },
-  "architecture": {"enabled": false, "forbiddenImports": [], "allowedEdges": []},
-  "ownership": {"defaultOwner": "Fel1xKan", "pathOwners": []},
-  "logging": {"enabled": false, "requiredFields": [], "forbiddenPatterns": []}
+    "mode": "ratchet"
+  }
 }

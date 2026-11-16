@@ -204,7 +204,7 @@ def test_confirm_action_enter_and_esc() -> None:
 
 
 def test_prompt_select_model_flow() -> None:
-    from lib.xpx.interactive.wizards import _prompt_select_model
+    from lib.xpx.interactive.model_picker import prompt_select_model
     from lib.xpx.store.provider_store import ProviderSpec
 
     mock_pv = ProviderSpec(
@@ -223,25 +223,25 @@ def test_prompt_select_model_flow() -> None:
     ):
         # 1. Select a model directly
         with patch(
-            "lib.xpx.interactive.wizards.select", return_value="deepseek-reasoner"
+            "lib.xpx.interactive.model_picker.select", return_value="deepseek-reasoner"
         ):
-            res = _prompt_select_model("cistern", include_keep=True)
+            res = prompt_select_model("cistern", include_keep=True)
             assert res == "deepseek-reasoner"
 
         # 2. Select __keep__
-        with patch("lib.xpx.interactive.wizards.select", return_value="__keep__"):
-            res = _prompt_select_model("cistern", include_keep=True)
+        with patch("lib.xpx.interactive.model_picker.select", return_value="__keep__"):
+            res = prompt_select_model("cistern", include_keep=True)
             assert res == "__keep__"
 
         # 3. Select __custom__ and type custom model
         with (
-            patch("lib.xpx.interactive.wizards.select", return_value="__custom__"),
+            patch("lib.xpx.interactive.model_picker.select", return_value="__custom__"),
             patch(
-                "lib.xpx.interactive.wizards.prompt_text",
+                "lib.xpx.interactive.model_picker.prompt_text",
                 return_value="my-special-model",
             ),
         ):
-            res = _prompt_select_model("cistern", include_keep=True)
+            res = prompt_select_model("cistern", include_keep=True)
             assert res == "my-special-model"
 
 

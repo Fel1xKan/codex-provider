@@ -318,10 +318,9 @@ class OpenCodeAdapter(TargetAdapter):
         previous_model: str | None = None
         if cfg.is_file():
             try:
-                data = json5.loads(cfg.read_text(encoding="utf-8"))
-                if not isinstance(data, dict):
-                    data = {}
-                else:
+                loaded = json5.loads(cfg.read_text(encoding="utf-8"))
+                data = loaded if isinstance(loaded, dict) else {}
+                if isinstance(loaded, dict):
                     raw_model = data.get("model")
                     if isinstance(raw_model, str):
                         previous_model = raw_model

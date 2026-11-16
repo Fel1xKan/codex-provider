@@ -518,14 +518,14 @@ class PiAdapter(TargetAdapter):
                     data = {}
             except Exception:
                 data = {}
-        data["model_provider"] = {
+        provider_entry: dict[str, Any] = {
             "name": spec.name,
             "api_base": base_url,
             "api_key": spec.api_key,
             "model": clean_model or spec.model or "default",
+            **({"options": spec.options} if spec.options else {}),
         }
-        if spec.options:
-            data["model_provider"]["options"] = spec.options
+        data["model_provider"] = provider_entry
         payload = yaml.dump(data, allow_unicode=True).encode("utf-8")
         atomic_write_bytes(self.config_file, payload)
 
